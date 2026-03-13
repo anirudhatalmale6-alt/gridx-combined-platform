@@ -329,4 +329,62 @@ router.get('/stsTokensByDRN/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── AREA POWER & REVENUE SUMMARY (for Dashboard bar chart) ──
+router.get('/areaSummary', authenticateToken, async (req, res) => {
+  try {
+    // Area-level power consumption (last 24h)
+    const areaPower = await queryAll(
+      `SELECT COALESCE(ml.LocationName, pr.City, 'Unknown') AS area,
+              COUNT(DISTINCT mp.DRN) AS meter_count,
+              ROUND(SUM(mp.active_power), 2) AS total_power_w,
+              ROUND(AVG(mp.active_power), 2) AS avg_power_w,
+              ROUND(AVG(mp.voltage), 1) AS avg_voltage
+       FROM MeteringPower mp
+       LEFT JOIN MeterLocationInfoTable ml ON mp.DRN = ml.DRN
+       LEFT JOIN MeterProfileReal pr ON mp.DRN = pr.DRN
+       WHERE mp.date_time >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+       GROUP BY area
+       ORDER BY total_power_w DESC`
+    );
+
+    // Area-level revenue from STS tokens (last 24h)
+    const areaRevenue = await queryAll(
+      `SELECT COALESCE(ml.LocationName, pr.City, 'Unknown') AS area,
+              COUNT(*) AS token_count,
+              ROUND(SUM(CAST(st.token_amount AS DECIMAL(10,2))), 2) AS total_revenue
+       FROM STSTokesInfo st
+       LEFT JOIN MeterLocationInfoTable ml ON st.DRN = ml.DRN
+       LEFT JOIN MeterProfileReal pr ON st.DRN = pr.DRN
+       WHERE st.date_time >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+       GROUP BY area
+       ORDER BY total_revenue DESC`
+    );
+
+    res.json({ areaPower, areaRevenue });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── METER DAILY POWER (this week + last week for bar chart) ──
+router.get('/meterDailyPower/:id', authenticateToken, async (req, res) => {
+  try {
+    const DRN = req.params.id;
+    const rows = await queryAll(
+      `SELECT DATE(date_time) AS day,
+              ROUND(AVG(CAST(active_power AS DECIMAL(10,2))), 2) AS avg_power,
+              ROUND(MAX(CAST(active_power AS DECIMAL(10,2))), 2) AS peak_power,
+              COUNT(*) AS readings
+       FROM MeteringPower
+       WHERE DRN = ? AND date_time >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+       GROUP BY DATE(date_time)
+       ORDER BY day`,
+      [DRN]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

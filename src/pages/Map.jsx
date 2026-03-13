@@ -18,6 +18,11 @@ import {
   WaterDropOutlined,
   MyLocationOutlined,
   CloseOutlined,
+  ElectricMeterOutlined,
+  TransformOutlined,
+  OpenInNewOutlined,
+  ExpandMoreOutlined,
+  ExpandLessOutlined,
 } from "@mui/icons-material";
 import {
   GoogleMap,
@@ -106,6 +111,7 @@ export default function Map() {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
+  const [networkSearch, setNetworkSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [meterLocations, setMeterLocations] = useState([]);
   const [transformers, setTransformers] = useState([]);
@@ -113,6 +119,8 @@ export default function Map() {
   const [selectedTransformer, setSelectedTransformer] = useState(null);
   const [connectedMeters, setConnectedMeters] = useState([]);
   const [mapRef, setMapRef] = useState(null);
+  const [networkTab, setNetworkTab] = useState("meters"); // "meters" | "transformers"
+  const [expandedTrans, setExpandedTrans] = useState(null);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: GOOGLE_MAPS_KEY,
@@ -172,6 +180,28 @@ export default function Map() {
       .sort((a, b) => b.total - a.total);
   }, [meterLocations]);
 
+  /* ---- Filtered network items ---- */
+  const filteredNetworkMeters = useMemo(() => {
+    if (!networkSearch) return meterLocations;
+    const q = networkSearch.toLowerCase();
+    return meterLocations.filter(
+      (m) =>
+        (m.DRN || "").toLowerCase().includes(q) ||
+        (m.LocationName || "").toLowerCase().includes(q)
+    );
+  }, [meterLocations, networkSearch]);
+
+  const filteredNetworkTransformers = useMemo(() => {
+    if (!networkSearch) return transformers;
+    const q = networkSearch.toLowerCase();
+    return transformers.filter(
+      (t) =>
+        (t.DRN || "").toLowerCase().includes(q) ||
+        (t.Name || "").toLowerCase().includes(q) ||
+        (t.city || "").toLowerCase().includes(q)
+    );
+  }, [transformers, networkSearch]);
+
   /* ---- Transformer click: load connected meters ---- */
   const handleTransformerClick = useCallback(
     async (trans) => {
@@ -185,6 +215,53 @@ export default function Map() {
       }
     },
     []
+  );
+
+  /* ---- Focus meter on map ---- */
+  const focusMeterOnMap = useCallback(
+    (meter) => {
+      const lat = parseFloat(meter.Lat);
+      const lng = parseFloat(meter.Longitude);
+      if (isNaN(lat) || isNaN(lng) || !mapRef) return;
+      mapRef.panTo({ lat, lng });
+      mapRef.setZoom(17);
+      setSelectedTransformer(null);
+      setConnectedMeters([]);
+      setSelectedMeter(meter);
+    },
+    [mapRef]
+  );
+
+  /* ---- Focus transformer on map ---- */
+  const focusTransformerOnMap = useCallback(
+    (trans) => {
+      const lat = parseFloat(trans.pLat);
+      const lng = parseFloat(trans.pLng);
+      if (isNaN(lat) || isNaN(lng) || !mapRef) return;
+      mapRef.panTo({ lat, lng });
+      mapRef.setZoom(16);
+      handleTransformerClick(trans);
+    },
+    [mapRef, handleTransformerClick]
+  );
+
+  /* ---- Expand transformer to load its meters ---- */
+  const handleExpandTransformer = useCallback(
+    async (trans) => {
+      if (expandedTrans === trans.DRN) {
+        setExpandedTrans(null);
+        setConnectedMeters([]);
+        return;
+      }
+      setExpandedTrans(trans.DRN);
+      try {
+        const meters = await meterAPI.getMetersByTransformer(trans.DRN);
+        setConnectedMeters(Array.isArray(meters) ? meters : []);
+      } catch {
+        setConnectedMeters([]);
+      }
+    },
+    [expandedTrans]
   );
 
   /* ---- Map callbacks ---- */
@@ -256,7 +333,7 @@ export default function Map() {
 
       <Box
         display="grid"
-        gridTemplateColumns="300px 1fr"
+        gridTemplateColumns="260px 1fr 280px"
         gap="5px"
         height="calc(100vh - 180px)"
       >
@@ -757,6 +834,293 @@ export default function Map() {
               height="100%"
             >
               <CircularProgress sx={{ color: colors.greenAccent[500] }} />
+            </Box>
+          )}
+        </Box>
+
+        {/* ---- Right sidebar: Network Navigator ---- */}
+        <Box
+          backgroundColor={colors.primary[400]}
+          borderRadius="4px"
+          overflow="auto"
+          display="flex"
+          flexDirection="column"
+        >
+          {/* Header */}
+          <Box p="10px" pb={0}>
+            <Typography
+              variant="caption"
+              color={colors.greenAccent[500]}
+              fontSize="0.72rem"
+              fontWeight={700}
+              letterSpacing="0.5px"
+              display="block"
+              mb={1}
+            >
+              NETWORK NAVIGATOR
+            </Typography>
+
+            {/* Search */}
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Search network..."
+              value={networkSearch}
+              onChange={(e) => setNetworkSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchOutlined sx={{ color: colors.grey[400], fontSize: 16 }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ mb: 1 }}
+            />
+
+            {/* Tabs */}
+            <Box display="flex" gap={0.5} mb={1}>
+              <Chip
+                icon={<ElectricMeterOutlined sx={{ fontSize: 14 }} />}
+                label={`Meters (${filteredNetworkMeters.length})`}
+                size="small"
+                onClick={() => setNetworkTab("meters")}
+                sx={{
+                  bgcolor: networkTab === "meters" ? "rgba(76,206,172,0.2)" : "transparent",
+                  color: networkTab === "meters" ? colors.greenAccent[500] : colors.grey[400],
+                  fontWeight: 600,
+                  fontSize: "0.68rem",
+                  border: `1px solid ${networkTab === "meters" ? colors.greenAccent[700] : "rgba(255,255,255,0.08)"}`,
+                  cursor: "pointer",
+                }}
+              />
+              <Chip
+                icon={<TransformOutlined sx={{ fontSize: 14 }} />}
+                label={`Transformers (${filteredNetworkTransformers.length})`}
+                size="small"
+                onClick={() => setNetworkTab("transformers")}
+                sx={{
+                  bgcolor: networkTab === "transformers" ? "rgba(242,183,5,0.2)" : "transparent",
+                  color: networkTab === "transformers" ? "#f2b705" : colors.grey[400],
+                  fontWeight: 600,
+                  fontSize: "0.68rem",
+                  border: `1px solid ${networkTab === "transformers" ? "rgba(242,183,5,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  cursor: "pointer",
+                }}
+              />
+            </Box>
+          </Box>
+
+          {/* Meter List */}
+          {networkTab === "meters" && (
+            <Box flex={1} overflow="auto" px="10px" pb="10px">
+              {filteredNetworkMeters.map((m) => {
+                const isOnline = m.Status === "1" || m.Status === 1 || m.Status === "Active";
+                return (
+                  <Box
+                    key={m.DRN}
+                    p={1}
+                    mb={0.5}
+                    borderRadius="4px"
+                    backgroundColor="rgba(10,22,40,0.5)"
+                    border="1px solid rgba(255,255,255,0.05)"
+                    sx={{
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      "&:hover": {
+                        backgroundColor: "rgba(76,206,172,0.08)",
+                        borderColor: "rgba(76,206,172,0.2)",
+                      },
+                    }}
+                    onClick={() => focusMeterOnMap(m)}
+                  >
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box display="flex" alignItems="center" gap={0.5}>
+                        <FiberManualRecord
+                          sx={{ fontSize: 8, color: isOnline ? colors.greenAccent[500] : "#db4f4a" }}
+                        />
+                        <Typography
+                          variant="caption"
+                          color={colors.grey[100]}
+                          fontFamily="monospace"
+                          fontSize="0.72rem"
+                          fontWeight={600}
+                        >
+                          {m.DRN}
+                        </Typography>
+                      </Box>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/meter/${m.DRN}`);
+                        }}
+                        sx={{ color: colors.greenAccent[500], p: 0.3 }}
+                      >
+                        <OpenInNewOutlined sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      color={colors.grey[400]}
+                      fontSize="0.62rem"
+                      display="block"
+                      mt={0.2}
+                    >
+                      {m.LocationName || "Unknown Location"}
+                    </Typography>
+                  </Box>
+                );
+              })}
+              {filteredNetworkMeters.length === 0 && (
+                <Typography variant="caption" color={colors.grey[500]} textAlign="center" display="block" mt={2}>
+                  No meters found
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          {/* Transformer List */}
+          {networkTab === "transformers" && (
+            <Box flex={1} overflow="auto" px="10px" pb="10px">
+              {filteredNetworkTransformers.map((t) => (
+                <Box key={t.DRN} mb={0.5}>
+                  <Box
+                    p={1}
+                    borderRadius="4px"
+                    backgroundColor="rgba(10,22,40,0.5)"
+                    border="1px solid rgba(255,255,255,0.05)"
+                    sx={{
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      "&:hover": {
+                        backgroundColor: "rgba(242,183,5,0.08)",
+                        borderColor: "rgba(242,183,5,0.2)",
+                      },
+                    }}
+                  >
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      onClick={() => focusTransformerOnMap(t)}
+                    >
+                      <Box display="flex" alignItems="center" gap={0.5}>
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "2px",
+                            bgcolor: "#f2b705",
+                          }}
+                        />
+                        <Typography
+                          variant="caption"
+                          color={colors.grey[100]}
+                          fontFamily="monospace"
+                          fontSize="0.72rem"
+                          fontWeight={600}
+                        >
+                          {t.DRN}
+                        </Typography>
+                      </Box>
+                      <Box display="flex" alignItems="center" gap={0.3}>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExpandTransformer(t);
+                          }}
+                          sx={{ color: colors.grey[400], p: 0.3 }}
+                        >
+                          {expandedTrans === t.DRN ? (
+                            <ExpandLessOutlined sx={{ fontSize: 16 }} />
+                          ) : (
+                            <ExpandMoreOutlined sx={{ fontSize: 16 }} />
+                          )}
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      color={colors.grey[400]}
+                      fontSize="0.62rem"
+                      display="block"
+                      mt={0.2}
+                    >
+                      {t.Name || t.city || "Transformer"} {t.powerRating ? `· ${t.powerRating}W` : ""}
+                    </Typography>
+                  </Box>
+
+                  {/* Expanded: connected meters */}
+                  {expandedTrans === t.DRN && connectedMeters.length > 0 && (
+                    <Box
+                      ml={2}
+                      mt={0.3}
+                      pl={1}
+                      borderLeft={`2px solid rgba(242,183,5,0.3)`}
+                    >
+                      {connectedMeters.map((cm) => (
+                        <Box
+                          key={cm.DRN}
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="space-between"
+                          py={0.4}
+                          px={0.5}
+                          borderRadius="3px"
+                          sx={{
+                            cursor: "pointer",
+                            "&:hover": { backgroundColor: "rgba(76,206,172,0.08)" },
+                          }}
+                          onClick={() => {
+                            const meter = meterLocations.find((ml) => ml.DRN === cm.DRN);
+                            if (meter) focusMeterOnMap(meter);
+                          }}
+                        >
+                          <Box display="flex" alignItems="center" gap={0.4}>
+                            <BoltOutlined sx={{ fontSize: 12, color: colors.greenAccent[500] }} />
+                            <Typography
+                              variant="caption"
+                              fontFamily="monospace"
+                              fontSize="0.68rem"
+                              color={colors.grey[200]}
+                            >
+                              {cm.DRN}
+                            </Typography>
+                          </Box>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/meter/${cm.DRN}`);
+                            }}
+                            sx={{ color: colors.greenAccent[500], p: 0.2 }}
+                          >
+                            <OpenInNewOutlined sx={{ fontSize: 12 }} />
+                          </IconButton>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  {expandedTrans === t.DRN && connectedMeters.length === 0 && (
+                    <Typography
+                      variant="caption"
+                      color={colors.grey[500]}
+                      fontSize="0.6rem"
+                      ml={3}
+                      display="block"
+                      mt={0.3}
+                    >
+                      No connected meters found
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+              {filteredNetworkTransformers.length === 0 && (
+                <Typography variant="caption" color={colors.grey[500]} textAlign="center" display="block" mt={2}>
+                  No transformers found
+                </Typography>
+              )}
             </Box>
           )}
         </Box>

@@ -94,6 +94,9 @@ export const meterAPI = {
   getAllLocations: () => get('/meterLocation/getAll'),
   getAllTransformers: () => get('/transformer/getAll'),
   getMetersByTransformer: (drn) => get(`/meterLocation/getMeterByTrans/${drn}`),
+  getNotifications: (drn) => get(`/notificationsByDRN/${drn}`),
+  getAreaSummary: () => get('/areaSummary'),
+  getDailyPower: (drn) => get(`/meterDailyPower/${drn}`),
 };
 
 // ===== LOAD CONTROL =====

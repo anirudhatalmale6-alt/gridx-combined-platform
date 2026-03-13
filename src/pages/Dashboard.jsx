@@ -5,6 +5,7 @@ import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import StatBox from "../components/StatBox";
 import { meterAPI, tokenAPI, financeAPI, energyAPI } from "../services/api";
+import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import { dashboardData as mockDashboard, notifications as mockNotifications } from "../services/mockData";
 import ElectricBoltOutlinedIcon from "@mui/icons-material/ElectricBoltOutlined";
 import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull";
@@ -21,11 +22,15 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
+  Cell,
 } from "recharts";
 
 // ---- Helpers ----
@@ -68,6 +73,8 @@ export default function Dashboard() {
   const [salesTrend, setSalesTrend] = useState(mockDashboard.salesTrend);
   const [recentTxns, setRecentTxns] = useState(mockDashboard.recentTransactions);
   const [notifs, setNotifs] = useState(mockNotifications);
+  const [areaPower, setAreaPower] = useState([]);
+  const [areaRevenue, setAreaRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,9 +88,10 @@ export default function Dashboard() {
           financeAPI.getPastWeekTokens(),
           energyAPI.getCurrentDay(),
           tokenAPI.getAllProcessed(),
+          meterAPI.getAreaSummary(),
         ]);
 
-        const [meterDash, tokenAmt, tokenCnt, weekTokens, dayEnergy, processedTokens] = results;
+        const [meterDash, tokenAmt, tokenCnt, weekTokens, dayEnergy, processedTokens, areaSummaryResult] = results;
 
         // Build KPIs from meter dashboard
         if (meterDash.status === "fulfilled" && meterDash.value?.data) {
@@ -137,6 +145,13 @@ export default function Dashboard() {
             };
           });
           if (trend.length > 0) setSalesTrend(trend);
+        }
+
+        // Area summary (power + revenue)
+        if (areaSummaryResult.status === "fulfilled" && areaSummaryResult.value) {
+          const { areaPower: ap, areaRevenue: ar } = areaSummaryResult.value;
+          if (Array.isArray(ap)) setAreaPower(ap);
+          if (Array.isArray(ar)) setAreaRevenue(ar);
         }
 
         // Processed tokens as recent transactions
@@ -273,7 +288,122 @@ export default function Dashboard() {
           />
         </Box>
 
-        {/* ROW 2: Revenue & Energy Chart (span 9) + Notifications (span 3) */}
+        {/* ROW 2: Area Power Consumption & Revenue Bar Charts */}
+        <Box
+          gridColumn="span 6"
+          gridRow="span 3"
+          backgroundColor={colors.primary[400]}
+          p="15px"
+        >
+          <Box display="flex" alignItems="center" gap={1} mb="10px">
+            <MapOutlinedIcon sx={{ color: colors.greenAccent[500], fontSize: 20 }} />
+            <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
+              Area Power Consumption (24h)
+            </Typography>
+            <DataBadge live sx={{ ml: "auto" }} />
+          </Box>
+          <Box height="calc(100% - 40px)">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={areaPower}
+                margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} />
+                <XAxis
+                  dataKey="area"
+                  stroke={colors.grey[300]}
+                  tick={{ fontSize: 10 }}
+                  angle={-20}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  stroke={colors.grey[300]}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`}
+                  label={{ value: "Watts", angle: -90, position: "insideLeft", style: { fill: colors.grey[400], fontSize: 11 } }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: colors.primary[400],
+                    border: `1px solid ${colors.grey[700]}`,
+                    borderRadius: 4,
+                    color: colors.grey[100],
+                  }}
+                  formatter={(value, name) => {
+                    if (name === "total_power_w") return [`${Number(value).toLocaleString()} W`, "Total Power"];
+                    if (name === "avg_power_w") return [`${Number(value).toLocaleString()} W`, "Avg Power"];
+                    return [value, name];
+                  }}
+                />
+                <Bar dataKey="total_power_w" name="total_power_w" radius={[4, 4, 0, 0]}>
+                  {areaPower.map((entry, index) => (
+                    <Cell key={index} fill={index % 2 === 0 ? colors.greenAccent[500] : colors.blueAccent[400]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
+
+        <Box
+          gridColumn="span 6"
+          gridRow="span 3"
+          backgroundColor={colors.primary[400]}
+          p="15px"
+        >
+          <Box display="flex" alignItems="center" gap={1} mb="10px">
+            <AccountBalanceWalletOutlinedIcon sx={{ color: colors.greenAccent[500], fontSize: 20 }} />
+            <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
+              Area Revenue (24h)
+            </Typography>
+            <DataBadge live sx={{ ml: "auto" }} />
+          </Box>
+          <Box height="calc(100% - 40px)">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={areaRevenue}
+                margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} />
+                <XAxis
+                  dataKey="area"
+                  stroke={colors.grey[300]}
+                  tick={{ fontSize: 10 }}
+                  angle={-20}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  stroke={colors.grey[300]}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `N$${v}`}
+                  label={{ value: "Revenue (N$)", angle: -90, position: "insideLeft", style: { fill: colors.grey[400], fontSize: 11 } }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: colors.primary[400],
+                    border: `1px solid ${colors.grey[700]}`,
+                    borderRadius: 4,
+                    color: colors.grey[100],
+                  }}
+                  formatter={(value, name) => {
+                    if (name === "total_revenue") return [`N$ ${Number(value).toLocaleString()}`, "Revenue"];
+                    if (name === "token_count") return [value, "Tokens"];
+                    return [value, name];
+                  }}
+                />
+                <Bar dataKey="total_revenue" name="total_revenue" radius={[4, 4, 0, 0]}>
+                  {areaRevenue.map((entry, index) => (
+                    <Cell key={index} fill={index % 2 === 0 ? colors.yellowAccent[500] : colors.greenAccent[500]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
+
+        {/* ROW 3: Revenue & Energy Chart (span 9) + Notifications (span 3) */}
         <Box
           gridColumn="span 9"
           gridRow="span 3"

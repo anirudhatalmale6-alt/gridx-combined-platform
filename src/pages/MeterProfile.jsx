@@ -57,11 +57,14 @@ import {
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
@@ -268,6 +271,7 @@ export default function MeterProfile() {
   const [heaterControl, setHeaterControl] = useState(null);
   const [mainsState, setMainsState] = useState(null);
   const [heaterState, setHeaterState] = useState(null);
+  const [dailyPower, setDailyPower] = useState([]);
 
   /* ---------- Load Control UI state ---------- */
   const [mainsReason, setMainsReason] = useState("Irregular performance");
@@ -298,6 +302,7 @@ export default function MeterProfile() {
         loadControlAPI.getHeaterControl(drn),
         loadControlAPI.getMainsState(drn),
         loadControlAPI.getHeaterState(drn),
+        meterAPI.getDailyPower(drn),
       ]);
 
       if (results[0].status === "fulfilled") setProfile(results[0].value);
@@ -311,6 +316,8 @@ export default function MeterProfile() {
         setHeaterControl(results[6].value);
       if (results[7].status === "fulfilled") setMainsState(results[7].value);
       if (results[8].status === "fulfilled") setHeaterState(results[8].value);
+      if (results[9].status === "fulfilled" && Array.isArray(results[9].value))
+        setDailyPower(results[9].value);
 
       setLoading(false);
     };
@@ -392,6 +399,48 @@ export default function MeterProfile() {
     (t) => t.name === (mockMeter?.billing?.tariffGroup || "Residential")
   );
   const hourlyData = useMemo(() => generateHourlyData(), []);
+
+  /* ---------- Daily power: this week vs last week ---------- */
+  const weeklyPowerChart = useMemo(() => {
+    if (!dailyPower || dailyPower.length === 0) return [];
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayOfWeek = today.getDay();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - dayOfWeek);
+    const lastWeekStart = new Date(weekStart);
+    lastWeekStart.setDate(weekStart.getDate() - 7);
+
+    // Parse API dates: "2026-03-01T22:00:00.000Z" → local date string "2026-03-02"
+    const parsed = dailyPower.map((d) => {
+      const dt = new Date(d.day);
+      // Add a few hours to compensate for timezone offset from MySQL DATE
+      dt.setHours(dt.getHours() + 12);
+      const localDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      return { ...d, localDate };
+    });
+
+    const result = dayNames.map((name, i) => {
+      const thisWeekDate = new Date(weekStart);
+      thisWeekDate.setDate(weekStart.getDate() + i);
+      const lastWeekDate = new Date(lastWeekStart);
+      lastWeekDate.setDate(lastWeekStart.getDate() + i);
+
+      const fmtDate = (dt) =>
+        `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+
+      const tw = parsed.find((d) => d.localDate === fmtDate(thisWeekDate));
+      const lw = parsed.find((d) => d.localDate === fmtDate(lastWeekDate));
+
+      return {
+        day: name,
+        thisWeek: tw ? parseFloat(tw.avg_power) : 0,
+        lastWeek: lw ? parseFloat(lw.avg_power) : 0,
+      };
+    });
+    return result;
+  }, [dailyPower]);
 
   /* ---------- Load Control handlers ---------- */
   const handleLoadControlClick = (type, action) => {
@@ -1955,6 +2004,77 @@ export default function MeterProfile() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+          </Box>
+
+          {/* Weekly Power Comparison Bar Chart */}
+          <Box
+            gridColumn="span 12"
+            gridRow="span 3"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+            mt="5px"
+          >
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+              <Typography variant="h6" color={colors.grey[100]} fontWeight="bold">
+                Weekly Power Consumption — This Week vs Last Week
+              </Typography>
+              <DataBadge live />
+            </Box>
+            {weeklyPowerChart.length > 0 && weeklyPowerChart.some((d) => d.thisWeek > 0 || d.lastWeek > 0) ? (
+              <ResponsiveContainer width="100%" height="80%">
+                <BarChart
+                  data={weeklyPowerChart}
+                  margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fill: colors.grey[100], fontSize: 12 }}
+                    axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: colors.grey[100], fontSize: 11 }}
+                    axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                    tickLine={false}
+                    unit=" W"
+                  />
+                  <RechartsTooltip
+                    contentStyle={{
+                      background: colors.primary[400],
+                      border: `1px solid ${colors.greenAccent[700]}`,
+                      borderRadius: 4,
+                      color: colors.grey[100],
+                    }}
+                    formatter={(value) => [`${Number(value).toFixed(2)} W`]}
+                  />
+                  <Legend
+                    wrapperStyle={{ color: colors.grey[100], fontSize: 12 }}
+                  />
+                  <Bar
+                    dataKey="thisWeek"
+                    name="This Week"
+                    fill={colors.greenAccent[500]}
+                    radius={[4, 4, 0, 0]}
+                    barSize={20}
+                  />
+                  <Bar
+                    dataKey="lastWeek"
+                    name="Last Week"
+                    fill={colors.blueAccent[400]}
+                    radius={[4, 4, 0, 0]}
+                    barSize={20}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box display="flex" alignItems="center" justifyContent="center" height="80%">
+                <Typography variant="body2" color={colors.grey[400]}>
+                  No power data available for comparison
+                </Typography>
+              </Box>
+            )}
           </Box>
         </Box>
         </Box>
