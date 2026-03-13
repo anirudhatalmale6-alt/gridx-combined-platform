@@ -56,6 +56,7 @@ const billingNotificationRoutes = require('./services/billingNotificationRoutes'
 const meterRegistrationRoutes = require('./meter/meterRegistrationRoutes');
 const meterDataRoutes = require('./routes/meterDataRoutes');
 const mqttRoutes = require('./routes/mqttRoutes');
+const otaRoutes = require('./routes/otaRoutes');
 
 // Initialize MQTT handler (subscribes to meter telemetry topics)
 const mqttHandler = require('./services/mqttHandler');
@@ -130,6 +131,10 @@ app.use('/systemSettings', systemSettingsRoutes);
 app.use('/api/meter', meterBillingRoutes);
 app.use('/api/billing', billingNotificationRoutes);
 app.use('/meter-registration', meterRegistrationRoutes);
+
+// OTA firmware serving (ESP32 polls these over GSM HTTP)
+app.use('/files', otaRoutes);
+app.use('/api/ota', otaRoutes);
 
 // Import and initialize cron jobs
 try {
