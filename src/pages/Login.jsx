@@ -10,12 +10,13 @@ import {
   CircularProgress,
   Alert,
   Link,
+  Grid,
   useTheme,
 } from "@mui/material";
-import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { bgBlur } from "../css";
-import { tokens, ColorModeContext, useMode } from "../theme";
+import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
+import logoImage from "../assets/logo.png";
 
 export default function Login() {
   const theme = useTheme();
@@ -23,21 +24,36 @@ export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({ Email: "", Password: "" });
+  const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (formErrors[name]) setFormErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.Email.trim()) errors.Email = "Email Address is required";
+    if (!formData.Password || formData.Password.length < 4)
+      errors.Password = "Password is required";
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
+    if (!validateForm()) return;
     setLoading(true);
+    setFormErrors({});
 
     try {
-      await login(email, password);
+      await login(formData.Email, formData.Password);
       navigate("/");
     } catch (err) {
-      setError(err.message || "Invalid email or password.");
+      setFormErrors({ general: err.message || "Incorrect email or password" });
     } finally {
       setLoading(false);
     }
@@ -45,151 +61,121 @@ export default function Login() {
 
   return (
     <Paper
+      elevation={4}
       sx={{
-        minHeight: "100vh",
+        width: "100%",
+        height: "100vh",
+        margin: 0,
+        padding: 0,
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: `linear-gradient(135deg, ${colors.primary[500]} 0%, ${colors.primary[400]} 50%, ${colors.primary[500]} 100%)`,
+        backgroundRepeat: "no-repeat",
         backgroundSize: "cover",
         backgroundPosition: "center",
+        backgroundImage:
+          'url("https://static.wixstatic.com/media/9c7957_fe36476a7254414199bc39e191905939~mv2.png/v1/crop/x_470,y_211,w_980,h_658,q_90,enc_auto/9c7957_fe36476a7254414199bc39e191905939~mv2.png")',
         borderRadius: 0,
       }}
     >
-      <Container maxWidth="xs">
+      <Container
+        component="main"
+        maxWidth="xs"
+        sx={{
+          ...bgBlur({
+            color: theme.palette.background.default,
+          }),
+          borderRadius: "15px",
+          padding: "10px",
+        }}
+      >
         <Box
-          component="form"
-          onSubmit={handleSubmit}
           sx={{
-            ...bgBlur({ color: colors.primary[500], blur: 12, opacity: 0.85 }),
-            borderRadius: "15px",
-            p: { xs: 3, sm: 4.5 },
-            border: `1px solid ${colors.grey[700]}`,
-            boxShadow: "0 16px 64px rgba(0, 0, 0, 0.4)",
+            mt: 4,
+            mb: 3,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
           }}
         >
-          {/* Logo */}
-          <Box sx={{ textAlign: "center", mb: 2 }}>
-            <Typography
-              variant="h2"
-              fontWeight="800"
-              sx={{
-                color: colors.greenAccent[500],
-                letterSpacing: "0.06em",
-                mb: 0.5,
-              }}
-            >
-              GRIDx
-            </Typography>
-            <Typography
-              variant="h6"
-              sx={{
-                color: colors.grey[300],
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                fontSize: "11px",
-              }}
-            >
-              Smart Metering Platform
-            </Typography>
-          </Box>
+          <img src={logoImage} alt="GRIDx Logo" width="100" height="100" />
 
-          {/* Error alert */}
-          {error && (
-            <Alert
-              severity="error"
-              onClose={() => setError("")}
-              sx={{
-                mb: 2,
-                backgroundColor: "rgba(219, 79, 74, 0.12)",
-                color: colors.redAccent[500],
-                border: `1px solid ${colors.redAccent[700]}`,
-                borderRadius: 2,
-                "& .MuiAlert-icon": { color: colors.redAccent[500] },
-              }}
-            >
-              {error}
-            </Alert>
-          )}
-
-          {/* Email */}
-          <TextField
-            fullWidth
-            label="Email Address"
-            variant="outlined"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            autoFocus
-            sx={{ mb: 2.5 }}
-          />
-
-          {/* Password */}
-          <TextField
-            fullWidth
-            label="Password"
-            variant="outlined"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            sx={{ mb: 3.5 }}
-          />
-
-          {/* Sign In Button */}
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            disabled={loading || !email || !password}
-            sx={{
-              py: 1.5,
-              fontWeight: 700,
-              fontSize: "0.95rem",
-              backgroundColor: colors.greenAccent[500],
-              color: colors.primary[500],
-              borderRadius: "8px",
-              textTransform: "none",
-              "&:hover": {
-                backgroundColor: colors.greenAccent[400],
-              },
-              "&:disabled": {
-                backgroundColor: colors.grey[700],
-                color: colors.grey[500],
-              },
-            }}
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            noValidate
+            sx={{ mt: 1, width: "100%", px: 2 }}
           >
-            {loading ? (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                <CircularProgress size={20} sx={{ color: colors.primary[500] }} />
-                <span>Authenticating...</span>
-              </Box>
-            ) : (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <LockOutlinedIcon sx={{ fontSize: 20 }} />
-                <span>Sign In</span>
-              </Box>
+            {formErrors.general && (
+              <Alert
+                severity="error"
+                onClose={() =>
+                  setFormErrors((prev) => ({ ...prev, general: "" }))
+                }
+                sx={{ mb: 2 }}
+              >
+                {formErrors.general}
+              </Alert>
             )}
-          </Button>
 
-          {/* Forgot Password */}
-          <Box sx={{ textAlign: "center", mt: 2.5 }}>
-            <Link
-              href="#"
-              underline="hover"
-              sx={{
-                color: colors.greenAccent[400],
-                fontSize: "13px",
-                cursor: "pointer",
-              }}
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="Email"
+              label="Email Address"
+              name="Email"
+              autoComplete="email"
+              autoFocus
+              value={formData.Email}
+              onChange={handleInputChange}
+              error={!!formErrors.Email}
+              helperText={formErrors.Email}
+            />
+
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="Password"
+              label="Password"
+              type="password"
+              id="Password"
+              autoComplete="current-password"
+              value={formData.Password}
+              onChange={handleInputChange}
+              error={!!formErrors.Password}
+              helperText={formErrors.Password}
+            />
+
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              disabled={loading}
+              sx={{ mt: 3, mb: 2, py: 1.3 }}
             >
-              Forgot Password?
-            </Link>
+              {loading ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                  <CircularProgress size={20} color="inherit" />
+                  <span>Signing In...</span>
+                </Box>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+
+            <Grid container>
+              <Grid item xs>
+                <Link href="#" variant="body2" sx={{ color: colors.greenAccent[400] }}>
+                  Forgot Password?
+                </Link>
+              </Grid>
+            </Grid>
           </Box>
         </Box>
 
-        {/* Footer */}
         <Typography
           variant="caption"
           sx={{
@@ -197,10 +183,10 @@ export default function Login() {
             textAlign: "center",
             color: colors.grey[400],
             fontSize: "11px",
-            mt: 3,
+            mb: 2,
           }}
         >
-          &copy; 2026 Pulsar Electronic Solutions | GRIDx v4.0
+          &copy; 2026 Pulsar Electronic Solutions | GRIDx
         </Typography>
       </Container>
     </Paper>

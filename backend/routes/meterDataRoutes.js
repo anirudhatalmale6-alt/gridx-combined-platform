@@ -1,0 +1,332 @@
+/**
+ * Meter Data Routes — endpoints for real-time meter telemetry,
+ * energy readings, load control, and location data.
+ * These query the same gridx DB that the ESP32 meters post to.
+ */
+const express = require('express');
+const router = express.Router();
+const db = require('../config/db');
+const { authenticateToken } = require('../admin/authMiddllware');
+
+// Helper: run a query and return first row
+function queryOne(sql, params) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows && rows.length > 0 ? rows[0] : null);
+    });
+  });
+}
+
+// Helper: run a query and return all rows
+function queryAll(sql, params) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows || []);
+    });
+  });
+}
+
+// ─── POWER DATA ────────────────────────────────────────────
+// GET /meterPower/getLastUpdate/:id
+router.get('/meterPower/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeteringPower WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ message: 'No power data found' });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /meterPower/getMeterByDRN/:id — all power readings for a DRN
+router.get('/meterPower/getMeterByDRN/:id', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM MeteringPower WHERE DRN = ? ORDER BY date_time DESC LIMIT 500`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── ENERGY DATA ───────────────────────────────────────────
+// GET /meterEnergy/getLastUpdate/:id
+router.get('/meterEnergy/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterCumulativeEnergyUsage WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ message: 'No energy data found' });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /meterEnergy/getMeterByDRN/:id
+router.get('/meterEnergy/getMeterByDRN/:id', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM MeterCumulativeEnergyUsage WHERE DRN = ? ORDER BY date_time DESC LIMIT 500`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── LOAD CONTROL STATE ───────────────────────────────────
+// GET /meterLoadControl/getLastUpdate/:id
+router.get('/meterLoadControl/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterLoadControl WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!row) return res.status(404).json({ message: 'No load control data found' });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── MAINS CONTROL (Enable/Disable) ──────────────────────
+// GET /meterMainsControl/getLastUpdate/:id
+router.get('/meterMainsControl/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterMainsControlTable WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!row) return res.json({ DRN: req.params.id, state: null, processed: null });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /meterMainsControl/update/:id — send enable/disable command
+router.post('/meterMainsControl/update/:id', authenticateToken, async (req, res) => {
+  try {
+    const { user, state, reason } = req.body;
+    const DRN = req.params.id;
+    await new Promise((resolve, reject) => {
+      db.query(
+        `INSERT INTO MeterMainsControlTable (DRN, user, state, processed, reason)
+         VALUES (?, ?, ?, '0', ?)`,
+        [DRN, user || 'Admin', state, reason || 'Remote control'],
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+    });
+    res.json({ success: true, message: `Mains ${state == 1 ? 'enabled' : 'disabled'} command sent` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── HEATER CONTROL (Enable/Disable) ─────────────────────
+// GET /meterHeaterControl/getLastUpdate/:id
+router.get('/meterHeaterControl/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterHeaterControlTable WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!row) return res.json({ DRN: req.params.id, state: null, processed: null });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /meterHeaterControl/update/:id — send enable/disable command
+router.post('/meterHeaterControl/update/:id', authenticateToken, async (req, res) => {
+  try {
+    const { user, state, reason } = req.body;
+    const DRN = req.params.id;
+    await new Promise((resolve, reject) => {
+      db.query(
+        `INSERT INTO MeterHeaterControlTable (DRN, user, state, processed, reason)
+         VALUES (?, ?, ?, '0', ?)`,
+        [DRN, user || 'Admin', state, reason || 'Remote control'],
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+    });
+    res.json({ success: true, message: `Heater ${state == 1 ? 'enabled' : 'disabled'} command sent` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── MAINS STATE (read-only feedback) ────────────────────
+router.get('/meterMainsState/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterMainsStateTable WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    res.json(row || { DRN: req.params.id, state: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── HEATER STATE (read-only feedback) ───────────────────
+router.get('/meterHeaterState/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterHeaterStateTable WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    res.json(row || { DRN: req.params.id, state: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── CELL NETWORK ────────────────────────────────────────
+router.get('/meterCellNetwork/getLastUpdate/:id', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT * FROM MeterCellularNetworkProperties WHERE DRN = ? ORDER BY date_time DESC LIMIT 1`,
+      [req.params.id]
+    );
+    res.json(row || { DRN: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── METER LOCATIONS (for map) ───────────────────────────
+router.get('/meterLocation/getAll', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(`SELECT * FROM MeterLocationInfoTable`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── TRANSFORMERS (for map) ──────────────────────────────
+router.get('/transformer/getAll', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(`SELECT * FROM TransformerInformation`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── METER LOCATIONS BY TRANSFORMER ──────────────────────
+router.get('/meterLocation/getMeterByTrans/:drn', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT ml.* FROM MeterLocationInfoTable ml
+       JOIN MeterProfileReal mpr ON ml.DRN = mpr.DRN
+       WHERE mpr.TransformerDRN = ?`,
+      [req.params.drn]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── METER PROFILE BY DRN ───────────────────────────────
+router.get('/meterDataByDRN/:id', authenticateToken, async (req, res) => {
+  try {
+    const profile = await queryOne(
+      `SELECT * FROM MeterProfileReal WHERE DRN = ?`,
+      [req.params.id]
+    );
+    if (!profile) return res.status(404).json({ message: 'Meter not found' });
+    res.json(profile);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── NOTIFICATIONS BY DRN ───────────────────────────────
+router.get('/notificationsByDRN/:id', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM MeterNotifications WHERE DRN = ? ORDER BY date_time DESC LIMIT 50`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── WEEKLY/MONTHLY ENERGY DATA ─────────────────────────
+router.get('/meterWeekAndMonthData/:id', authenticateToken, async (req, res) => {
+  try {
+    const DRN = req.params.id;
+
+    // Last 7 days of daily energy
+    const weekly = await queryAll(
+      `SELECT DATE(date_time) as date,
+              MAX(CAST(units AS DECIMAL(10,2))) - MIN(CAST(units AS DECIMAL(10,2))) as daily_usage,
+              AVG(CAST(active_energy AS DECIMAL(10,2))) as avg_energy,
+              COUNT(*) as readings
+       FROM MeterCumulativeEnergyUsage
+       WHERE DRN = ? AND date_time >= NOW() - INTERVAL 7 DAY
+       GROUP BY DATE(date_time) ORDER BY date`,
+      [DRN]
+    );
+
+    // Last 30 days of daily energy
+    const monthly = await queryAll(
+      `SELECT DATE(date_time) as date,
+              MAX(CAST(units AS DECIMAL(10,2))) - MIN(CAST(units AS DECIMAL(10,2))) as daily_usage,
+              AVG(CAST(active_energy AS DECIMAL(10,2))) as avg_energy,
+              COUNT(*) as readings
+       FROM MeterCumulativeEnergyUsage
+       WHERE DRN = ? AND date_time >= NOW() - INTERVAL 30 DAY
+       GROUP BY DATE(date_time) ORDER BY date`,
+      [DRN]
+    );
+
+    // Last 7 days of power averages
+    const powerWeekly = await queryAll(
+      `SELECT DATE(date_time) as date,
+              AVG(CAST(active_power AS DECIMAL(10,2))) as avg_power,
+              MAX(CAST(active_power AS DECIMAL(10,2))) as peak_power,
+              AVG(CAST(voltage AS DECIMAL(10,2))) as avg_voltage,
+              AVG(CAST(current AS DECIMAL(10,4))) as avg_current
+       FROM MeteringPower
+       WHERE DRN = ? AND date_time >= NOW() - INTERVAL 7 DAY
+       GROUP BY DATE(date_time) ORDER BY date`,
+      [DRN]
+    );
+
+    res.json({ weekly, monthly, powerWeekly });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── STS TOKEN INFO BY DRN ──────────────────────────────
+router.get('/stsTokensByDRN/:id', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM STSTokesInfo WHERE DRN = ? ORDER BY date_time DESC LIMIT 50`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

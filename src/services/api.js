@@ -79,9 +79,33 @@ export const meterAPI = {
   getTotal: () => get('/totalMeters'),
   getByDRN: (drn) => get(`/meterWeekAndMonthData${drn}`),
   getDailyEnergy: (drn) => get(`/meterDataByDRN${drn}`),
+  getProfileByDRN: (drn) => get(`/meterDataByDRN/${drn}`),
   getTokensByDRN: (drn) => get(`/allProcessedTokensByDRN${drn}`),
   getTopology: (cities) => post('/gridTopology', { cities }),
   getTotalTransformers: () => get('/total-tranformers'),
+  // Real-time telemetry
+  getPower: (drn) => get(`/meterPower/getLastUpdate/${drn}`),
+  getEnergy: (drn) => get(`/meterEnergy/getLastUpdate/${drn}`),
+  getLoadControl: (drn) => get(`/meterLoadControl/getLastUpdate/${drn}`),
+  getCellNetwork: (drn) => get(`/meterCellNetwork/getLastUpdate/${drn}`),
+  getWeekMonthData: (drn) => get(`/meterWeekAndMonthData/${drn}`),
+  getStsTokens: (drn) => get(`/stsTokensByDRN/${drn}`),
+  // Locations for map
+  getAllLocations: () => get('/meterLocation/getAll'),
+  getAllTransformers: () => get('/transformer/getAll'),
+  getMetersByTransformer: (drn) => get(`/meterLocation/getMeterByTrans/${drn}`),
+};
+
+// ===== LOAD CONTROL =====
+export const loadControlAPI = {
+  getMainsControl: (drn) => get(`/meterMainsControl/getLastUpdate/${drn}`),
+  getHeaterControl: (drn) => get(`/meterHeaterControl/getLastUpdate/${drn}`),
+  getMainsState: (drn) => get(`/meterMainsState/getLastUpdate/${drn}`),
+  getHeaterState: (drn) => get(`/meterHeaterState/getLastUpdate/${drn}`),
+  setMains: (drn, state, user, reason) =>
+    post(`/meterMainsControl/update/${drn}`, { state, user, reason }),
+  setHeater: (drn, state, user, reason) =>
+    post(`/meterHeaterControl/update/${drn}`, { state, user, reason }),
 };
 
 // ===== ENERGY =====
@@ -178,4 +202,5 @@ export default {
   meterProfile: meterProfileAPI,
   meterRegistration: meterRegistrationAPI,
   suburb: suburbAPI,
+  loadControl: loadControlAPI,
 };

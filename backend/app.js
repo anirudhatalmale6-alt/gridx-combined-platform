@@ -54,6 +54,7 @@ const systemSettingsRoutes = require('./routes/systemSettingsRoutes');
 const meterBillingRoutes = require('./meter/meterBillingRoutes');
 const billingNotificationRoutes = require('./services/billingNotificationRoutes');
 const meterRegistrationRoutes = require('./meter/meterRegistrationRoutes');
+const meterDataRoutes = require('./routes/meterDataRoutes');
 
 // Create a sub-router for all API routes under /cb prefix
 const apiRouter = express.Router();
@@ -74,6 +75,7 @@ apiRouter.use('/settings', meterProfileRoutes);
 apiRouter.use('/systemSettings', systemSettingsRoutes);
 apiRouter.use('/meter-billing', meterBillingRoutes);
 apiRouter.use('/billing', billingNotificationRoutes);
+apiRouter.use('/', meterDataRoutes);
 
 // Fast meters-list endpoint (avoids slow JOINs in meterService)
 const db = require('./config/db');
