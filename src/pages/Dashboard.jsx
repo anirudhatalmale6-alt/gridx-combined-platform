@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Box, Typography, useTheme, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress } from "@mui/material";
 import { tokens } from "../theme";
 import Header from "../components/Header";
+import DataBadge from "../components/DataBadge";
 import StatBox from "../components/StatBox";
 import { meterAPI, tokenAPI, financeAPI, energyAPI } from "../services/api";
 import { dashboardData as mockDashboard, notifications as mockNotifications } from "../services/mockData";
@@ -173,7 +174,13 @@ export default function Dashboard() {
 
   return (
     <Box m="20px">
-      <Header title="DASHBOARD" subtitle="Meters Network Summary" />
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Header title="DASHBOARD" subtitle="Meters Network Summary" />
+        <Box display="flex" gap={0.5}>
+          <DataBadge live />
+          <DataBadge />
+        </Box>
+      </Box>
 
       <Box
         display="grid"

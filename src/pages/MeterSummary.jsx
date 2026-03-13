@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, Chip, Button, useTheme, CircularProgress } from "@mui/material";
+import DataBadge from "../components/DataBadge";
 import { DataGrid, GridToolbar } from "@mui/x-data-grid";
 import {
   SpeedOutlined,
@@ -204,6 +205,9 @@ export default function MeterSummary() {
         title="METER SUMMARY"
         subtitle="Overview of all registered smart meters in the system"
       />
+      <Box display="flex" justifyContent="flex-end" mb={0.5}>
+        <DataBadge live />
+      </Box>
 
       {/* ---- Stat Boxes ---- */}
       <Box

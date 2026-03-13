@@ -64,6 +64,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import Header from "../components/Header";
+import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
 import { meterAPI, loadControlAPI } from "../services/api";
@@ -612,6 +613,9 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {tab === 0 && (
         <Box>
+          <Box display="flex" justifyContent="flex-end" mb={0.5}>
+            <DataBadge live />
+          </Box>
           {/* ---- Mains/Heater icons + Progress Circle + Metrics ---- */}
           <Box
             sx={{
@@ -916,6 +920,10 @@ export default function MeterProfile() {
       {/* TAB 1: Vend Token                                                */}
       {/* ================================================================ */}
       {tab === 1 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -1156,12 +1164,17 @@ export default function MeterProfile() {
             )}
           </Box>
         </Box>
+        </Box>
       )}
 
       {/* ================================================================ */}
       {/* TAB 2: Load Control                                              */}
       {/* ================================================================ */}
       {tab === 2 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge live />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -1490,12 +1503,17 @@ export default function MeterProfile() {
             )}
           </Box>
         </Box>
+        </Box>
       )}
 
       {/* ================================================================ */}
       {/* TAB 3: Billing & Tariff                                          */}
       {/* ================================================================ */}
       {tab === 3 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -1754,12 +1772,17 @@ export default function MeterProfile() {
             </Box>
           </Box>
         </Box>
+        </Box>
       )}
 
       {/* ================================================================ */}
       {/* TAB 4: Configuration                                             */}
       {/* ================================================================ */}
       {tab === 4 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge live />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -1861,12 +1884,17 @@ export default function MeterProfile() {
             </Box>
           </Box>
         </Box>
+        </Box>
       )}
 
       {/* ================================================================ */}
       {/* TAB 5: Energy Charts                                             */}
       {/* ================================================================ */}
       {tab === 5 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -1929,12 +1957,17 @@ export default function MeterProfile() {
             </ResponsiveContainer>
           </Box>
         </Box>
+        </Box>
       )}
 
       {/* ================================================================ */}
       {/* TAB 6: Transaction History                                       */}
       {/* ================================================================ */}
       {tab === 6 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge />
+        </Box>
         <Box
           display="grid"
           gridTemplateColumns="repeat(12, 1fr)"
@@ -2106,6 +2139,7 @@ export default function MeterProfile() {
               </Typography>
             )}
           </Box>
+        </Box>
         </Box>
       )}
 
