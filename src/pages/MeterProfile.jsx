@@ -69,6 +69,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
 import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
@@ -262,6 +263,11 @@ export default function MeterProfile() {
   const [tab, setTab] = useState(0);
   const [vendAmount, setVendAmount] = useState("");
   const [generatedToken, setGeneratedToken] = useState("");
+
+  /* ---------- Google Maps loader ---------- */
+  const { isLoaded: mapsLoaded } = useJsApiLoader({
+    googleMapsApiKey: "AIzaSyCdPt-Y9HoyNJF5I-sbyuS4n6U1KhKaIzk",
+  });
 
   /* ---------- API data state ---------- */
   const [loading, setLoading] = useState(true);
@@ -812,7 +818,7 @@ export default function MeterProfile() {
                 minHeight: { xs: "300px", md: "auto" },
               }}
             >
-              {meterLocation && meterLocation.Lat && meterLocation.Longitude ? (
+              {meterLocation && meterLocation.Lat && meterLocation.Longitude && mapsLoaded ? (
                 <>
                   <Box
                     sx={{
@@ -834,15 +840,30 @@ export default function MeterProfile() {
                       {meterLocation.LocationName || `${parseFloat(meterLocation.Lat).toFixed(5)}, ${parseFloat(meterLocation.Longitude).toFixed(5)}`}
                     </Typography>
                   </Box>
-                  <iframe
-                    title="Meter Location"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0, minHeight: "100%" }}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyCdPt-Y9HoyNJF5I-sbyuS4n6U1KhKaIzk&q=${meterLocation.Lat},${meterLocation.Longitude}&zoom=19&maptype=satellite`}
-                  />
+                  <GoogleMap
+                    mapContainerStyle={{ width: "100%", height: "100%", minHeight: "300px" }}
+                    center={{
+                      lat: parseFloat(meterLocation.Lat),
+                      lng: parseFloat(meterLocation.Longitude),
+                    }}
+                    zoom={19}
+                    mapTypeId="satellite"
+                    options={{
+                      disableDefaultUI: true,
+                      zoomControl: true,
+                      mapTypeControl: false,
+                      streetViewControl: false,
+                      fullscreenControl: true,
+                    }}
+                  >
+                    <Marker
+                      position={{
+                        lat: parseFloat(meterLocation.Lat),
+                        lng: parseFloat(meterLocation.Longitude),
+                      }}
+                      title={meterLocation.LocationName || drn}
+                    />
+                  </GoogleMap>
                 </>
               ) : (
                 <Box
