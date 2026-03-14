@@ -191,6 +191,21 @@ export const meterRegistrationAPI = {
   insertTransformer: (data) => post('/insertTransformer', data),
 };
 
+// ===== GROUP CONTROL / LOAD MANAGEMENT =====
+export const groupControlAPI = {
+  getGroups: () => get('/loadcontrol/groups'),
+  getGroup: (id) => get(`/loadcontrol/groups/${id}`),
+  createGroup: (data) => post('/loadcontrol/groups', data),
+  updateGroup: (id, data) => put(`/loadcontrol/groups/${id}`, data),
+  deleteGroup: (id) => del(`/loadcontrol/groups/${id}`),
+  addMeters: (groupId, meters) => post(`/loadcontrol/groups/${groupId}/meters`, { meters }),
+  removeMeters: (groupId, meters) => post(`/loadcontrol/groups/${groupId}/meters/remove`, { meters }),
+  execute: (data) => post('/loadcontrol/execute', data),
+  getHistory: () => get('/loadcontrol/history'),
+  getMetersState: () => get('/loadcontrol/meters-state'),
+  randomize: (data) => post('/loadcontrol/randomize', data),
+};
+
 // ===== MQTT =====
 export const mqttAPI = {
   getStatus: () => get('/mqtt/status'),
@@ -216,5 +231,6 @@ export default {
   meterRegistration: meterRegistrationAPI,
   suburb: suburbAPI,
   loadControl: loadControlAPI,
+  groupControl: groupControlAPI,
   mqtt: mqttAPI,
 };

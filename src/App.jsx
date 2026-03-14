@@ -23,6 +23,7 @@ import Billing from "./pages/Billing";
 import Notifications from "./pages/Notifications";
 import Settings from "./pages/Settings";
 import NewMeterDash from "./pages/NewMeterDash";
+import GroupControl from "./pages/GroupControl";
 
 function App() {
   const [theme, colorMode] = useMode();
@@ -55,6 +56,7 @@ function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="users" element={<Admin />} />
               <Route path="newmeterdash" element={<NewMeterDash />} />
+              <Route path="load-control" element={<GroupControl />} />
             </Route>
           </Routes>
         </AuthProvider>

@@ -128,6 +128,8 @@ const Sidebar = () => {
                 isCollapsed={isCollapsed} selected={selected} setSelected={setSelected} />
               <Item title="New System Node" to="/newmeterdash" icon={<AddHomeWorkIcon style={{ color: colors.outline[500] }} />}
                 isCollapsed={isCollapsed} selected={selected} setSelected={setSelected} />
+              <Item title="Load Control" to="/load-control" icon={<TuneIcon style={{ color: "#f2b705" }} />}
+                isCollapsed={isCollapsed} selected={selected} setSelected={setSelected} />
 
               {/* VENDING section - NEW */}
               <SectionTitle title="Vending" isCollapsed={isCollapsed} colors={colors} />
