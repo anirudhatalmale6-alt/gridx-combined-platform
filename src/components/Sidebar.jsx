@@ -28,6 +28,7 @@ import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArro
 const NavItem = ({ title, to, icon, isCollapsed, accentColor }) => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
+  const isDark = theme.palette.mode === "dark";
   const location = useLocation();
   const isActive = location.pathname === to || (to === "/" && location.pathname === "");
 
@@ -55,7 +56,7 @@ const NavItem = ({ title, to, icon, isCollapsed, accentColor }) => {
           "&:hover": {
             bgcolor: isActive
               ? `${accentColor || colors.blueAccent[500]}22`
-              : "rgba(255,255,255,0.04)",
+              : isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
             transform: "translateX(2px)",
           },
           // Active left indicator bar
@@ -160,6 +161,8 @@ const Sidebar = () => {
   }, []);
 
   const sidebarWidth = isCollapsed ? 68 : 240;
+  const isDark = theme.palette.mode === "dark";
+  const hoverBg = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
 
   return (
     <Box
@@ -169,8 +172,8 @@ const Sidebar = () => {
         height: "100vh",
         display: "flex",
         flexDirection: "column",
-        bgcolor: colors.primary[500],
-        borderRight: `1px solid ${colors.primary[400]}`,
+        bgcolor: isDark ? colors.primary[500] : colors.primary[900],
+        borderRight: `1px solid ${isDark ? colors.primary[400] : colors.grey[900]}`,
         transition:
           "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
         position: "relative",
@@ -195,7 +198,7 @@ const Sidebar = () => {
           display: "flex",
           alignItems: "center",
           justifyContent: isCollapsed ? "center" : "space-between",
-          borderBottom: `1px solid ${colors.primary[400]}`,
+          borderBottom: `1px solid ${isDark ? colors.primary[400] : colors.grey[900]}`,
           minHeight: isCollapsed ? "64px" : "auto",
         }}
       >
@@ -250,7 +253,7 @@ const Sidebar = () => {
                 p: "4px",
                 "&:hover": {
                   color: colors.grey[300],
-                  bgcolor: "rgba(255,255,255,0.05)",
+                  bgcolor: hoverBg,
                 },
               }}
             >
@@ -498,7 +501,7 @@ const Sidebar = () => {
         sx={{
           px: isCollapsed ? "8px" : "16px",
           py: "10px",
-          borderTop: `1px solid ${colors.primary[400]}`,
+          borderTop: `1px solid ${isDark ? colors.primary[400] : colors.grey[900]}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

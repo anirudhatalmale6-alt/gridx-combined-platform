@@ -28,17 +28,32 @@ const Topbar = () => {
         ...bgBlur({ color: theme.palette.background.default }),
         width: "100%",
         zIndex: theme.zIndex.appBar + 1,
-        paddingRight: "10%",
       }}
       display="flex"
+      justifyContent="flex-end"
       p={2}
+      pr={4}
     >
-      <Box display="flex">
-        <IconButton onClick={colorMode.toggleColorMode}>
-          {theme.palette.mode === "dark" ? <DarkModeOutlinedIcon /> : <LightModeOutlinedIcon />}
-        </IconButton>
+      <Box display="flex" gap="4px">
+        <Tooltip title={theme.palette.mode === "dark" ? "Light Mode" : "Dark Mode"}>
+          <IconButton
+            onClick={colorMode.toggleColorMode}
+            sx={{
+              color: colors.grey[300],
+              "&:hover": { bgcolor: "rgba(255,255,255,0.06)" },
+            }}
+          >
+            {theme.palette.mode === "dark" ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Log Out">
-          <IconButton onClick={handleLogout}>
+          <IconButton
+            onClick={handleLogout}
+            sx={{
+              color: colors.grey[300],
+              "&:hover": { bgcolor: "rgba(219,79,74,0.1)", color: "#db4f4a" },
+            }}
+          >
             <LogoutOutlinedIcon />
           </IconButton>
         </Tooltip>
