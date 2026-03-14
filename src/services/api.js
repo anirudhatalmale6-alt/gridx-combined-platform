@@ -191,6 +191,13 @@ export const commissionReportAPI = {
   getById: (id) => get(`/settings/commissionReport/${id}`),
 };
 
+// ===== HOME CLASSIFICATION =====
+export const homeClassificationAPI = {
+  getByDRN: (drn) => get(`/settings/homeClassifications/${drn}`),
+  getLatest: (drn) => get(`/settings/homeClassification/latest/${drn}`),
+  getById: (id) => get(`/settings/homeClassification/${id}`),
+};
+
 // ===== METER REGISTRATION =====
 export const meterRegistrationAPI = {
   register: (data) => post('/meter-registration', data),
@@ -241,4 +248,5 @@ export default {
   groupControl: groupControlAPI,
   mqtt: mqttAPI,
   commissionReport: commissionReportAPI,
+  homeClassification: homeClassificationAPI,
 };

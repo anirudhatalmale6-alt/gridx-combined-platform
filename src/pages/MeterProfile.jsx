@@ -54,6 +54,7 @@ import {
   CheckCircleOutlined,
   CancelOutlined,
   AssignmentOutlined,
+  HomeOutlined,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -71,7 +72,7 @@ import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
-import { meterAPI, loadControlAPI, commissionReportAPI } from "../services/api";
+import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI } from "../services/api";
 import {
   meters as mockMeters,
   transactions,
@@ -274,6 +275,7 @@ export default function MeterProfile() {
   const [heaterState, setHeaterState] = useState(null);
   const [dailyPower, setDailyPower] = useState([]);
   const [commissionReports, setCommissionReports] = useState([]);
+  const [homeClassifications, setHomeClassifications] = useState([]);
 
   /* ---------- Load Control UI state ---------- */
   const [mainsReason, setMainsReason] = useState("Irregular performance");
@@ -306,6 +308,7 @@ export default function MeterProfile() {
         loadControlAPI.getHeaterState(drn),
         meterAPI.getDailyPower(drn),
         commissionReportAPI.getByDRN(drn),
+        homeClassificationAPI.getByDRN(drn),
       ]);
 
       if (results[0].status === "fulfilled") setProfile(results[0].value);
@@ -323,6 +326,8 @@ export default function MeterProfile() {
         setDailyPower(results[9].value);
       if (results[10].status === "fulfilled" && Array.isArray(results[10].value))
         setCommissionReports(results[10].value);
+      if (results[11].status === "fulfilled" && Array.isArray(results[11].value))
+        setHomeClassifications(results[11].value);
 
       setLoading(false);
     };
@@ -664,6 +669,11 @@ export default function MeterProfile() {
           icon={<AssignmentOutlined sx={{ fontSize: 18 }} />}
           iconPosition="start"
           label="Commission Report"
+        />
+        <Tab
+          icon={<HomeOutlined sx={{ fontSize: 18 }} />}
+          iconPosition="start"
+          label="Home Classification"
         />
       </Tabs>
 
@@ -2644,6 +2654,404 @@ export default function MeterProfile() {
                 >
                   No commission reports found for this meter. Run a commission
                   test from the GRIDx Maintenance app to generate reports.
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      {/* ================================================================ */}
+      {/* TAB 8: Home Classification                                      */}
+      {/* ================================================================ */}
+      {tab === 8 && (
+        <Box>
+          <Box display="flex" justifyContent="flex-end" mb={0.5}>
+            <DataBadge />
+          </Box>
+          <Box
+            display="grid"
+            gridTemplateColumns="repeat(12, 1fr)"
+            gap="5px"
+          >
+            {/* Home Classifications List */}
+            <Box
+              gridColumn="span 12"
+              backgroundColor={colors.primary[400]}
+              p="20px"
+              borderRadius="4px"
+            >
+              <Typography
+                variant="h6"
+                color={colors.grey[100]}
+                fontWeight="bold"
+                mb={2}
+              >
+                Home Classification Records
+              </Typography>
+
+              {homeClassifications.length > 0 ? (
+                homeClassifications.map((cls, idx) => {
+                  const loads = Array.isArray(cls.selected_loads)
+                    ? cls.selected_loads
+                    : typeof cls.selected_loads === "string"
+                    ? (() => { try { return JSON.parse(cls.selected_loads); } catch { return []; } })()
+                    : [];
+
+                  return (
+                    <Box
+                      key={cls.id || idx}
+                      mb={2}
+                      p={2}
+                      sx={{
+                        backgroundColor: colors.primary[500],
+                        borderLeft: `4px solid ${
+                          cls.calibration_passed
+                            ? colors.greenAccent[500]
+                            : cls.calibration_status === "pending"
+                            ? colors.blueAccent?.[400] || "#6870fa"
+                            : "#db4f4a"
+                        }`,
+                        borderRadius: "2px",
+                      }}
+                    >
+                      {/* Classification Header */}
+                      <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        mb={1.5}
+                      >
+                        <Box display="flex" alignItems="center" gap={1.5}>
+                          <Chip
+                            label={cls.classification_type || "UNCLASSIFIED"}
+                            size="small"
+                            sx={{
+                              backgroundColor: "rgba(129,140,248,0.15)",
+                              color: "#818CF8",
+                              fontWeight: 700,
+                              fontSize: "0.7rem",
+                              textTransform: "uppercase",
+                            }}
+                          />
+                          <Chip
+                            label={
+                              cls.calibration_status === "completed"
+                                ? cls.calibration_passed
+                                  ? "CALIBRATED"
+                                  : "FAILED"
+                                : cls.calibration_status?.toUpperCase() || "PENDING"
+                            }
+                            size="small"
+                            sx={{
+                              backgroundColor:
+                                cls.calibration_passed
+                                  ? "rgba(76,206,172,0.2)"
+                                  : cls.calibration_status === "pending"
+                                  ? "rgba(104,112,250,0.2)"
+                                  : "rgba(219,79,74,0.2)",
+                              color:
+                                cls.calibration_passed
+                                  ? colors.greenAccent[400]
+                                  : cls.calibration_status === "pending"
+                                  ? "#6870fa"
+                                  : "#f44336",
+                              fontWeight: 700,
+                              fontSize: "0.7rem",
+                            }}
+                          />
+                        </Box>
+                        <Typography
+                          color={colors.grey[300]}
+                          fontSize="0.75rem"
+                        >
+                          {cls.date_time
+                            ? formatDateTime(cls.date_time)
+                            : "---"}
+                        </Typography>
+                      </Box>
+
+                      {/* Classification Details Grid */}
+                      <Box
+                        display="grid"
+                        gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))"
+                        gap={1.5}
+                      >
+                        {/* Power Summary */}
+                        <Box>
+                          <Typography
+                            color={colors.grey[300]}
+                            fontSize="0.7rem"
+                            fontWeight={600}
+                            mb={0.5}
+                          >
+                            POWER SUMMARY
+                          </Typography>
+                          <Box display="flex" flexDirection="column" gap={0.3}>
+                            <Box display="flex" justifyContent="space-between">
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                Expected Power
+                              </Typography>
+                              <Typography
+                                color={colors.grey[100]}
+                                fontSize="0.72rem"
+                                fontWeight={600}
+                              >
+                                {cls.total_expected_power >= 1000
+                                  ? `${(cls.total_expected_power / 1000).toFixed(1)} kW`
+                                  : `${Number(cls.total_expected_power).toFixed(0)} W`}
+                              </Typography>
+                            </Box>
+                            <Box display="flex" justifyContent="space-between">
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                Expected Current
+                              </Typography>
+                              <Typography
+                                color={colors.grey[100]}
+                                fontSize="0.72rem"
+                                fontWeight={600}
+                              >
+                                {Number(cls.total_expected_current).toFixed(1)} A
+                              </Typography>
+                            </Box>
+                            {cls.measured_power != null && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  Measured Power
+                                </Typography>
+                                <Typography
+                                  color={colors.grey[100]}
+                                  fontSize="0.72rem"
+                                  fontWeight={600}
+                                >
+                                  {Number(cls.measured_power).toFixed(0)} W
+                                </Typography>
+                              </Box>
+                            )}
+                            {cls.measured_current != null && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  Measured Current
+                                </Typography>
+                                <Typography
+                                  color={colors.grey[100]}
+                                  fontSize="0.72rem"
+                                  fontWeight={600}
+                                >
+                                  {Number(cls.measured_current).toFixed(3)} A
+                                </Typography>
+                              </Box>
+                            )}
+                            {cls.power_deviation != null && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  Power Deviation
+                                </Typography>
+                                <Typography
+                                  color={
+                                    cls.power_deviation <= 30
+                                      ? colors.greenAccent[500]
+                                      : "#db4f4a"
+                                  }
+                                  fontSize="0.72rem"
+                                  fontWeight={600}
+                                >
+                                  {Number(cls.power_deviation).toFixed(1)}%
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+
+                        {/* Household Loads */}
+                        <Box gridColumn={loads.length > 5 ? "span 2" : "span 1"}>
+                          <Typography
+                            color={colors.grey[300]}
+                            fontSize="0.7rem"
+                            fontWeight={600}
+                            mb={0.5}
+                          >
+                            HOUSEHOLD LOADS ({loads.length})
+                          </Typography>
+                          <TableContainer sx={{ maxHeight: 200 }}>
+                            <Table size="small" stickyHeader>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell
+                                    sx={{
+                                      backgroundColor: colors.primary[600] || colors.primary[400],
+                                      color: colors.grey[300],
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      py: 0.5,
+                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
+                                    }}
+                                  >
+                                    Appliance
+                                  </TableCell>
+                                  <TableCell
+                                    align="right"
+                                    sx={{
+                                      backgroundColor: colors.primary[600] || colors.primary[400],
+                                      color: colors.grey[300],
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      py: 0.5,
+                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
+                                    }}
+                                  >
+                                    Power
+                                  </TableCell>
+                                  <TableCell
+                                    align="right"
+                                    sx={{
+                                      backgroundColor: colors.primary[600] || colors.primary[400],
+                                      color: colors.grey[300],
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      py: 0.5,
+                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
+                                    }}
+                                  >
+                                    Current
+                                  </TableCell>
+                                  <TableCell
+                                    sx={{
+                                      backgroundColor: colors.primary[600] || colors.primary[400],
+                                      color: colors.grey[300],
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      py: 0.5,
+                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
+                                    }}
+                                  >
+                                    Category
+                                  </TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {loads.map((load, li) => (
+                                  <TableRow key={li}>
+                                    <TableCell
+                                      sx={{
+                                        color: colors.grey[100],
+                                        fontSize: "0.72rem",
+                                        py: 0.3,
+                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
+                                      }}
+                                    >
+                                      {load.name}
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{
+                                        color: "#818CF8",
+                                        fontSize: "0.72rem",
+                                        fontWeight: 600,
+                                        py: 0.3,
+                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
+                                      }}
+                                    >
+                                      {load.powerRating}W
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{
+                                        color: colors.greenAccent[500],
+                                        fontSize: "0.72rem",
+                                        fontWeight: 600,
+                                        py: 0.3,
+                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
+                                      }}
+                                    >
+                                      {load.currentRating}A
+                                    </TableCell>
+                                    <TableCell
+                                      sx={{
+                                        color: colors.grey[400],
+                                        fontSize: "0.68rem",
+                                        py: 0.3,
+                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
+                                      }}
+                                    >
+                                      {load.category}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+
+                        {/* Metadata */}
+                        <Box>
+                          <Typography
+                            color={colors.grey[300]}
+                            fontSize="0.7rem"
+                            fontWeight={600}
+                            mb={0.5}
+                          >
+                            INFO
+                          </Typography>
+                          <Box display="flex" flexDirection="column" gap={0.3}>
+                            {cls.measured_voltage != null && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  Voltage
+                                </Typography>
+                                <Typography color={colors.grey[100]} fontSize="0.72rem">
+                                  {Number(cls.measured_voltage).toFixed(1)} V
+                                </Typography>
+                              </Box>
+                            )}
+                            {cls.technician_name && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  Technician
+                                </Typography>
+                                <Typography color={colors.grey[100]} fontSize="0.72rem">
+                                  {cls.technician_name}
+                                </Typography>
+                              </Box>
+                            )}
+                            {cls.tester_app_version && (
+                              <Box display="flex" justifyContent="space-between">
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                  App Version
+                                </Typography>
+                                <Typography color={colors.grey[100]} fontSize="0.72rem">
+                                  {cls.tester_app_version}
+                                </Typography>
+                              </Box>
+                            )}
+                            {cls.notes && (
+                              <Box mt={0.5}>
+                                <Typography color={colors.grey[400]} fontSize="0.68rem">
+                                  Notes:
+                                </Typography>
+                                <Typography
+                                  color={colors.grey[200]}
+                                  fontSize="0.72rem"
+                                  sx={{ fontStyle: "italic" }}
+                                >
+                                  {cls.notes}
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })
+              ) : (
+                <Typography
+                  color="rgba(255,255,255,0.35)"
+                  sx={{ textAlign: "center", py: 4 }}
+                >
+                  No home classification records found for this meter. Use the
+                  GRIDx Maintenance app to classify the home&apos;s electrical loads
+                  and run a calibration.
                 </Typography>
               )}
             </Box>

@@ -71,6 +71,8 @@ const apiRouter = express.Router();
 apiRouter.use('/meter-registration', meterRegistrationRoutes);
 const commissionReportPublicRoutes = require('./meterProfile/commissionReportPublicRoutes');
 apiRouter.use('/commission-report', commissionReportPublicRoutes);
+const homeClassificationPublicRoutes = require('./meterProfile/homeClassificationPublicRoutes');
+apiRouter.use('/home-classification', homeClassificationPublicRoutes);
 
 // Authenticated routes
 apiRouter.use('/', getRoutes);

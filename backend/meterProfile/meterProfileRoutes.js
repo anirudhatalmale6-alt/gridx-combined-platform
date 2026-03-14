@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const meterProfileContoller = require('./meterProfileContoller');
 const commissionReportController = require('./commissionReportController');
+const homeClassificationController = require('./homeClassificationController');
 const {authenticateToken} = require('../admin/authMiddllware')
 
 router.use(authenticateToken);
@@ -11,6 +12,12 @@ router.post('/commissionReport', commissionReportController.saveReport);
 router.get('/commissionReports/:DRN', commissionReportController.getReportsByDRN);
 router.get('/commissionReport/latest/:DRN', commissionReportController.getLatestReportByDRN);
 router.get('/commissionReport/:id', commissionReportController.getReportById);
+
+// Home classification endpoints
+router.post('/homeClassification', homeClassificationController.saveClassification);
+router.get('/homeClassifications/:DRN', homeClassificationController.getClassificationsByDRN);
+router.get('/homeClassification/latest/:DRN', homeClassificationController.getLatestClassificationByDRN);
+router.get('/homeClassification/:id', homeClassificationController.getClassificationById);
 
 //Endpoint to get meter reset history
 router.get('/meterResetHistory/:DRN', meterProfileContoller.getMeterResetHistory);
