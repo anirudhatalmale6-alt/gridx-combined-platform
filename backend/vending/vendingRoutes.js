@@ -238,6 +238,25 @@ function addIdempotencyColumn() {
       });
     }
   });
+  // Add batch close fields
+  var batchCols = [
+    ["SalesBatches", "openingFloat", "DECIMAL(14,2) DEFAULT 0"],
+    ["SalesBatches", "closingCashCount", "DECIMAL(14,2) DEFAULT 0"],
+    ["SalesBatches", "discrepancyAmount", "DECIMAL(14,2) DEFAULT 0"],
+    ["SalesBatches", "discrepancyReason", "VARCHAR(255)"],
+    ["SalesBatches", "closedBy", "VARCHAR(100)"],
+    ["BankingBatches", "depositAmount", "DECIMAL(14,2) DEFAULT 0"],
+    ["BankingBatches", "reconciledBy", "VARCHAR(100)"]
+  ];
+  batchCols.forEach(function(c) {
+    db.query("SHOW COLUMNS FROM " + c[0] + " LIKE '" + c[1] + "'", function(err, rows) {
+      if (!err && (!rows || rows.length === 0)) {
+        db.query("ALTER TABLE " + c[0] + " ADD COLUMN " + c[1] + " " + c[2], function(alterErr) {
+          if (!alterErr) console.log('[Vending] Added ' + c[0] + '.' + c[1]);
+        });
+      }
+    });
+  });
 }
 
 function seedDefaults() {
@@ -1067,29 +1086,79 @@ router.get('/batches/sales', authenticateToken, function(req, res) {
 router.post('/batches/sales', authenticateToken, function(req, res) {
   var vendorId = req.body.vendorId;
   var notes = req.body.notes;
+  var openingFloat = req.body.openingFloat || 0;
   if (!vendorId) return res.status(400).json({ error: 'vendorId is required' });
 
-  db.query('SELECT name FROM Vendors WHERE id = ?', [vendorId], function(err, vendorRows) {
-    var vendorName = (vendorRows && vendorRows.length > 0) ? vendorRows[0].name : 'Unknown';
-    var batchNo = 'BATCH-' + Date.now().toString(36).toUpperCase();
-    db.query(
-      'INSERT INTO SalesBatches (batchNo, vendorId, vendorName, notes) VALUES (?, ?, ?, ?)',
-      [batchNo, vendorId, vendorName, notes],
-      function(err, result) {
-        if (err) return res.status(500).json({ error: err.message });
-        logAudit('Sales batch opened: ' + batchNo, 'BATCH', 'Vendor: ' + vendorName, getOperatorName(req), getOperatorId(req), req.ip);
-        res.json({ success: true, id: result.insertId, batchNo: batchNo });
-      }
-    );
+  // Check no open batch for this vendor
+  db.query('SELECT id, batchNo FROM SalesBatches WHERE vendorId = ? AND status = "Open"', [vendorId], function(checkErr, existing) {
+    if (existing && existing.length > 0) {
+      return res.status(400).json({ error: 'Vendor already has an open batch (' + existing[0].batchNo + '). Close it first.' });
+    }
+
+    db.query('SELECT name FROM Vendors WHERE id = ?', [vendorId], function(err, vendorRows) {
+      var vendorName = (vendorRows && vendorRows.length > 0) ? vendorRows[0].name : 'Unknown';
+      var batchNo = 'BATCH-' + Date.now().toString(36).toUpperCase();
+      db.query(
+        'INSERT INTO SalesBatches (batchNo, vendorId, vendorName, openingFloat, notes) VALUES (?, ?, ?, ?, ?)',
+        [batchNo, vendorId, vendorName, parseFloat(openingFloat), notes],
+        function(insertErr, result) {
+          if (insertErr) return res.status(500).json({ error: insertErr.message });
+          logAudit('Sales batch opened: ' + batchNo, 'BATCH', 'Vendor: ' + vendorName + ', Opening float: N$' + parseFloat(openingFloat).toFixed(2), getOperatorName(req), getOperatorId(req), req.ip);
+          res.json({ success: true, id: result.insertId, batchNo: batchNo });
+        }
+      );
+    });
   });
 });
 
 router.post('/batches/sales/:id/close', authenticateToken, function(req, res) {
-  db.query('UPDATE SalesBatches SET status = "Closed", closedAt = NOW() WHERE id = ? AND status = "Open"', [req.params.id], function(err, result) {
+  var cashCount = req.body.cashCount;
+  var discrepancyReason = req.body.discrepancyReason || null;
+  var operatorName = getOperatorName(req);
+
+  // Fetch batch to calculate discrepancy
+  db.query('SELECT * FROM SalesBatches WHERE id = ? AND status = "Open"', [req.params.id], function(err, rows) {
     if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0) return res.status(400).json({ error: 'Batch not found or already closed' });
-    logAudit('Sales batch closed: #' + req.params.id, 'BATCH', '', getOperatorName(req), getOperatorId(req), req.ip);
-    res.json({ success: true });
+    if (!rows || rows.length === 0) return res.status(400).json({ error: 'Batch not found or already closed' });
+
+    var batch = rows[0];
+    var expectedAmount = parseFloat(batch.totalAmount) || 0;
+    var cashCounted = (cashCount !== undefined && cashCount !== null) ? parseFloat(cashCount) : expectedAmount;
+    var discrepancy = round2(cashCounted - expectedAmount);
+    var hasDiscrepancy = Math.abs(discrepancy) > 0.01;
+
+    // If there's a discrepancy, require a reason
+    if (hasDiscrepancy && !discrepancyReason) {
+      return res.status(400).json({
+        error: 'Discrepancy detected (N$' + discrepancy.toFixed(2) + '). A reason is required.',
+        discrepancy: discrepancy,
+        expected: expectedAmount,
+        counted: cashCounted
+      });
+    }
+
+    var sql = 'UPDATE SalesBatches SET status = "Closed", closedAt = NOW(), closingCashCount = ?, discrepancyAmount = ?, discrepancyReason = ?, closedBy = ? WHERE id = ?';
+    db.query(sql, [cashCounted, discrepancy, discrepancyReason, operatorName, req.params.id], function(updateErr, result) {
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+      var detail = 'Expected: N$' + expectedAmount.toFixed(2) + ', Cash: N$' + cashCounted.toFixed(2);
+      if (hasDiscrepancy) {
+        detail += ', Discrepancy: N$' + discrepancy.toFixed(2) + ', Reason: ' + discrepancyReason;
+      }
+      logAudit('Sales batch closed: ' + batch.batchNo, 'BATCH', detail, operatorName, getOperatorId(req), req.ip);
+
+      res.json({
+        success: true,
+        data: {
+          batchNo: batch.batchNo,
+          expectedAmount: expectedAmount,
+          cashCounted: cashCounted,
+          discrepancy: discrepancy,
+          hasDiscrepancy: hasDiscrepancy,
+          closedBy: operatorName
+        }
+      });
+    });
   });
 });
 
@@ -1127,10 +1196,40 @@ router.post('/batches/banking', authenticateToken, function(req, res) {
 });
 
 router.post('/batches/banking/:id/reconcile', authenticateToken, function(req, res) {
-  db.query('UPDATE BankingBatches SET status = "Reconciled", reconciledAt = NOW() WHERE id = ?', [req.params.id], function(err) {
+  var bankRef = req.body.bankRef;
+  var depositAmount = req.body.depositAmount;
+  var reconNotes = req.body.notes || '';
+  var operatorName = getOperatorName(req);
+
+  db.query('SELECT bb.*, sb.totalAmount as salesTotal, sb.batchNo as salesBatchNo FROM BankingBatches bb LEFT JOIN SalesBatches sb ON bb.salesBatchId = sb.id WHERE bb.id = ?', [req.params.id], function(err, rows) {
     if (err) return res.status(500).json({ error: err.message });
-    logAudit('Banking batch reconciled: #' + req.params.id, 'BATCH', '', getOperatorName(req), getOperatorId(req), req.ip);
-    res.json({ success: true });
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Banking batch not found' });
+
+    var bb = rows[0];
+    var updateFields = 'status = "Reconciled", reconciledAt = NOW(), reconciledBy = ?';
+    var updateParams = [operatorName];
+
+    if (bankRef) {
+      updateFields += ', bankRef = ?';
+      updateParams.push(bankRef);
+    }
+    if (depositAmount !== undefined) {
+      updateFields += ', depositAmount = ?';
+      updateParams.push(parseFloat(depositAmount));
+    }
+    if (reconNotes) {
+      updateFields += ', notes = ?';
+      updateParams.push(reconNotes);
+    }
+    updateParams.push(req.params.id);
+
+    db.query('UPDATE BankingBatches SET ' + updateFields + ' WHERE id = ?', updateParams, function(updateErr) {
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+      var detail = 'Bank ref: ' + (bankRef || bb.bankRef) + ', Sales batch: ' + (bb.salesBatchNo || bb.salesBatchId);
+      if (depositAmount !== undefined) detail += ', Deposit: N$' + parseFloat(depositAmount).toFixed(2);
+      logAudit('Banking batch reconciled: ' + bb.batchNo, 'BATCH', detail, operatorName, getOperatorId(req), req.ip);
+      res.json({ success: true });
+    });
   });
 });
 

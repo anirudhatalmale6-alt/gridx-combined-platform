@@ -287,10 +287,10 @@ export const vendingAPI = {
     return get(`/vending/batches/sales${q ? '?' + q : ''}`);
   },
   createSalesBatch: (data) => post('/vending/batches/sales', data),
-  closeSalesBatch: (id) => post(`/vending/batches/sales/${id}/close`, {}),
+  closeSalesBatch: (id, data) => post(`/vending/batches/sales/${id}/close`, data || {}),
   getBankingBatches: () => get('/vending/batches/banking'),
   createBankingBatch: (data) => post('/vending/batches/banking', data),
-  reconcileBankingBatch: (id) => post(`/vending/batches/banking/${id}/reconcile`, {}),
+  reconcileBankingBatch: (id, data) => post(`/vending/batches/banking/${id}/reconcile`, data || {}),
   // Tariffs
   getTariffConfig: () => get('/vending/tariffs/config'),
   updateTariffConfig: (data) => put('/vending/tariffs/config', data),
