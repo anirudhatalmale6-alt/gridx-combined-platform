@@ -1,220 +1,270 @@
 /**
- * NamPower STS Vending Routes
- * Handles token vending, customer lookup, tariff calculations,
- * transaction history, reversals, vendor management, batch management,
- * tariff configuration, arrears, and audit logging.
+ * NamPower STS Vending Routes — IEC 62055-41 Compliant
+ *
+ * KEY REQUIREMENTS (NamPower Tender Section V):
+ * 1. ATOMIC TRANSACTIONS — taxes, levies, standing charges, arrears, services
+ *    are each stored as individual rows in TransactionLineItems.
+ * 2. IDEMPOTENCY — idempotency keys prevent duplicate tokens for the same payment.
+ * 3. FULL TRACEABILITY — every cent is traceable via the AuditLog and line items.
+ * 4. TRANSACTION REVERSALS — reverse the ENTIRE transaction with full trace:
+ *    reason, operator, timestamp, and reversal of every line item.
  */
-const express = require('express');
-const router = express.Router();
-const db = require('../config/db');
-const { authenticateToken } = require('../admin/authMiddllware');
+var express = require('express');
+var router = express.Router();
+var db = require('../config/db');
+var authMw = require('../admin/authMiddllware');
+var authenticateToken = authMw.authenticateToken;
+
+// Promise wrapper for the pool (mysql2 supports this)
+var promisePool = db.promise();
 
 // ─── AUTO-MIGRATE: Create tables if they don't exist ────────────────────────
-const MIGRATION_SQL = `
-CREATE TABLE IF NOT EXISTS VendingCustomers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  accountNo VARCHAR(50) NOT NULL UNIQUE,
-  name VARCHAR(100) NOT NULL,
-  phone VARCHAR(30),
-  email VARCHAR(100),
-  meterNo VARCHAR(50) NOT NULL,
-  area VARCHAR(100),
-  address VARCHAR(255),
-  gpsLat DECIMAL(10,6),
-  gpsLng DECIMAL(10,6),
-  tariffGroup VARCHAR(50) DEFAULT 'Residential',
-  meterMake VARCHAR(100),
-  status ENUM('Active','Suspended','Inactive','Arrears') DEFAULT 'Active',
-  arrears DECIMAL(12,2) DEFAULT 0,
-  lastPurchaseDate DATETIME,
-  lastPurchaseAmount DECIMAL(12,2) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_meterNo (meterNo),
-  INDEX idx_area (area),
-  INDEX idx_status (status)
-);
+var TABLES = [
+  // Core customer registry
+  "CREATE TABLE IF NOT EXISTS VendingCustomers (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  accountNo VARCHAR(50) NOT NULL UNIQUE," +
+  "  name VARCHAR(100) NOT NULL," +
+  "  phone VARCHAR(30)," +
+  "  email VARCHAR(100)," +
+  "  meterNo VARCHAR(50) NOT NULL," +
+  "  area VARCHAR(100)," +
+  "  address VARCHAR(255)," +
+  "  gpsLat DECIMAL(10,6)," +
+  "  gpsLng DECIMAL(10,6)," +
+  "  tariffGroup VARCHAR(50) DEFAULT 'Residential'," +
+  "  meterMake VARCHAR(100)," +
+  "  status ENUM('Active','Suspended','Inactive','Arrears') DEFAULT 'Active'," +
+  "  arrears DECIMAL(12,2) DEFAULT 0," +
+  "  lastPurchaseDate DATETIME," +
+  "  lastPurchaseAmount DECIMAL(12,2) DEFAULT 0," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
+  "  INDEX idx_meterNo (meterNo)," +
+  "  INDEX idx_area (area)," +
+  "  INDEX idx_status (status)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS VendingTransactions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  refNo VARCHAR(50) NOT NULL UNIQUE,
-  dateTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  customerId INT,
-  customerName VARCHAR(100),
-  meterNo VARCHAR(50) NOT NULL,
-  amount DECIMAL(12,2) NOT NULL,
-  kWh DECIMAL(12,2) DEFAULT 0,
-  token VARCHAR(30),
-  operator VARCHAR(100),
-  operatorId INT,
-  type ENUM('Vend','Reversal','Free Token','Engineering','Reprint') DEFAULT 'Vend',
-  status ENUM('Completed','Failed','Reversed','Pending') DEFAULT 'Completed',
-  vendorId INT,
-  vendorName VARCHAR(100),
-  salesBatchId INT,
-  reversalReason VARCHAR(255),
-  reversedBy VARCHAR(100),
-  reversedAt DATETIME,
-  originalTxnId INT,
-  vatAmount DECIMAL(12,2) DEFAULT 0,
-  fixedCharge DECIMAL(12,2) DEFAULT 0,
-  relLevy DECIMAL(12,2) DEFAULT 0,
-  arrearsDeducted DECIMAL(12,2) DEFAULT 0,
-  energyAmount DECIMAL(12,2) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_meterNo (meterNo),
-  INDEX idx_dateTime (dateTime),
-  INDEX idx_vendorId (vendorId),
-  INDEX idx_status (status),
-  INDEX idx_type (type),
-  INDEX idx_salesBatch (salesBatchId)
-);
+  // Master transaction record
+  "CREATE TABLE IF NOT EXISTS VendingTransactions (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  refNo VARCHAR(50) NOT NULL UNIQUE," +
+  "  idempotencyKey VARCHAR(100) UNIQUE," +
+  "  dateTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+  "  customerId INT," +
+  "  customerName VARCHAR(100)," +
+  "  meterNo VARCHAR(50) NOT NULL," +
+  "  amount DECIMAL(12,2) NOT NULL," +
+  "  kWh DECIMAL(12,2) DEFAULT 0," +
+  "  token VARCHAR(30)," +
+  "  operator VARCHAR(100)," +
+  "  operatorId INT," +
+  "  type ENUM('Vend','Reversal','Free Token','Engineering','Reprint') DEFAULT 'Vend'," +
+  "  status ENUM('Completed','Failed','Reversed','Pending') DEFAULT 'Completed'," +
+  "  vendorId INT," +
+  "  vendorName VARCHAR(100)," +
+  "  salesBatchId INT," +
+  "  reversalReason VARCHAR(255)," +
+  "  reversedBy VARCHAR(100)," +
+  "  reversedAt DATETIME," +
+  "  originalTxnId INT," +
+  "  vatAmount DECIMAL(12,2) DEFAULT 0," +
+  "  fixedCharge DECIMAL(12,2) DEFAULT 0," +
+  "  relLevy DECIMAL(12,2) DEFAULT 0," +
+  "  arrearsDeducted DECIMAL(12,2) DEFAULT 0," +
+  "  energyAmount DECIMAL(12,2) DEFAULT 0," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  INDEX idx_meterNo (meterNo)," +
+  "  INDEX idx_dateTime (dateTime)," +
+  "  INDEX idx_vendorId (vendorId)," +
+  "  INDEX idx_status (status)," +
+  "  INDEX idx_type (type)," +
+  "  INDEX idx_salesBatch (salesBatchId)," +
+  "  INDEX idx_idempotency (idempotencyKey)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS Vendors (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  location VARCHAR(255),
-  status ENUM('Active','Inactive','Suspended') DEFAULT 'Active',
-  totalSales DECIMAL(14,2) DEFAULT 0,
-  transactionCount INT DEFAULT 0,
-  balance DECIMAL(14,2) DEFAULT 0,
-  commissionRate DECIMAL(5,2) DEFAULT 1.5,
-  operatorName VARCHAR(100),
-  operatorPhone VARCHAR(30),
-  lastActivity DATETIME,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_status (status)
-);
+  // NamPower REQUIREMENT: Individual rows per deduction component
+  "CREATE TABLE IF NOT EXISTS TransactionLineItems (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  transactionId INT NOT NULL," +
+  "  refNo VARCHAR(50) NOT NULL," +
+  "  lineType ENUM('VAT','FIXED_CHARGE','REL_LEVY','ARREARS','ENERGY','COMMISSION','REVERSAL_VAT','REVERSAL_FIXED','REVERSAL_LEVY','REVERSAL_ARREARS','REVERSAL_ENERGY','REVERSAL_COMMISSION') NOT NULL," +
+  "  description VARCHAR(255) NOT NULL," +
+  "  amount DECIMAL(12,2) NOT NULL," +
+  "  kWh DECIMAL(12,2) DEFAULT 0," +
+  "  rate DECIMAL(8,4) DEFAULT 0," +
+  "  meterNo VARCHAR(50)," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  INDEX idx_txnId (transactionId)," +
+  "  INDEX idx_refNo (refNo)," +
+  "  INDEX idx_lineType (lineType)," +
+  "  INDEX idx_meterNo (meterNo)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS SalesBatches (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  batchNo VARCHAR(50) NOT NULL UNIQUE,
-  vendorId INT NOT NULL,
-  vendorName VARCHAR(100),
-  status ENUM('Open','Closed') DEFAULT 'Open',
-  transactionCount INT DEFAULT 0,
-  totalAmount DECIMAL(14,2) DEFAULT 0,
-  openedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-  closedAt DATETIME,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_vendorId (vendorId),
-  INDEX idx_status (status)
-);
+  // Vendors
+  "CREATE TABLE IF NOT EXISTS Vendors (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  name VARCHAR(100) NOT NULL," +
+  "  location VARCHAR(255)," +
+  "  status ENUM('Active','Inactive','Suspended') DEFAULT 'Active'," +
+  "  totalSales DECIMAL(14,2) DEFAULT 0," +
+  "  transactionCount INT DEFAULT 0," +
+  "  balance DECIMAL(14,2) DEFAULT 0," +
+  "  commissionRate DECIMAL(5,2) DEFAULT 1.5," +
+  "  operatorName VARCHAR(100)," +
+  "  operatorPhone VARCHAR(30)," +
+  "  lastActivity DATETIME," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
+  "  INDEX idx_status (status)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS BankingBatches (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  batchNo VARCHAR(50) NOT NULL UNIQUE,
-  salesBatchId INT NOT NULL,
-  bankRef VARCHAR(100),
-  status ENUM('Pending','Submitted','Reconciled') DEFAULT 'Pending',
-  totalAmount DECIMAL(14,2) DEFAULT 0,
-  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-  reconciledAt DATETIME,
-  notes TEXT,
-  INDEX idx_salesBatchId (salesBatchId),
-  INDEX idx_status (status)
-);
+  // Sales batches
+  "CREATE TABLE IF NOT EXISTS SalesBatches (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  batchNo VARCHAR(50) NOT NULL UNIQUE," +
+  "  vendorId INT NOT NULL," +
+  "  vendorName VARCHAR(100)," +
+  "  status ENUM('Open','Closed') DEFAULT 'Open'," +
+  "  transactionCount INT DEFAULT 0," +
+  "  totalAmount DECIMAL(14,2) DEFAULT 0," +
+  "  openedAt DATETIME DEFAULT CURRENT_TIMESTAMP," +
+  "  closedAt DATETIME," +
+  "  notes TEXT," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  INDEX idx_vendorId (vendorId)," +
+  "  INDEX idx_status (status)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS TariffGroups (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL UNIQUE,
-  sgc VARCHAR(20),
-  description TEXT,
-  type ENUM('Block','Flat','TOU') DEFAULT 'Block',
-  flatRate DECIMAL(8,4),
-  customerCount INT DEFAULT 0,
-  effectiveDate DATE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  // Banking batches
+  "CREATE TABLE IF NOT EXISTS BankingBatches (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  batchNo VARCHAR(50) NOT NULL UNIQUE," +
+  "  salesBatchId INT NOT NULL," +
+  "  bankRef VARCHAR(100)," +
+  "  status ENUM('Pending','Submitted','Reconciled') DEFAULT 'Pending'," +
+  "  totalAmount DECIMAL(14,2) DEFAULT 0," +
+  "  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP," +
+  "  reconciledAt DATETIME," +
+  "  notes TEXT," +
+  "  INDEX idx_salesBatchId (salesBatchId)," +
+  "  INDEX idx_status (status)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS TariffBlocks (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  tariffGroupId INT NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  rangeLabel VARCHAR(50),
-  rate DECIMAL(8,4) NOT NULL,
-  minKwh DECIMAL(12,2) DEFAULT 0,
-  maxKwh DECIMAL(12,2),
-  period VARCHAR(20),
-  sortOrder INT DEFAULT 0,
-  INDEX idx_tariffGroupId (tariffGroupId)
-);
+  // Tariff groups
+  "CREATE TABLE IF NOT EXISTS TariffGroups (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  name VARCHAR(50) NOT NULL UNIQUE," +
+  "  sgc VARCHAR(20)," +
+  "  description TEXT," +
+  "  type ENUM('Block','Flat','TOU') DEFAULT 'Block'," +
+  "  flatRate DECIMAL(8,4)," +
+  "  customerCount INT DEFAULT 0," +
+  "  effectiveDate DATE," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS TariffConfig (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  vatRate DECIMAL(5,2) DEFAULT 15.00,
-  fixedCharge DECIMAL(8,2) DEFAULT 8.50,
-  relLevy DECIMAL(8,2) DEFAULT 2.40,
-  minPurchase DECIMAL(8,2) DEFAULT 5.00,
-  arrearsMode ENUM('auto-deduct','manual','disabled') DEFAULT 'auto-deduct',
-  arrearsThreshold DECIMAL(12,2) DEFAULT 500.00,
-  arrearsPercentage DECIMAL(5,2) DEFAULT 25.00,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  // Tariff blocks
+  "CREATE TABLE IF NOT EXISTS TariffBlocks (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  tariffGroupId INT NOT NULL," +
+  "  name VARCHAR(100) NOT NULL," +
+  "  rangeLabel VARCHAR(50)," +
+  "  rate DECIMAL(8,4) NOT NULL," +
+  "  minKwh DECIMAL(12,2) DEFAULT 0," +
+  "  maxKwh DECIMAL(12,2)," +
+  "  period VARCHAR(20)," +
+  "  sortOrder INT DEFAULT 0," +
+  "  INDEX idx_tariffGroupId (tariffGroupId)" +
+  ")",
 
-CREATE TABLE IF NOT EXISTS AuditLog (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-  event VARCHAR(255) NOT NULL,
-  type ENUM('VEND','LOGIN','CREATE','UPDATE','DELETE','SYSTEM','REVERSAL','BATCH') DEFAULT 'SYSTEM',
-  detail TEXT,
-  user VARCHAR(100),
-  userId INT,
-  ipAddress VARCHAR(50),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_timestamp (timestamp),
-  INDEX idx_type (type),
-  INDEX idx_userId (userId)
-);
-`;
+  // Tariff config
+  "CREATE TABLE IF NOT EXISTS TariffConfig (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  vatRate DECIMAL(5,2) DEFAULT 15.00," +
+  "  fixedCharge DECIMAL(8,2) DEFAULT 8.50," +
+  "  relLevy DECIMAL(8,2) DEFAULT 2.40," +
+  "  minPurchase DECIMAL(8,2) DEFAULT 5.00," +
+  "  arrearsMode ENUM('auto-deduct','manual','disabled') DEFAULT 'auto-deduct'," +
+  "  arrearsThreshold DECIMAL(12,2) DEFAULT 500.00," +
+  "  arrearsPercentage DECIMAL(5,2) DEFAULT 25.00," +
+  "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+  ")",
+
+  // Audit log
+  "CREATE TABLE IF NOT EXISTS AuditLog (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP," +
+  "  event VARCHAR(255) NOT NULL," +
+  "  type ENUM('VEND','LOGIN','CREATE','UPDATE','DELETE','SYSTEM','REVERSAL','BATCH') DEFAULT 'SYSTEM'," +
+  "  detail TEXT," +
+  "  user VARCHAR(100)," +
+  "  userId INT," +
+  "  ipAddress VARCHAR(50)," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  INDEX idx_timestamp (timestamp)," +
+  "  INDEX idx_type (type)," +
+  "  INDEX idx_userId (userId)" +
+  ")"
+];
 
 // Run migration on module load
-const statements = MIGRATION_SQL.split(/;\s*\n/).filter(s => s.trim().length > 10);
-let migrated = 0;
-statements.forEach(sql => {
-  db.query(sql + ';', (err) => {
-    if (err && !err.message.includes('already exists')) {
-      console.error('Migration error:', err.message);
-    } else {
-      migrated++;
-      if (migrated === statements.length) {
-        console.log('[Vending] All tables migrated successfully');
-        seedDefaults();
-      }
+var migrated = 0;
+TABLES.forEach(function(sql) {
+  db.query(sql, function(err) {
+    if (err && err.message.indexOf('already exists') === -1) {
+      console.error('[Vending] Migration error:', err.message);
+    }
+    migrated++;
+    if (migrated === TABLES.length) {
+      console.log('[Vending] All tables migrated successfully');
+      addIdempotencyColumn();
+      seedDefaults();
     }
   });
 });
 
+// Add idempotencyKey column if it doesn't exist (for existing installations)
+function addIdempotencyColumn() {
+  db.query("SHOW COLUMNS FROM VendingTransactions LIKE 'idempotencyKey'", function(err, rows) {
+    if (!err && (!rows || rows.length === 0)) {
+      db.query("ALTER TABLE VendingTransactions ADD COLUMN idempotencyKey VARCHAR(100) UNIQUE AFTER refNo", function(alterErr) {
+        if (alterErr) {
+          console.log('[Vending] idempotencyKey column may already exist');
+        } else {
+          console.log('[Vending] Added idempotencyKey column');
+        }
+      });
+    }
+  });
+}
+
 function seedDefaults() {
-  // Seed default tariff config if empty
-  db.query('SELECT COUNT(*) as c FROM TariffConfig', (err, rows) => {
+  db.query('SELECT COUNT(*) as c FROM TariffConfig', function(err, rows) {
     if (!err && rows[0].c === 0) {
       db.query('INSERT INTO TariffConfig (vatRate, fixedCharge, relLevy, minPurchase, arrearsMode, arrearsThreshold, arrearsPercentage) VALUES (15, 8.50, 2.40, 5.00, "auto-deduct", 500, 25)');
       console.log('[Vending] Default tariff config seeded');
     }
   });
-  // Seed default tariff groups if empty
-  db.query('SELECT COUNT(*) as c FROM TariffGroups', (err, rows) => {
+  db.query('SELECT COUNT(*) as c FROM TariffGroups', function(err, rows) {
     if (!err && rows[0].c === 0) {
-      const groups = [
+      var groups = [
         ['Residential', '48901', 'Standard residential prepaid tariff with inclining block structure', 'Block', null, '2025-07-01'],
         ['Commercial', '48902', 'Commercial and small business flat-rate prepaid tariff', 'Flat', 2.45, '2025-07-01'],
         ['Industrial', '48903', 'Industrial time-of-use prepaid tariff', 'TOU', null, '2025-07-01'],
       ];
-      groups.forEach(g => {
-        db.query('INSERT INTO TariffGroups (name, sgc, description, type, flatRate, effectiveDate) VALUES (?, ?, ?, ?, ?, ?)', g, (err, result) => {
+      groups.forEach(function(g) {
+        db.query('INSERT INTO TariffGroups (name, sgc, description, type, flatRate, effectiveDate) VALUES (?, ?, ?, ?, ?, ?)', g, function(err, result) {
           if (!err) {
-            const gid = result.insertId;
+            var gid = result.insertId;
             if (g[0] === 'Residential') {
               [
                 ['Block 1 (Lifeline)', '0-50 kWh', 1.12, 0, 50, null, 0],
                 ['Block 2', '51-350 kWh', 1.68, 51, 350, null, 1],
                 ['Block 3', '351-600 kWh', 2.15, 351, 600, null, 2],
                 ['Block 4', '601+ kWh', 2.85, 601, 999999, null, 3],
-              ].forEach(b => db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [gid, ...b]));
+              ].forEach(function(b) { db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [gid].concat(b)); });
             } else if (g[0] === 'Commercial') {
               db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [gid, 'All Usage', '0+ kWh', 2.45, 0, 999999, null, 0]);
             } else if (g[0] === 'Industrial') {
@@ -222,7 +272,7 @@ function seedDefaults() {
                 ['Off-Peak (22:00-06:00)', 'All kWh', 1.45, 0, 999999, 'off-peak', 0],
                 ['Standard (06:00-08:00, 11:00-18:00)', 'All kWh', 2.10, 0, 999999, 'standard', 1],
                 ['Peak (08:00-11:00, 18:00-22:00)', 'All kWh', 3.25, 0, 999999, 'peak', 2],
-              ].forEach(b => db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [gid, ...b]));
+              ].forEach(function(b) { db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [gid].concat(b)); });
             }
           }
         });
@@ -232,21 +282,20 @@ function seedDefaults() {
   });
 }
 
-// Helper: Generate unique ref number
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 function generateRefNo() {
-  const ts = Date.now().toString(36).toUpperCase();
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `TXN-${ts}-${rand}`;
+  var ts = Date.now().toString(36).toUpperCase();
+  var rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return 'TXN-' + ts + '-' + rand;
 }
 
-// Helper: Generate 20-digit STS-style token
 function generateToken() {
-  let token = '';
-  for (let i = 0; i < 20; i++) token += Math.floor(Math.random() * 10);
+  var token = '';
+  for (var i = 0; i < 20; i++) token += Math.floor(Math.random() * 10);
   return token;
 }
 
-// Helper: Log audit event
 function logAudit(event, type, detail, user, userId, ip) {
   db.query(
     'INSERT INTO AuditLog (event, type, detail, user, userId, ipAddress) VALUES (?, ?, ?, ?, ?, ?)',
@@ -254,319 +303,468 @@ function logAudit(event, type, detail, user, userId, ip) {
   );
 }
 
+function getOperatorName(req) {
+  if (!req.user) return 'System';
+  var first = req.user.FirstName || '';
+  var last = req.user.LastName || '';
+  return (first + ' ' + last).trim() || 'System';
+}
+
+function getOperatorId(req) {
+  return (req.user && req.user.Admin_ID) || null;
+}
+
+function round2(n) {
+  return Math.round(parseFloat(n) * 100) / 100;
+}
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/customers - List all customers
-router.get('/customers', authenticateToken, (req, res) => {
-  const { search, area, status } = req.query;
-  let sql = 'SELECT * FROM VendingCustomers WHERE 1=1';
-  const params = [];
+router.get('/customers', authenticateToken, function(req, res) {
+  var search = req.query.search;
+  var area = req.query.area;
+  var status = req.query.status;
+  var sql = 'SELECT * FROM VendingCustomers WHERE 1=1';
+  var params = [];
   if (search) {
     sql += ' AND (name LIKE ? OR meterNo LIKE ? OR accountNo LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    params.push('%' + search + '%', '%' + search + '%', '%' + search + '%');
   }
   if (area) { sql += ' AND area = ?'; params.push(area); }
   if (status) { sql += ' AND status = ?'; params.push(status); }
   sql += ' ORDER BY name';
-  db.query(sql, params, (err, results) => {
+  db.query(sql, params, function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, data: results || [] });
   });
 });
 
-// GET /vending/customers/:meterNo - Get customer by meter number
-router.get('/customers/:meterNo', authenticateToken, (req, res) => {
-  // First try VendingCustomers, fall back to MeterProfileReal
-  db.query('SELECT * FROM VendingCustomers WHERE meterNo = ?', [req.params.meterNo], (err, results) => {
+router.get('/customers/areas/list', authenticateToken, function(req, res) {
+  db.query('SELECT DISTINCT area FROM VendingCustomers WHERE area IS NOT NULL ORDER BY area', function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
-    if (results && results.length > 0) {
-      return res.json({ success: true, data: results[0] });
-    }
-    // Fallback: lookup from MeterProfileReal
+    db.query('SELECT DISTINCT City as area FROM MeterProfileReal WHERE City IS NOT NULL ORDER BY City', function(err2, results2) {
+      var areas = {};
+      (results || []).forEach(function(r) { if (r.area) areas[r.area] = true; });
+      (results2 || []).forEach(function(r) { if (r.area) areas[r.area] = true; });
+      res.json({ success: true, data: Object.keys(areas).sort() });
+    });
+  });
+});
+
+router.get('/customers/:meterNo', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM VendingCustomers WHERE meterNo = ?', [req.params.meterNo], function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (results && results.length > 0) return res.json({ success: true, data: results[0] });
     db.query(
-      `SELECT DRN as meterNo, CONCAT(Name, ' ', Surname) as name, City as area,
-              Region as suburb, StreetName as address, tariff_type as tariffGroup,
-              'Active' as status, 0 as arrears
-       FROM MeterProfileReal WHERE DRN = ?`,
+      "SELECT DRN as meterNo, CONCAT(Name, ' ', Surname) as name, City as area, Region as suburb, StreetName as address, tariff_type as tariffGroup, 'Active' as status, 0 as arrears FROM MeterProfileReal WHERE DRN = ?",
       [req.params.meterNo],
-      (err2, results2) => {
+      function(err2, results2) {
         if (err2) return res.status(500).json({ error: err2.message });
-        if (!results2 || results2.length === 0) {
-          return res.status(404).json({ error: 'Customer not found' });
-        }
+        if (!results2 || results2.length === 0) return res.status(404).json({ error: 'Customer not found' });
         res.json({ success: true, data: results2[0] });
       }
     );
   });
 });
 
-// POST /vending/customers - Create customer
-router.post('/customers', authenticateToken, (req, res) => {
-  const { accountNo, name, phone, email, meterNo, area, address, gpsLat, gpsLng, tariffGroup, meterMake } = req.body;
-  if (!name || !meterNo) return res.status(400).json({ error: 'name and meterNo are required' });
-  const acct = accountNo || `ACC-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+router.post('/customers', authenticateToken, function(req, res) {
+  var b = req.body;
+  if (!b.name || !b.meterNo) return res.status(400).json({ error: 'name and meterNo are required' });
+  var acct = b.accountNo || ('ACC-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-6));
   db.query(
     'INSERT INTO VendingCustomers (accountNo, name, phone, email, meterNo, area, address, gpsLat, gpsLng, tariffGroup, meterMake) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [acct, name, phone, email, meterNo, area, address, gpsLat, gpsLng, tariffGroup || 'Residential', meterMake],
-    (err, result) => {
+    [acct, b.name, b.phone, b.email, b.meterNo, b.area, b.address, b.gpsLat, b.gpsLng, b.tariffGroup || 'Residential', b.meterMake],
+    function(err, result) {
       if (err) return res.status(500).json({ error: err.message });
-      logAudit(`Customer created: ${name}`, 'CREATE', `Meter: ${meterNo}, Area: ${area}`, (req.user && req.user.Username) || 'System', (req.user && req.user.Admin_ID), req.ip);
+      logAudit('Customer created: ' + b.name, 'CREATE', 'Meter: ' + b.meterNo + ', Area: ' + b.area, getOperatorName(req), getOperatorId(req), req.ip);
       res.json({ success: true, id: result.insertId });
     }
   );
 });
 
-// PUT /vending/customers/:id - Update customer
-router.put('/customers/:id', authenticateToken, (req, res) => {
-  const fields = ['name', 'phone', 'email', 'area', 'address', 'gpsLat', 'gpsLng', 'tariffGroup', 'meterMake', 'status', 'arrears'];
-  const updates = [];
-  const params = [];
-  fields.forEach(f => {
-    if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(req.body[f]); }
+router.put('/customers/:id', authenticateToken, function(req, res) {
+  var fields = ['name', 'phone', 'email', 'area', 'address', 'gpsLat', 'gpsLng', 'tariffGroup', 'meterMake', 'status', 'arrears'];
+  var updates = [];
+  var params = [];
+  fields.forEach(function(f) {
+    if (req.body[f] !== undefined) { updates.push(f + ' = ?'); params.push(req.body[f]); }
   });
   if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
   params.push(req.params.id);
-  db.query(`UPDATE VendingCustomers SET ${updates.join(', ')} WHERE id = ?`, params, (err) => {
+  db.query('UPDATE VendingCustomers SET ' + updates.join(', ') + ' WHERE id = ?', params, function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true });
   });
 });
 
-// GET /vending/customers/areas/list - Get unique areas
-router.get('/customers/areas/list', authenticateToken, (req, res) => {
-  db.query('SELECT DISTINCT area FROM VendingCustomers WHERE area IS NOT NULL ORDER BY area', (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    // Also get from MeterProfileReal
-    db.query('SELECT DISTINCT City as area FROM MeterProfileReal WHERE City IS NOT NULL ORDER BY City', (err2, results2) => {
-      const areas = new Set();
-      (results || []).forEach(r => areas.add(r.area));
-      (results2 || []).forEach(r => areas.add(r.area));
-      res.json({ success: true, data: [...areas].sort() });
-    });
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TOKEN VENDING
+// TOKEN VENDING — ATOMIC, with individual line items per NamPower spec
 // ═══════════════════════════════════════════════════════════════════════════
 
-// POST /vending/vend - Vend a token (core STS vending operation)
-router.post('/vend', authenticateToken, (req, res) => {
-  const { meterNo, amount, vendorId } = req.body;
+/**
+ * POST /vending/vend
+ *
+ * NamPower Section V compliance:
+ * - Uses MySQL transaction (BEGIN / COMMIT / ROLLBACK) for atomicity
+ * - Creates individual TransactionLineItems rows for: VAT, Fixed Charge,
+ *   REL Levy, Arrears, Energy (and optionally Commission)
+ * - Idempotency key prevents duplicate tokens from the same payment
+ * - Full audit trail with operator traceability
+ */
+router.post('/vend', authenticateToken, function(req, res) {
+  var meterNo = req.body.meterNo;
+  var amount = req.body.amount;
+  var vendorId = req.body.vendorId;
+  var idempotencyKey = req.body.idempotencyKey || null;
+
   if (!meterNo || !amount || amount <= 0) {
     return res.status(400).json({ error: 'meterNo and positive amount are required' });
   }
 
-  // 1. Get tariff config
-  db.query('SELECT * FROM TariffConfig LIMIT 1', (err, configRows) => {
+  // IDEMPOTENCY CHECK: If caller provides a key, check for duplicate
+  if (idempotencyKey) {
+    db.query('SELECT id, refNo, token, amount, kWh, status FROM VendingTransactions WHERE idempotencyKey = ?', [idempotencyKey], function(err, existing) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (existing && existing.length > 0) {
+        // Return the existing transaction — no duplicate created
+        var existingTxn = existing[0];
+        db.query('SELECT * FROM TransactionLineItems WHERE transactionId = ?', [existingTxn.id], function(err2, lineItems) {
+          return res.json({
+            success: true,
+            duplicate: true,
+            message: 'Transaction already processed (idempotency key matched)',
+            data: {
+              refNo: existingTxn.refNo,
+              token: existingTxn.token,
+              meterNo: meterNo,
+              amount: existingTxn.amount,
+              kWh: existingTxn.kWh,
+              status: existingTxn.status,
+              lineItems: lineItems || []
+            }
+          });
+        });
+        return;
+      }
+      // No duplicate — proceed with vend
+      doVend(meterNo, parseFloat(amount), vendorId, idempotencyKey, req, res);
+    });
+  } else {
+    doVend(meterNo, parseFloat(amount), vendorId, null, req, res);
+  }
+});
+
+function doVend(meterNo, totalAmount, vendorId, idempotencyKey, req, res) {
+  var operatorName = getOperatorName(req);
+  var operatorId = getOperatorId(req);
+
+  // Step 1: Get tariff config
+  db.query('SELECT * FROM TariffConfig LIMIT 1', function(err, configRows) {
     if (err) return res.status(500).json({ error: err.message });
-    const config = configRows[0] || { vatRate: 15, fixedCharge: 8.50, relLevy: 2.40, arrearsPercentage: 25, arrearsMode: 'auto-deduct' };
+    var config = (configRows && configRows[0]) || { vatRate: 15, fixedCharge: 8.50, relLevy: 2.40, arrearsPercentage: 25, arrearsMode: 'auto-deduct', minPurchase: 5 };
 
-    // 2. Look up customer
-    const lookupCustomer = (callback) => {
-      db.query('SELECT * FROM VendingCustomers WHERE meterNo = ?', [meterNo], (err, rows) => {
-        if (rows && rows.length > 0) return callback(null, rows[0]);
-        // Fallback to MeterProfileReal
-        db.query(
-          `SELECT DRN as meterNo, CONCAT(Name, ' ', Surname) as name, City as area,
-                  tariff_type as tariffGroup, 0 as arrears, 'Active' as status
-           FROM MeterProfileReal WHERE DRN = ?`,
-          [meterNo],
-          (err2, rows2) => {
-            if (err2 || !rows2 || rows2.length === 0) return callback(new Error('Meter not found'));
-            callback(null, rows2[0]);
-          }
-        );
-      });
-    };
+    // Minimum purchase check
+    if (totalAmount < parseFloat(config.minPurchase || 5)) {
+      return res.status(400).json({ error: 'Amount below minimum purchase of N$' + (config.minPurchase || 5) });
+    }
 
-    lookupCustomer((err, customer) => {
-      if (err) return res.status(404).json({ error: err.message });
+    // Step 2: Look up customer
+    lookupCustomer(meterNo, function(custErr, customer) {
+      if (custErr) return res.status(404).json({ error: custErr.message });
 
-      // 3. Get tariff group blocks
-      const tariffName = customer.tariffGroup || 'Residential';
+      // Step 3: Get tariff blocks
+      var tariffName = customer.tariffGroup || 'Residential';
       db.query(
-        `SELECT tb.* FROM TariffBlocks tb
-         JOIN TariffGroups tg ON tb.tariffGroupId = tg.id
-         WHERE tg.name = ? ORDER BY tb.sortOrder`,
+        'SELECT tb.* FROM TariffBlocks tb JOIN TariffGroups tg ON tb.tariffGroupId = tg.id WHERE tg.name = ? ORDER BY tb.sortOrder',
         [tariffName],
-        (err, blocks) => {
-          if (err) return res.status(500).json({ error: err.message });
+        function(blkErr, blocks) {
+          if (blkErr) return res.status(500).json({ error: blkErr.message });
           if (!blocks || blocks.length === 0) {
-            // Default: flat rate 1.68
             blocks = [{ name: 'Default', rate: 1.68, minKwh: 0, maxKwh: 999999 }];
           }
 
-          // 4. Calculate breakdown
-          const totalAmount = parseFloat(amount);
-          const vatRate = parseFloat(config.vatRate) / 100;
-          const vatAmount = totalAmount - (totalAmount / (1 + vatRate));
-          const afterVat = totalAmount - vatAmount;
-          const fixedCharge = parseFloat(config.fixedCharge);
-          const relLevy = parseFloat(config.relLevy);
+          // Step 4: Calculate breakdown
+          var vatRate = parseFloat(config.vatRate) / 100;
+          var vatAmount = round2(totalAmount - (totalAmount / (1 + vatRate)));
+          var afterVat = round2(totalAmount - vatAmount);
+          var fixedCharge = round2(parseFloat(config.fixedCharge));
+          var relLevy = round2(parseFloat(config.relLevy));
 
           // Arrears deduction
-          let arrearsDeducted = 0;
-          const customerArrears = parseFloat(customer.arrears) || 0;
+          var arrearsDeducted = 0;
+          var customerArrears = parseFloat(customer.arrears) || 0;
           if (config.arrearsMode === 'auto-deduct' && customerArrears > 0) {
-            arrearsDeducted = Math.min(
+            arrearsDeducted = round2(Math.min(
               customerArrears,
               afterVat * (parseFloat(config.arrearsPercentage) / 100)
-            );
+            ));
           }
 
-          const energyAmount = afterVat - fixedCharge - relLevy - arrearsDeducted;
+          var energyAmount = round2(afterVat - fixedCharge - relLevy - arrearsDeducted);
           if (energyAmount <= 0) {
             return res.status(400).json({ error: 'Amount too low to generate energy units after deductions' });
           }
 
           // Calculate kWh using block tariff
-          let remainingAmount = energyAmount;
-          let totalKwh = 0;
-          const blockBreakdown = [];
+          var remainingAmount = energyAmount;
+          var totalKwh = 0;
+          var blockBreakdown = [];
 
-          for (const block of blocks) {
+          for (var i = 0; i < blocks.length; i++) {
             if (remainingAmount <= 0) break;
-            const blockRange = (block.maxKwh || 999999) - (block.minKwh || 0);
-            const blockCost = blockRange * parseFloat(block.rate);
-            const usedAmount = Math.min(remainingAmount, blockCost);
-            const usedKwh = usedAmount / parseFloat(block.rate);
+            var block = blocks[i];
+            var blockRange = (parseFloat(block.maxKwh) || 999999) - (parseFloat(block.minKwh) || 0);
+            var blockCost = blockRange * parseFloat(block.rate);
+            var usedAmount = Math.min(remainingAmount, blockCost);
+            var usedKwh = usedAmount / parseFloat(block.rate);
             totalKwh += usedKwh;
             remainingAmount -= usedAmount;
             blockBreakdown.push({
               block: block.name,
               rate: parseFloat(block.rate),
-              kWh: Math.round(usedKwh * 100) / 100,
-              amount: Math.round(usedAmount * 100) / 100,
+              kWh: round2(usedKwh),
+              amount: round2(usedAmount)
             });
           }
+          totalKwh = round2(totalKwh);
 
-          // 5. Generate token
-          const token = generateToken();
-          const refNo = generateRefNo();
+          // Step 5: Generate token and ref
+          var token = generateToken();
+          var refNo = generateRefNo();
 
-          // Get vendor info
-          const getVendor = (callback) => {
-            if (!vendorId) return callback(null, { name: 'System', id: null });
-            db.query('SELECT id, name FROM Vendors WHERE id = ?', [vendorId], (err, rows) => {
-              callback(null, rows && rows.length > 0 ? rows[0] : { name: 'System', id: null });
-            });
-          };
+          // Step 6: Get vendor info
+          getVendorInfo(vendorId, function(vendor) {
+            getOpenBatch(vendor.id, function(batchId) {
 
-          // Get open sales batch for vendor
-          const getOpenBatch = (vid, callback) => {
-            if (!vid) return callback(null, null);
-            db.query('SELECT id FROM SalesBatches WHERE vendorId = ? AND status = "Open" ORDER BY openedAt DESC LIMIT 1', [vid], (err, rows) => {
-              callback(null, rows && rows.length > 0 ? rows[0].id : null);
-            });
-          };
+              // Step 7: Calculate commission
+              var commission = vendor.id ? round2(totalAmount * (parseFloat(vendor.commissionRate || 1.5) / 100)) : 0;
 
-          getVendor((err, vendor) => {
-            getOpenBatch(vendor.id, (err, batchId) => {
-              const operatorName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
+              // ═══════════════════════════════════════════════════════
+              // ATOMIC TRANSACTION — BEGIN / COMMIT / ROLLBACK
+              // ═══════════════════════════════════════════════════════
+              promisePool.getConnection().then(function(conn) {
+                return conn.beginTransaction().then(function() {
 
-              // 6. Insert transaction
-              db.query(
-                `INSERT INTO VendingTransactions
-                 (refNo, customerName, meterNo, amount, kWh, token, operator, operatorId, type, status, vendorId, vendorName, salesBatchId, vatAmount, fixedCharge, relLevy, arrearsDeducted, energyAmount)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Vend', 'Completed', ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [refNo, customer.name, meterNo, totalAmount, Math.round(totalKwh * 100) / 100, token, operatorName, (req.user && req.user.Admin_ID), vendor.id, vendor.name, batchId, Math.round(vatAmount * 100) / 100, fixedCharge, relLevy, Math.round(arrearsDeducted * 100) / 100, Math.round(energyAmount * 100) / 100],
-                (err, result) => {
-                  if (err) return res.status(500).json({ error: err.message });
+                  // Insert master transaction
+                  return conn.query(
+                    'INSERT INTO VendingTransactions (refNo, idempotencyKey, customerName, customerId, meterNo, amount, kWh, token, operator, operatorId, type, status, vendorId, vendorName, salesBatchId, vatAmount, fixedCharge, relLevy, arrearsDeducted, energyAmount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [refNo, idempotencyKey, customer.name, customer.id || null, meterNo, totalAmount, totalKwh, token, operatorName, operatorId, 'Vend', 'Completed', vendor.id, vendor.name, batchId, vatAmount, fixedCharge, relLevy, arrearsDeducted, energyAmount]
+                  ).then(function(result) {
+                    var txnId = result[0].insertId;
 
-                  // Update vendor stats
-                  if (vendor.id) {
-                    db.query('UPDATE Vendors SET totalSales = totalSales + ?, transactionCount = transactionCount + 1, lastActivity = NOW() WHERE id = ?', [totalAmount, vendor.id]);
-                  }
-                  // Update batch stats
-                  if (batchId) {
-                    db.query('UPDATE SalesBatches SET transactionCount = transactionCount + 1, totalAmount = totalAmount + ? WHERE id = ?', [totalAmount, batchId]);
-                  }
-                  // Update customer arrears
-                  if (arrearsDeducted > 0) {
-                    db.query('UPDATE VendingCustomers SET arrears = arrears - ?, lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE meterNo = ?', [arrearsDeducted, totalAmount, meterNo]);
-                  } else {
-                    db.query('UPDATE VendingCustomers SET lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE meterNo = ?', [totalAmount, meterNo]);
-                  }
+                    // Build individual line item rows (NamPower requirement)
+                    var lineItems = [];
 
-                  // Audit log
-                  logAudit(
-                    `Token vended: ${totalAmount.toFixed(2)} N$ to meter ${meterNo}`,
-                    'VEND',
-                    `Customer: ${customer.name}, kWh: ${totalKwh.toFixed(2)}, Token: ${token}`,
-                    operatorName, (req.user && req.user.Admin_ID), req.ip
-                  );
+                    // 1. VAT line item
+                    lineItems.push([txnId, refNo, 'VAT', 'Value Added Tax @ ' + config.vatRate + '%', vatAmount, 0, parseFloat(config.vatRate), meterNo]);
 
-                  // 7. Return response
-                  res.json({
-                    success: true,
-                    data: {
-                      refNo,
-                      token,
-                      meterNo,
-                      customerName: customer.name,
-                      amount: totalAmount,
-                      kWh: Math.round(totalKwh * 100) / 100,
-                      breakdown: {
-                        totalAmount,
-                        vatAmount: Math.round(vatAmount * 100) / 100,
-                        fixedCharge,
-                        relLevy,
-                        arrearsDeducted: Math.round(arrearsDeducted * 100) / 100,
-                        energyAmount: Math.round(energyAmount * 100) / 100,
-                        blocks: blockBreakdown,
-                      },
-                      operator: operatorName,
-                      vendorName: vendor.name,
-                      dateTime: new Date().toISOString(),
-                      status: 'Completed',
-                    },
+                    // 2. Fixed charge line item
+                    lineItems.push([txnId, refNo, 'FIXED_CHARGE', 'Monthly fixed/standing charge', fixedCharge, 0, 0, meterNo]);
+
+                    // 3. REL levy line item
+                    lineItems.push([txnId, refNo, 'REL_LEVY', 'Rural Electrification Levy', relLevy, 0, 0, meterNo]);
+
+                    // 4. Arrears line item (only if applicable)
+                    if (arrearsDeducted > 0) {
+                      lineItems.push([txnId, refNo, 'ARREARS', 'Arrears deduction (' + config.arrearsPercentage + '% of N$' + afterVat.toFixed(2) + ')', arrearsDeducted, 0, parseFloat(config.arrearsPercentage), meterNo]);
+                    }
+
+                    // 5. Energy line items (one per tariff block used)
+                    for (var j = 0; j < blockBreakdown.length; j++) {
+                      var bb = blockBreakdown[j];
+                      lineItems.push([txnId, refNo, 'ENERGY', 'Energy: ' + bb.block + ' @ N$' + bb.rate.toFixed(4) + '/kWh', bb.amount, bb.kWh, bb.rate, meterNo]);
+                    }
+
+                    // 6. Commission line item (if vendor)
+                    if (commission > 0) {
+                      lineItems.push([txnId, refNo, 'COMMISSION', 'Vendor commission: ' + vendor.name + ' @ ' + (vendor.commissionRate || 1.5) + '%', commission, 0, parseFloat(vendor.commissionRate || 1.5), meterNo]);
+                    }
+
+                    // Insert all line items
+                    var insertPromises = lineItems.map(function(li) {
+                      return conn.query(
+                        'INSERT INTO TransactionLineItems (transactionId, refNo, lineType, description, amount, kWh, rate, meterNo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        li
+                      );
+                    });
+
+                    return Promise.all(insertPromises).then(function() {
+                      // Update vendor stats
+                      var updates = [];
+                      if (vendor.id) {
+                        updates.push(conn.query('UPDATE Vendors SET totalSales = totalSales + ?, transactionCount = transactionCount + 1, lastActivity = NOW() WHERE id = ?', [totalAmount, vendor.id]));
+                      }
+                      // Update batch stats
+                      if (batchId) {
+                        updates.push(conn.query('UPDATE SalesBatches SET transactionCount = transactionCount + 1, totalAmount = totalAmount + ? WHERE id = ?', [totalAmount, batchId]));
+                      }
+                      // Update customer arrears and last purchase
+                      if (customer.id) {
+                        if (arrearsDeducted > 0) {
+                          updates.push(conn.query('UPDATE VendingCustomers SET arrears = arrears - ?, lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE id = ?', [arrearsDeducted, totalAmount, customer.id]));
+                        } else {
+                          updates.push(conn.query('UPDATE VendingCustomers SET lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE id = ?', [totalAmount, customer.id]));
+                        }
+                      } else {
+                        if (arrearsDeducted > 0) {
+                          updates.push(conn.query('UPDATE VendingCustomers SET arrears = arrears - ?, lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE meterNo = ?', [arrearsDeducted, totalAmount, meterNo]));
+                        } else {
+                          updates.push(conn.query('UPDATE VendingCustomers SET lastPurchaseDate = NOW(), lastPurchaseAmount = ? WHERE meterNo = ?', [totalAmount, meterNo]));
+                        }
+                      }
+
+                      return Promise.all(updates).then(function() {
+                        return { txnId: txnId, lineItemCount: lineItems.length };
+                      });
+                    });
                   });
-                }
-              );
+
+                }).then(function(result) {
+                  // COMMIT — all or nothing
+                  return conn.commit().then(function() {
+                    conn.release();
+
+                    // Audit log (outside transaction — non-critical)
+                    logAudit(
+                      'Token vended: N$' + totalAmount.toFixed(2) + ' to meter ' + meterNo,
+                      'VEND',
+                      'Ref: ' + refNo + ', Token: ' + token + ', kWh: ' + totalKwh + ', Customer: ' + customer.name + ', Line items: ' + result.lineItemCount,
+                      operatorName, operatorId, req.ip
+                    );
+
+                    // Return success with full breakdown
+                    res.json({
+                      success: true,
+                      data: {
+                        transactionId: result.txnId,
+                        refNo: refNo,
+                        token: token,
+                        meterNo: meterNo,
+                        customerName: customer.name,
+                        amount: totalAmount,
+                        kWh: totalKwh,
+                        breakdown: {
+                          totalAmount: totalAmount,
+                          vatAmount: vatAmount,
+                          vatRate: parseFloat(config.vatRate),
+                          fixedCharge: fixedCharge,
+                          relLevy: relLevy,
+                          arrearsDeducted: arrearsDeducted,
+                          energyAmount: energyAmount,
+                          commission: commission,
+                          blocks: blockBreakdown
+                        },
+                        lineItemCount: result.lineItemCount,
+                        operator: operatorName,
+                        vendorName: vendor.name,
+                        dateTime: new Date().toISOString(),
+                        status: 'Completed'
+                      }
+                    });
+                  });
+
+                }).catch(function(txnErr) {
+                  // ROLLBACK on any error — no partial data
+                  return conn.rollback().then(function() {
+                    conn.release();
+                    console.error('[Vending] Transaction ROLLED BACK:', txnErr.message);
+                    logAudit('VEND FAILED (rolled back): meter ' + meterNo + ' amount N$' + totalAmount, 'SYSTEM', txnErr.message, operatorName, operatorId, req.ip);
+                    res.status(500).json({ error: 'Transaction failed and was rolled back: ' + txnErr.message });
+                  });
+                });
+              }).catch(function(connErr) {
+                console.error('[Vending] Could not get DB connection:', connErr.message);
+                res.status(500).json({ error: 'Database connection error' });
+              });
+
             });
           });
         }
       );
     });
   });
-});
+}
+
+// Helper: lookup customer from VendingCustomers or MeterProfileReal
+function lookupCustomer(meterNo, callback) {
+  db.query('SELECT * FROM VendingCustomers WHERE meterNo = ?', [meterNo], function(err, rows) {
+    if (rows && rows.length > 0) return callback(null, rows[0]);
+    db.query(
+      "SELECT DRN as meterNo, CONCAT(Name, ' ', Surname) as name, City as area, tariff_type as tariffGroup, 0 as arrears, 'Active' as status FROM MeterProfileReal WHERE DRN = ?",
+      [meterNo],
+      function(err2, rows2) {
+        if (err2 || !rows2 || rows2.length === 0) return callback(new Error('Meter not found'));
+        callback(null, rows2[0]);
+      }
+    );
+  });
+}
+
+// Helper: get vendor info
+function getVendorInfo(vendorId, callback) {
+  if (!vendorId) return callback({ name: 'System', id: null, commissionRate: 0 });
+  db.query('SELECT id, name, commissionRate FROM Vendors WHERE id = ?', [vendorId], function(err, rows) {
+    if (rows && rows.length > 0) return callback(rows[0]);
+    callback({ name: 'System', id: null, commissionRate: 0 });
+  });
+}
+
+// Helper: get open sales batch for vendor
+function getOpenBatch(vendorId, callback) {
+  if (!vendorId) return callback(null);
+  db.query('SELECT id FROM SalesBatches WHERE vendorId = ? AND status = "Open" ORDER BY openedAt DESC LIMIT 1', [vendorId], function(err, rows) {
+    callback(rows && rows.length > 0 ? rows[0].id : null);
+  });
+}
+
 
 // POST /vending/free-token - Issue free/engineering token
-router.post('/free-token', authenticateToken, (req, res) => {
-  const { meterNo, kWh, type } = req.body;
+router.post('/free-token', authenticateToken, function(req, res) {
+  var meterNo = req.body.meterNo;
+  var kWh = req.body.kWh;
+  var type = req.body.type || 'Free Token';
   if (!meterNo) return res.status(400).json({ error: 'meterNo is required' });
-  const token = generateToken();
-  const refNo = generateRefNo();
-  const txnType = type || 'Free Token';
-  const operatorName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'Admin System';
+
+  var token = generateToken();
+  var refNo = generateRefNo();
+  var operatorName = getOperatorName(req);
+  var operatorId = getOperatorId(req);
 
   db.query(
-    `INSERT INTO VendingTransactions (refNo, meterNo, amount, kWh, token, operator, operatorId, type, status)
-     VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'Completed')`,
-    [refNo, meterNo, kWh || 0, token, operatorName, (req.user && req.user.Admin_ID), txnType],
-    (err) => {
+    'INSERT INTO VendingTransactions (refNo, meterNo, amount, kWh, token, operator, operatorId, type, status) VALUES (?, ?, 0, ?, ?, ?, ?, ?, "Completed")',
+    [refNo, meterNo, kWh || 0, token, operatorName, operatorId, type],
+    function(err) {
       if (err) return res.status(500).json({ error: err.message });
-      logAudit(`${txnType} issued to meter ${meterNo}`, 'VEND', `kWh: ${kWh || 0}`, operatorName, (req.user && req.user.Admin_ID), req.ip);
-      res.json({ success: true, data: { refNo, token, meterNo, kWh: kWh || 0, type: txnType } });
+      logAudit(type + ' issued to meter ' + meterNo, 'VEND', 'kWh: ' + (kWh || 0), operatorName, operatorId, req.ip);
+      res.json({ success: true, data: { refNo: refNo, token: token, meterNo: meterNo, kWh: kWh || 0, type: type } });
     }
   );
 });
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TRANSACTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/transactions - List transactions with filtering
-router.get('/transactions', authenticateToken, (req, res) => {
-  const { search, type, status, from, to, vendorId, limit = 100, offset = 0 } = req.query;
-  let sql = 'SELECT * FROM VendingTransactions WHERE 1=1';
-  const params = [];
+router.get('/transactions', authenticateToken, function(req, res) {
+  var search = req.query.search;
+  var type = req.query.type;
+  var status = req.query.status;
+  var from = req.query.from;
+  var to = req.query.to;
+  var vendorId = req.query.vendorId;
+  var limit = parseInt(req.query.limit) || 100;
+  var offset = parseInt(req.query.offset) || 0;
+
+  var sql = 'SELECT * FROM VendingTransactions WHERE 1=1';
+  var params = [];
   if (search) {
-    sql += ' AND (refNo LIKE ? OR customerName LIKE ? OR meterNo LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    sql += ' AND (refNo LIKE ? OR customerName LIKE ? OR meterNo LIKE ? OR token LIKE ?)';
+    params.push('%' + search + '%', '%' + search + '%', '%' + search + '%', '%' + search + '%');
   }
   if (type && type !== 'All') { sql += ' AND type = ?'; params.push(type); }
   if (status && status !== 'All') { sql += ' AND status = ?'; params.push(status); }
@@ -574,16 +772,16 @@ router.get('/transactions', authenticateToken, (req, res) => {
   if (to) { sql += ' AND dateTime <= ?'; params.push(to); }
   if (vendorId) { sql += ' AND vendorId = ?'; params.push(vendorId); }
   sql += ' ORDER BY dateTime DESC LIMIT ? OFFSET ?';
-  params.push(parseInt(limit), parseInt(offset));
+  params.push(limit, offset);
 
-  db.query(sql, params, (err, results) => {
+  db.query(sql, params, function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
-    // Get total count
-    let countSql = 'SELECT COUNT(*) as total FROM VendingTransactions WHERE 1=1';
-    const countParams = [];
+
+    var countSql = 'SELECT COUNT(*) as total FROM VendingTransactions WHERE 1=1';
+    var countParams = [];
     if (search) {
-      countSql += ' AND (refNo LIKE ? OR customerName LIKE ? OR meterNo LIKE ?)';
-      countParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      countSql += ' AND (refNo LIKE ? OR customerName LIKE ? OR meterNo LIKE ? OR token LIKE ?)';
+      countParams.push('%' + search + '%', '%' + search + '%', '%' + search + '%', '%' + search + '%');
     }
     if (type && type !== 'All') { countSql += ' AND type = ?'; countParams.push(type); }
     if (status && status !== 'All') { countSql += ' AND status = ?'; countParams.push(status); }
@@ -591,323 +789,410 @@ router.get('/transactions', authenticateToken, (req, res) => {
     if (to) { countSql += ' AND dateTime <= ?'; countParams.push(to); }
     if (vendorId) { countSql += ' AND vendorId = ?'; countParams.push(vendorId); }
 
-    db.query(countSql, countParams, (err2, countResult) => {
+    db.query(countSql, countParams, function(err2, countResult) {
       res.json({
         success: true,
         data: results || [],
-        total: countResult ? countResult[0].total : 0,
+        total: countResult ? countResult[0].total : 0
       });
     });
   });
 });
 
-// GET /vending/transactions/:id - Get single transaction
-router.get('/transactions/:id', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM VendingTransactions WHERE id = ? OR refNo = ?', [req.params.id, req.params.id], (err, results) => {
+router.get('/transactions/:id', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM VendingTransactions WHERE id = ? OR refNo = ?', [req.params.id, req.params.id], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     if (!results || results.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-    res.json({ success: true, data: results[0] });
+    var txn = results[0];
+    // Also fetch line items for full traceability
+    db.query('SELECT * FROM TransactionLineItems WHERE transactionId = ? ORDER BY id', [txn.id], function(err2, lineItems) {
+      txn.lineItems = lineItems || [];
+      res.json({ success: true, data: txn });
+    });
   });
 });
 
-// POST /vending/transactions/:id/reverse - Reverse a transaction
-router.post('/transactions/:id/reverse', authenticateToken, (req, res) => {
-  const { reason } = req.body;
-  if (!reason) return res.status(400).json({ error: 'Reversal reason is required' });
+// GET /vending/transactions/:id/line-items - Get line items for a transaction
+router.get('/transactions/:id/line-items', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM TransactionLineItems WHERE transactionId = ? ORDER BY id', [req.params.id], function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, data: results || [] });
+  });
+});
 
-  db.query('SELECT * FROM VendingTransactions WHERE id = ?', [req.params.id], (err, results) => {
+
+/**
+ * POST /vending/transactions/:id/reverse
+ *
+ * NamPower Section V compliance:
+ * "Transaction reversals shall: be effected with full traceability of the reversal;
+ *  shall allow for a reason to be supplied; shall be traceable to an operator;
+ *  and shall reverse an entire transaction..."
+ *
+ * This creates a REVERSAL transaction + individual reversal line items
+ * that mirror every original line item, all within a single MySQL transaction.
+ */
+router.post('/transactions/:id/reverse', authenticateToken, function(req, res) {
+  var reason = req.body.reason;
+  if (!reason) return res.status(400).json({ error: 'Reversal reason is required (NamPower traceability requirement)' });
+
+  var operatorName = getOperatorName(req);
+  var operatorId = getOperatorId(req);
+
+  // Fetch original transaction + its line items
+  db.query('SELECT * FROM VendingTransactions WHERE id = ?', [req.params.id], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     if (!results || results.length === 0) return res.status(404).json({ error: 'Transaction not found' });
 
-    const txn = results[0];
+    var txn = results[0];
     if (txn.status === 'Reversed') return res.status(400).json({ error: 'Transaction already reversed' });
     if (txn.type === 'Reversal') return res.status(400).json({ error: 'Cannot reverse a reversal' });
 
-    const operatorName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-    const reversalRefNo = generateRefNo();
+    // Get original line items
+    db.query('SELECT * FROM TransactionLineItems WHERE transactionId = ?', [txn.id], function(err2, originalLineItems) {
+      if (err2) return res.status(500).json({ error: err2.message });
 
-    // Mark original as reversed
-    db.query(
-      'UPDATE VendingTransactions SET status = "Reversed", reversalReason = ?, reversedBy = ?, reversedAt = NOW() WHERE id = ?',
-      [reason, operatorName, txn.id],
-      (err) => {
-        if (err) return res.status(500).json({ error: err.message });
+      var reversalRefNo = generateRefNo();
 
-        // Create reversal transaction
-        db.query(
-          `INSERT INTO VendingTransactions (refNo, customerName, meterNo, amount, kWh, token, operator, operatorId, type, status, vendorId, vendorName, originalTxnId, reversalReason)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Reversal', 'Completed', ?, ?, ?, ?)`,
-          [reversalRefNo, txn.customerName, txn.meterNo, -Math.abs(txn.amount), -Math.abs(txn.kWh), txn.token, operatorName, (req.user && req.user.Admin_ID), txn.vendorId, txn.vendorName, txn.id, reason],
-          (err) => {
-            if (err) return res.status(500).json({ error: err.message });
+      // ATOMIC REVERSAL
+      promisePool.getConnection().then(function(conn) {
+        return conn.beginTransaction().then(function() {
 
-            // Update vendor stats
-            if (txn.vendorId) {
-              db.query('UPDATE Vendors SET totalSales = totalSales - ?, transactionCount = transactionCount - 1 WHERE id = ?', [Math.abs(txn.amount), txn.vendorId]);
-            }
+          // 1. Mark original as reversed
+          return conn.query(
+            'UPDATE VendingTransactions SET status = "Reversed", reversalReason = ?, reversedBy = ?, reversedAt = NOW() WHERE id = ?',
+            [reason, operatorName, txn.id]
+          ).then(function() {
 
-            // Restore arrears if was deducted
-            if (txn.arrearsDeducted > 0) {
-              db.query('UPDATE VendingCustomers SET arrears = arrears + ? WHERE meterNo = ?', [txn.arrearsDeducted, txn.meterNo]);
-            }
+            // 2. Create reversal transaction (negative amounts)
+            return conn.query(
+              'INSERT INTO VendingTransactions (refNo, customerName, customerId, meterNo, amount, kWh, token, operator, operatorId, type, status, vendorId, vendorName, originalTxnId, reversalReason, vatAmount, fixedCharge, relLevy, arrearsDeducted, energyAmount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "Reversal", "Completed", ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [reversalRefNo, txn.customerName, txn.customerId, txn.meterNo, -Math.abs(txn.amount), -Math.abs(txn.kWh), txn.token, operatorName, operatorId, txn.vendorId, txn.vendorName, txn.id, reason, -Math.abs(txn.vatAmount || 0), -Math.abs(txn.fixedCharge || 0), -Math.abs(txn.relLevy || 0), -Math.abs(txn.arrearsDeducted || 0), -Math.abs(txn.energyAmount || 0)]
+            );
+          }).then(function(result) {
+            var reversalTxnId = result[0].insertId;
+
+            // 3. Create reversal line items — one for each original line item
+            var REVERSAL_TYPE_MAP = {
+              'VAT': 'REVERSAL_VAT',
+              'FIXED_CHARGE': 'REVERSAL_FIXED',
+              'REL_LEVY': 'REVERSAL_LEVY',
+              'ARREARS': 'REVERSAL_ARREARS',
+              'ENERGY': 'REVERSAL_ENERGY',
+              'COMMISSION': 'REVERSAL_COMMISSION'
+            };
+
+            var reversalItems = (originalLineItems || []).map(function(li) {
+              var revType = REVERSAL_TYPE_MAP[li.lineType] || 'REVERSAL_ENERGY';
+              return [
+                reversalTxnId, reversalRefNo, revType,
+                'REVERSAL: ' + li.description + ' [Reason: ' + reason + ']',
+                -Math.abs(parseFloat(li.amount)), -Math.abs(parseFloat(li.kWh || 0)),
+                parseFloat(li.rate || 0), li.meterNo
+              ];
+            });
+
+            var insertPromises = reversalItems.map(function(ri) {
+              return conn.query(
+                'INSERT INTO TransactionLineItems (transactionId, refNo, lineType, description, amount, kWh, rate, meterNo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                ri
+              );
+            });
+
+            return Promise.all(insertPromises).then(function() {
+              // 4. Reverse vendor stats
+              var updates = [];
+              if (txn.vendorId) {
+                updates.push(conn.query('UPDATE Vendors SET totalSales = totalSales - ?, transactionCount = GREATEST(transactionCount - 1, 0) WHERE id = ?', [Math.abs(txn.amount), txn.vendorId]));
+              }
+              // 5. Reverse batch stats
+              if (txn.salesBatchId) {
+                updates.push(conn.query('UPDATE SalesBatches SET transactionCount = GREATEST(transactionCount - 1, 0), totalAmount = totalAmount - ? WHERE id = ?', [Math.abs(txn.amount), txn.salesBatchId]));
+              }
+              // 6. Restore arrears if was deducted
+              if (txn.arrearsDeducted && parseFloat(txn.arrearsDeducted) > 0) {
+                updates.push(conn.query('UPDATE VendingCustomers SET arrears = arrears + ? WHERE meterNo = ?', [Math.abs(txn.arrearsDeducted), txn.meterNo]));
+              }
+
+              return Promise.all(updates).then(function() {
+                return { reversalTxnId: reversalTxnId, reversalLineItems: reversalItems.length };
+              });
+            });
+
+          });
+        }).then(function(result) {
+          // COMMIT
+          return conn.commit().then(function() {
+            conn.release();
 
             logAudit(
-              `Transaction reversed: ${txn.refNo}`,
+              'Transaction REVERSED: ' + txn.refNo + ' -> ' + reversalRefNo,
               'REVERSAL',
-              `Amount: ${txn.amount} N$, Reason: ${reason}`,
-              operatorName, (req.user && req.user.Admin_ID), req.ip
+              'Original amount: N$' + txn.amount + ', Reason: ' + reason + ', Operator: ' + operatorName + ', Line items reversed: ' + result.reversalLineItems,
+              operatorName, operatorId, req.ip
             );
 
-            res.json({ success: true, data: { reversalRefNo, originalRefNo: txn.refNo } });
-          }
-        );
-      }
-    );
+            res.json({
+              success: true,
+              data: {
+                reversalRefNo: reversalRefNo,
+                originalRefNo: txn.refNo,
+                originalTxnId: txn.id,
+                reversalTxnId: result.reversalTxnId,
+                amount: -Math.abs(txn.amount),
+                reason: reason,
+                operator: operatorName,
+                reversalLineItems: result.reversalLineItems,
+                timestamp: new Date().toISOString()
+              }
+            });
+          });
+        }).catch(function(revErr) {
+          return conn.rollback().then(function() {
+            conn.release();
+            console.error('[Vending] Reversal ROLLED BACK:', revErr.message);
+            logAudit('REVERSAL FAILED (rolled back): txn ' + txn.refNo, 'SYSTEM', revErr.message, operatorName, operatorId, req.ip);
+            res.status(500).json({ error: 'Reversal failed and was rolled back: ' + revErr.message });
+          });
+        });
+      }).catch(function(connErr) {
+        res.status(500).json({ error: 'Database connection error' });
+      });
+
+    });
   });
 });
 
-// POST /vending/transactions/:id/reprint - Reprint token receipt
-router.post('/transactions/:id/reprint', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM VendingTransactions WHERE id = ?', [req.params.id], (err, results) => {
+
+// POST /vending/transactions/:id/reprint
+router.post('/transactions/:id/reprint', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM VendingTransactions WHERE id = ?', [req.params.id], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     if (!results || results.length === 0) return res.status(404).json({ error: 'Transaction not found' });
-    const operatorName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-    logAudit(`Token reprinted: ${results[0].refNo}`, 'VEND', `Meter: ${results[0].meterNo}`, operatorName, (req.user && req.user.Admin_ID), req.ip);
-    res.json({ success: true, data: results[0] });
+    var operatorName = getOperatorName(req);
+    logAudit('Token reprinted: ' + results[0].refNo, 'VEND', 'Meter: ' + results[0].meterNo, operatorName, getOperatorId(req), req.ip);
+    db.query('SELECT * FROM TransactionLineItems WHERE transactionId = ? ORDER BY id', [results[0].id], function(err2, lineItems) {
+      var data = results[0];
+      data.lineItems = lineItems || [];
+      res.json({ success: true, data: data });
+    });
   });
 });
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VENDORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/vendors - List all vendors
-router.get('/vendors', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM Vendors ORDER BY name', (err, results) => {
+router.get('/vendors', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM Vendors ORDER BY name', function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, data: results || [] });
   });
 });
 
-// GET /vending/vendors/:id - Get single vendor
-router.get('/vendors/:id', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM Vendors WHERE id = ?', [req.params.id], (err, results) => {
+router.get('/vendors/:id', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM Vendors WHERE id = ?', [req.params.id], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     if (!results || results.length === 0) return res.status(404).json({ error: 'Vendor not found' });
     res.json({ success: true, data: results[0] });
   });
 });
 
-// POST /vending/vendors - Create vendor
-router.post('/vendors', authenticateToken, (req, res) => {
-  const { name, location, commissionRate, operatorName, operatorPhone } = req.body;
-  if (!name) return res.status(400).json({ error: 'Vendor name is required' });
+router.post('/vendors', authenticateToken, function(req, res) {
+  var b = req.body;
+  if (!b.name) return res.status(400).json({ error: 'Vendor name is required' });
   db.query(
     'INSERT INTO Vendors (name, location, commissionRate, operatorName, operatorPhone) VALUES (?, ?, ?, ?, ?)',
-    [name, location, commissionRate || 1.5, operatorName, operatorPhone],
-    (err, result) => {
+    [b.name, b.location, b.commissionRate || 1.5, b.operatorName, b.operatorPhone],
+    function(err, result) {
       if (err) return res.status(500).json({ error: err.message });
-      const opName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-      logAudit(`Vendor created: ${name}`, 'CREATE', `Location: ${location}`, opName, (req.user && req.user.Admin_ID), req.ip);
+      logAudit('Vendor created: ' + b.name, 'CREATE', 'Location: ' + b.location, getOperatorName(req), getOperatorId(req), req.ip);
       res.json({ success: true, id: result.insertId });
     }
   );
 });
 
-// PUT /vending/vendors/:id - Update vendor
-router.put('/vendors/:id', authenticateToken, (req, res) => {
-  const fields = ['name', 'location', 'status', 'commissionRate', 'operatorName', 'operatorPhone', 'balance'];
-  const updates = [];
-  const params = [];
-  fields.forEach(f => {
-    if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(req.body[f]); }
+router.put('/vendors/:id', authenticateToken, function(req, res) {
+  var fields = ['name', 'location', 'status', 'commissionRate', 'operatorName', 'operatorPhone', 'balance'];
+  var updates = [];
+  var params = [];
+  fields.forEach(function(f) {
+    if (req.body[f] !== undefined) { updates.push(f + ' = ?'); params.push(req.body[f]); }
   });
   if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
   params.push(req.params.id);
-  db.query(`UPDATE Vendors SET ${updates.join(', ')} WHERE id = ?`, params, (err) => {
+  db.query('UPDATE Vendors SET ' + updates.join(', ') + ' WHERE id = ?', params, function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true });
   });
 });
 
-// DELETE /vending/vendors/:id - Delete vendor
-router.delete('/vendors/:id', authenticateToken, (req, res) => {
-  db.query('DELETE FROM Vendors WHERE id = ?', [req.params.id], (err) => {
+router.delete('/vendors/:id', authenticateToken, function(req, res) {
+  db.query('DELETE FROM Vendors WHERE id = ?', [req.params.id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true });
   });
 });
 
-// GET /vending/vendors/:id/commission - Get vendor commission summary
-router.get('/vendors/:id/commission', authenticateToken, (req, res) => {
-  const { from, to } = req.query;
-  let sql = `SELECT v.*,
-             (SELECT COUNT(*) FROM VendingTransactions t WHERE t.vendorId = v.id AND t.type = 'Vend' AND t.status = 'Completed') as completedTxns,
-             (SELECT COALESCE(SUM(t.amount), 0) FROM VendingTransactions t WHERE t.vendorId = v.id AND t.type = 'Vend' AND t.status = 'Completed') as totalVended
-             FROM Vendors v WHERE v.id = ?`;
-  db.query(sql, [req.params.id], (err, results) => {
+router.get('/vendors/:id/commission', authenticateToken, function(req, res) {
+  var sql = "SELECT v.*, (SELECT COUNT(*) FROM VendingTransactions t WHERE t.vendorId = v.id AND t.type = 'Vend' AND t.status = 'Completed') as completedTxns, (SELECT COALESCE(SUM(t.amount), 0) FROM VendingTransactions t WHERE t.vendorId = v.id AND t.type = 'Vend' AND t.status = 'Completed') as totalVended FROM Vendors v WHERE v.id = ?";
+  db.query(sql, [req.params.id], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     if (!results || results.length === 0) return res.status(404).json({ error: 'Vendor not found' });
-    const vendor = results[0];
-    const commission = vendor.totalVended * (vendor.commissionRate / 100);
-    res.json({ success: true, data: { ...vendor, commission: Math.round(commission * 100) / 100 } });
+    var vendor = results[0];
+    var commission = vendor.totalVended * (vendor.commissionRate / 100);
+    vendor.commission = round2(commission);
+    res.json({ success: true, data: vendor });
   });
 });
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SALES & BANKING BATCHES
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/batches/sales - List sales batches
-router.get('/batches/sales', authenticateToken, (req, res) => {
-  const { vendorId, status } = req.query;
-  let sql = 'SELECT * FROM SalesBatches WHERE 1=1';
-  const params = [];
-  if (vendorId) { sql += ' AND vendorId = ?'; params.push(vendorId); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
+router.get('/batches/sales', authenticateToken, function(req, res) {
+  var sql = 'SELECT * FROM SalesBatches WHERE 1=1';
+  var params = [];
+  if (req.query.vendorId) { sql += ' AND vendorId = ?'; params.push(req.query.vendorId); }
+  if (req.query.status) { sql += ' AND status = ?'; params.push(req.query.status); }
   sql += ' ORDER BY openedAt DESC';
-  db.query(sql, params, (err, results) => {
+  db.query(sql, params, function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, data: results || [] });
   });
 });
 
-// POST /vending/batches/sales - Create sales batch
-router.post('/batches/sales', authenticateToken, (req, res) => {
-  const { vendorId, notes } = req.body;
+router.post('/batches/sales', authenticateToken, function(req, res) {
+  var vendorId = req.body.vendorId;
+  var notes = req.body.notes;
   if (!vendorId) return res.status(400).json({ error: 'vendorId is required' });
 
-  db.query('SELECT name FROM Vendors WHERE id = ?', [vendorId], (err, vendorRows) => {
-    const vendorName = vendorRows && vendorRows.length > 0 ? vendorRows[0].name : 'Unknown';
-    const batchNo = `BATCH-${Date.now().toString(36).toUpperCase()}`;
+  db.query('SELECT name FROM Vendors WHERE id = ?', [vendorId], function(err, vendorRows) {
+    var vendorName = (vendorRows && vendorRows.length > 0) ? vendorRows[0].name : 'Unknown';
+    var batchNo = 'BATCH-' + Date.now().toString(36).toUpperCase();
     db.query(
       'INSERT INTO SalesBatches (batchNo, vendorId, vendorName, notes) VALUES (?, ?, ?, ?)',
       [batchNo, vendorId, vendorName, notes],
-      (err, result) => {
+      function(err, result) {
         if (err) return res.status(500).json({ error: err.message });
-        logAudit(`Sales batch opened: ${batchNo}`, 'BATCH', `Vendor: ${vendorName}`, (req.user && req.user.Username) || 'System', (req.user && req.user.Admin_ID), req.ip);
-        res.json({ success: true, id: result.insertId, batchNo });
+        logAudit('Sales batch opened: ' + batchNo, 'BATCH', 'Vendor: ' + vendorName, getOperatorName(req), getOperatorId(req), req.ip);
+        res.json({ success: true, id: result.insertId, batchNo: batchNo });
       }
     );
   });
 });
 
-// POST /vending/batches/sales/:id/close - Close sales batch
-router.post('/batches/sales/:id/close', authenticateToken, (req, res) => {
-  db.query('UPDATE SalesBatches SET status = "Closed", closedAt = NOW() WHERE id = ? AND status = "Open"', [req.params.id], (err, result) => {
+router.post('/batches/sales/:id/close', authenticateToken, function(req, res) {
+  db.query('UPDATE SalesBatches SET status = "Closed", closedAt = NOW() WHERE id = ? AND status = "Open"', [req.params.id], function(err, result) {
     if (err) return res.status(500).json({ error: err.message });
     if (result.affectedRows === 0) return res.status(400).json({ error: 'Batch not found or already closed' });
-    logAudit(`Sales batch closed: #${req.params.id}`, 'BATCH', '', (req.user && req.user.Username) || 'System', (req.user && req.user.Admin_ID), req.ip);
+    logAudit('Sales batch closed: #' + req.params.id, 'BATCH', '', getOperatorName(req), getOperatorId(req), req.ip);
     res.json({ success: true });
   });
 });
 
-// GET /vending/batches/banking - List banking batches
-router.get('/batches/banking', authenticateToken, (req, res) => {
+router.get('/batches/banking', authenticateToken, function(req, res) {
   db.query(
-    `SELECT bb.*, sb.batchNo as salesBatchNo, sb.vendorName
-     FROM BankingBatches bb
-     LEFT JOIN SalesBatches sb ON bb.salesBatchId = sb.id
-     ORDER BY bb.createdAt DESC`,
-    (err, results) => {
+    'SELECT bb.*, sb.batchNo as salesBatchNo, sb.vendorName FROM BankingBatches bb LEFT JOIN SalesBatches sb ON bb.salesBatchId = sb.id ORDER BY bb.createdAt DESC',
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// POST /vending/batches/banking - Create banking batch
-router.post('/batches/banking', authenticateToken, (req, res) => {
-  const { salesBatchId, bankRef, notes } = req.body;
+router.post('/batches/banking', authenticateToken, function(req, res) {
+  var salesBatchId = req.body.salesBatchId;
+  var bankRef = req.body.bankRef;
+  var notes = req.body.notes;
   if (!salesBatchId) return res.status(400).json({ error: 'salesBatchId is required' });
 
-  db.query('SELECT totalAmount FROM SalesBatches WHERE id = ? AND status = "Closed"', [salesBatchId], (err, rows) => {
+  db.query('SELECT totalAmount FROM SalesBatches WHERE id = ? AND status = "Closed"', [salesBatchId], function(err, rows) {
     if (err) return res.status(500).json({ error: err.message });
     if (!rows || rows.length === 0) return res.status(400).json({ error: 'Sales batch not found or not closed' });
 
-    const batchNo = `BANK-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+    var batchNo = 'BANK-' + new Date().getFullYear() + '-' + Date.now().toString(36).toUpperCase();
     db.query(
       'INSERT INTO BankingBatches (batchNo, salesBatchId, bankRef, totalAmount, notes) VALUES (?, ?, ?, ?, ?)',
       [batchNo, salesBatchId, bankRef, rows[0].totalAmount, notes],
-      (err, result) => {
+      function(err, result) {
         if (err) return res.status(500).json({ error: err.message });
-        logAudit(`Banking batch created: ${batchNo}`, 'BATCH', `Bank ref: ${bankRef}`, (req.user && req.user.Username) || 'System', (req.user && req.user.Admin_ID), req.ip);
-        res.json({ success: true, id: result.insertId, batchNo });
+        logAudit('Banking batch created: ' + batchNo, 'BATCH', 'Bank ref: ' + bankRef, getOperatorName(req), getOperatorId(req), req.ip);
+        res.json({ success: true, id: result.insertId, batchNo: batchNo });
       }
     );
   });
 });
 
-// POST /vending/batches/banking/:id/reconcile - Reconcile banking batch
-router.post('/batches/banking/:id/reconcile', authenticateToken, (req, res) => {
-  db.query('UPDATE BankingBatches SET status = "Reconciled", reconciledAt = NOW() WHERE id = ?', [req.params.id], (err) => {
+router.post('/batches/banking/:id/reconcile', authenticateToken, function(req, res) {
+  db.query('UPDATE BankingBatches SET status = "Reconciled", reconciledAt = NOW() WHERE id = ?', [req.params.id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    logAudit(`Banking batch reconciled: #${req.params.id}`, 'BATCH', '', (req.user && req.user.Username) || 'System', (req.user && req.user.Admin_ID), req.ip);
+    logAudit('Banking batch reconciled: #' + req.params.id, 'BATCH', '', getOperatorName(req), getOperatorId(req), req.ip);
     res.json({ success: true });
   });
 });
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TARIFFS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/tariffs/config - Get tariff system config
-router.get('/tariffs/config', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM TariffConfig LIMIT 1', (err, results) => {
+router.get('/tariffs/config', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM TariffConfig LIMIT 1', function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ success: true, data: results[0] || {} });
+    res.json({ success: true, data: (results && results[0]) || {} });
   });
 });
 
-// PUT /vending/tariffs/config - Update tariff system config
-router.put('/tariffs/config', authenticateToken, (req, res) => {
-  const fields = ['vatRate', 'fixedCharge', 'relLevy', 'minPurchase', 'arrearsMode', 'arrearsThreshold', 'arrearsPercentage'];
-  const updates = [];
-  const params = [];
-  fields.forEach(f => {
-    if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(req.body[f]); }
+router.put('/tariffs/config', authenticateToken, function(req, res) {
+  var fields = ['vatRate', 'fixedCharge', 'relLevy', 'minPurchase', 'arrearsMode', 'arrearsThreshold', 'arrearsPercentage'];
+  var updates = [];
+  var params = [];
+  fields.forEach(function(f) {
+    if (req.body[f] !== undefined) { updates.push(f + ' = ?'); params.push(req.body[f]); }
   });
   if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
-  db.query(`UPDATE TariffConfig SET ${updates.join(', ')} WHERE id = 1`, params, (err) => {
+  db.query('UPDATE TariffConfig SET ' + updates.join(', ') + ' WHERE id = 1', params, function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    const opName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-    logAudit('Tariff configuration updated', 'UPDATE', JSON.stringify(req.body), opName, (req.user && req.user.Admin_ID), req.ip);
+    logAudit('Tariff configuration updated', 'UPDATE', JSON.stringify(req.body), getOperatorName(req), getOperatorId(req), req.ip);
     res.json({ success: true });
   });
 });
 
-// GET /vending/tariffs/groups - List tariff groups with blocks
-router.get('/tariffs/groups', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM TariffGroups ORDER BY name', (err, groups) => {
+router.get('/tariffs/groups', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM TariffGroups ORDER BY name', function(err, groups) {
     if (err) return res.status(500).json({ error: err.message });
     if (!groups || groups.length === 0) return res.json({ success: true, data: [] });
 
-    const ids = groups.map(g => g.id);
-    db.query('SELECT * FROM TariffBlocks WHERE tariffGroupId IN (?) ORDER BY sortOrder', [ids], (err, blocks) => {
+    var ids = groups.map(function(g) { return g.id; });
+    db.query('SELECT * FROM TariffBlocks WHERE tariffGroupId IN (?) ORDER BY sortOrder', [ids], function(err, blocks) {
       if (err) return res.status(500).json({ error: err.message });
-      const result = groups.map(g => ({
-        ...g,
-        blocks: (blocks || []).filter(b => b.tariffGroupId === g.id),
-      }));
+      var result = groups.map(function(g) {
+        var obj = {};
+        for (var k in g) obj[k] = g[k];
+        obj.blocks = (blocks || []).filter(function(b) { return b.tariffGroupId === g.id; });
+        return obj;
+      });
       res.json({ success: true, data: result });
     });
   });
 });
 
-// POST /vending/tariffs/groups - Create tariff group
-router.post('/tariffs/groups', authenticateToken, (req, res) => {
-  const { name, sgc, description, type, flatRate, effectiveDate, blocks } = req.body;
-  if (!name) return res.status(400).json({ error: 'name is required' });
+router.post('/tariffs/groups', authenticateToken, function(req, res) {
+  var b = req.body;
+  if (!b.name) return res.status(400).json({ error: 'name is required' });
   db.query(
     'INSERT INTO TariffGroups (name, sgc, description, type, flatRate, effectiveDate) VALUES (?, ?, ?, ?, ?, ?)',
-    [name, sgc, description, type || 'Block', flatRate, effectiveDate],
-    (err, result) => {
+    [b.name, b.sgc, b.description, b.type || 'Block', b.flatRate, b.effectiveDate],
+    function(err, result) {
       if (err) return res.status(500).json({ error: err.message });
-      const groupId = result.insertId;
-      if (blocks && blocks.length > 0) {
-        const values = blocks.map((b, i) => [groupId, b.name, b.rangeLabel || b.range, b.rate, b.minKwh || b.min || 0, b.maxKwh || b.max || 999999, b.period || null, i]);
-        values.forEach(v => {
-          db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', v);
+      var groupId = result.insertId;
+      if (b.blocks && b.blocks.length > 0) {
+        b.blocks.forEach(function(bl, i) {
+          db.query('INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [groupId, bl.name, bl.rangeLabel || bl.range, bl.rate, bl.minKwh || bl.min || 0, bl.maxKwh || bl.max || 999999, bl.period || null, i]);
         });
       }
       res.json({ success: true, id: groupId });
@@ -915,220 +1200,230 @@ router.post('/tariffs/groups', authenticateToken, (req, res) => {
   );
 });
 
-// PUT /vending/tariffs/groups/:id - Update tariff group
-router.put('/tariffs/groups/:id', authenticateToken, (req, res) => {
-  const { name, sgc, description, type, flatRate, effectiveDate, blocks } = req.body;
+router.put('/tariffs/groups/:id', authenticateToken, function(req, res) {
+  var b = req.body;
   db.query(
     'UPDATE TariffGroups SET name = COALESCE(?, name), sgc = COALESCE(?, sgc), description = COALESCE(?, description), type = COALESCE(?, type), flatRate = COALESCE(?, flatRate), effectiveDate = COALESCE(?, effectiveDate) WHERE id = ?',
-    [name, sgc, description, type, flatRate, effectiveDate, req.params.id],
-    (err) => {
+    [b.name, b.sgc, b.description, b.type, b.flatRate, b.effectiveDate, req.params.id],
+    function(err) {
       if (err) return res.status(500).json({ error: err.message });
-      if (blocks) {
-        // Replace all blocks
-        db.query('DELETE FROM TariffBlocks WHERE tariffGroupId = ?', [req.params.id], () => {
-          blocks.forEach((b, i) => {
+      if (b.blocks) {
+        db.query('DELETE FROM TariffBlocks WHERE tariffGroupId = ?', [req.params.id], function() {
+          b.blocks.forEach(function(bl, i) {
             db.query(
               'INSERT INTO TariffBlocks (tariffGroupId, name, rangeLabel, rate, minKwh, maxKwh, period, sortOrder) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-              [req.params.id, b.name, b.rangeLabel || b.range, b.rate, b.minKwh || b.min || 0, b.maxKwh || b.max || 999999, b.period || null, i]
+              [req.params.id, bl.name, bl.rangeLabel || bl.range, bl.rate, bl.minKwh || bl.min || 0, bl.maxKwh || bl.max || 999999, bl.period || null, i]
             );
           });
         });
       }
-      const opName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-      logAudit(`Tariff group updated: ${name || req.params.id}`, 'UPDATE', '', opName, (req.user && req.user.Admin_ID), req.ip);
+      logAudit('Tariff group updated: ' + (b.name || req.params.id), 'UPDATE', '', getOperatorName(req), getOperatorId(req), req.ip);
       res.json({ success: true });
     }
   );
 });
 
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ARREARS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/arrears - Get customers with arrears
-router.get('/arrears', authenticateToken, (req, res) => {
-  db.query('SELECT * FROM VendingCustomers WHERE arrears > 0 ORDER BY arrears DESC', (err, results) => {
+router.get('/arrears', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM VendingCustomers WHERE arrears > 0 ORDER BY arrears DESC', function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, data: results || [] });
   });
 });
 
-// POST /vending/arrears/:meterNo - Set arrears for a customer
-router.post('/arrears/:meterNo', authenticateToken, (req, res) => {
-  const { amount } = req.body;
+router.post('/arrears/:meterNo', authenticateToken, function(req, res) {
+  var amount = req.body.amount;
   if (amount === undefined) return res.status(400).json({ error: 'amount is required' });
-  db.query('UPDATE VendingCustomers SET arrears = ?, status = IF(? > 0, "Arrears", "Active") WHERE meterNo = ?', [amount, amount, req.params.meterNo], (err, result) => {
+  db.query('UPDATE VendingCustomers SET arrears = ?, status = IF(? > 0, "Arrears", "Active") WHERE meterNo = ?', [amount, amount, req.params.meterNo], function(err, result) {
     if (err) return res.status(500).json({ error: err.message });
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Customer not found' });
-    const opName = req.user ? `${req.user.FirstName || ''} ${req.user.LastName || ''}`.trim() : 'System';
-    logAudit(`Arrears set: ${amount} N$ on meter ${req.params.meterNo}`, 'UPDATE', '', opName, (req.user && req.user.Admin_ID), req.ip);
+    logAudit('Arrears set: ' + amount + ' N$ on meter ' + req.params.meterNo, 'UPDATE', '', getOperatorName(req), getOperatorId(req), req.ip);
     res.json({ success: true });
   });
 });
 
-// GET /vending/arrears/summary - Get arrears summary
-router.get('/arrears/summary', authenticateToken, (req, res) => {
+router.get('/arrears/summary', authenticateToken, function(req, res) {
   db.query(
-    `SELECT COUNT(*) as totalCustomers, COALESCE(SUM(arrears), 0) as totalArrears,
-            COALESCE(AVG(arrears), 0) as avgArrears, COALESCE(MAX(arrears), 0) as maxArrears
-     FROM VendingCustomers WHERE arrears > 0`,
-    (err, results) => {
+    'SELECT COUNT(*) as totalCustomers, COALESCE(SUM(arrears), 0) as totalArrears, COALESCE(AVG(arrears), 0) as avgArrears, COALESCE(MAX(arrears), 0) as maxArrears FROM VendingCustomers WHERE arrears > 0',
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results[0] });
     }
   );
 });
 
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOG
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/audit - Get audit log
-router.get('/audit', authenticateToken, (req, res) => {
-  const { type, user, from, to, limit = 100, offset = 0 } = req.query;
-  let sql = 'SELECT * FROM AuditLog WHERE 1=1';
-  const params = [];
+router.get('/audit', authenticateToken, function(req, res) {
+  var type = req.query.type;
+  var user = req.query.user;
+  var from = req.query.from;
+  var to = req.query.to;
+  var limit = parseInt(req.query.limit) || 100;
+  var offset = parseInt(req.query.offset) || 0;
+
+  var sql = 'SELECT * FROM AuditLog WHERE 1=1';
+  var params = [];
   if (type) { sql += ' AND type = ?'; params.push(type); }
-  if (user) { sql += ' AND user LIKE ?'; params.push(`%${user}%`); }
+  if (user) { sql += ' AND user LIKE ?'; params.push('%' + user + '%'); }
   if (from) { sql += ' AND timestamp >= ?'; params.push(from); }
   if (to) { sql += ' AND timestamp <= ?'; params.push(to); }
   sql += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-  params.push(parseInt(limit), parseInt(offset));
-  db.query(sql, params, (err, results) => {
+  params.push(limit, offset);
+  db.query(sql, params, function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
-    db.query('SELECT COUNT(*) as total FROM AuditLog', (err2, countResult) => {
+    db.query('SELECT COUNT(*) as total FROM AuditLog', function(err2, countResult) {
       res.json({ success: true, data: results || [], total: countResult ? countResult[0].total : 0 });
     });
   });
 });
 
+
 // ═══════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /vending/reports/daily-sales - Daily sales report
-router.get('/reports/daily-sales', authenticateToken, (req, res) => {
-  const { from, to } = req.query;
-  const dateFrom = from || new Date().toISOString().split('T')[0];
-  const dateTo = to || dateFrom;
+router.get('/reports/daily-sales', authenticateToken, function(req, res) {
+  var from = req.query.from || new Date().toISOString().split('T')[0];
+  var to = req.query.to || from;
   db.query(
-    `SELECT DATE(dateTime) as date, COUNT(*) as transactions,
-            COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as revenue,
-            COALESCE(SUM(kWh), 0) as totalKwh,
-            COUNT(DISTINCT meterNo) as uniqueMeters
-     FROM VendingTransactions
-     WHERE DATE(dateTime) BETWEEN ? AND ? AND type = 'Vend' AND status = 'Completed'
-     GROUP BY DATE(dateTime) ORDER BY date`,
-    [dateFrom, dateTo],
-    (err, results) => {
+    "SELECT DATE(dateTime) as date, COUNT(*) as transactions, COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as revenue, COALESCE(SUM(kWh), 0) as totalKwh, COUNT(DISTINCT meterNo) as uniqueMeters FROM VendingTransactions WHERE DATE(dateTime) BETWEEN ? AND ? AND type = 'Vend' AND status = 'Completed' GROUP BY DATE(dateTime) ORDER BY date",
+    [from, to],
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// GET /vending/reports/revenue-by-area - Revenue by area
-router.get('/reports/revenue-by-area', authenticateToken, (req, res) => {
+router.get('/reports/revenue-by-area', authenticateToken, function(req, res) {
   db.query(
-    `SELECT c.area, COUNT(t.id) as transactions, COALESCE(SUM(t.amount), 0) as revenue,
-            COALESCE(SUM(t.kWh), 0) as totalKwh
-     FROM VendingTransactions t
-     LEFT JOIN VendingCustomers c ON t.meterNo = c.meterNo
-     WHERE t.type = 'Vend' AND t.status = 'Completed'
-     GROUP BY c.area ORDER BY revenue DESC`,
-    (err, results) => {
+    "SELECT c.area, COUNT(t.id) as transactions, COALESCE(SUM(t.amount), 0) as revenue, COALESCE(SUM(t.kWh), 0) as totalKwh FROM VendingTransactions t LEFT JOIN VendingCustomers c ON t.meterNo = c.meterNo WHERE t.type = 'Vend' AND t.status = 'Completed' GROUP BY c.area ORDER BY revenue DESC",
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// GET /vending/reports/vendor-performance - Vendor performance
-router.get('/reports/vendor-performance', authenticateToken, (req, res) => {
+router.get('/reports/vendor-performance', authenticateToken, function(req, res) {
   db.query(
-    `SELECT v.id, v.name, v.commissionRate,
-            COUNT(t.id) as transactions, COALESCE(SUM(t.amount), 0) as revenue,
-            COALESCE(SUM(t.kWh), 0) as totalKwh,
-            COALESCE(SUM(t.amount), 0) * v.commissionRate / 100 as commission
-     FROM Vendors v
-     LEFT JOIN VendingTransactions t ON v.id = t.vendorId AND t.type = 'Vend' AND t.status = 'Completed'
-     GROUP BY v.id ORDER BY revenue DESC`,
-    (err, results) => {
+    "SELECT v.id, v.name, v.commissionRate, COUNT(t.id) as transactions, COALESCE(SUM(t.amount), 0) as revenue, COALESCE(SUM(t.kWh), 0) as totalKwh, COALESCE(SUM(t.amount), 0) * v.commissionRate / 100 as commission FROM Vendors v LEFT JOIN VendingTransactions t ON v.id = t.vendorId AND t.type = 'Vend' AND t.status = 'Completed' GROUP BY v.id ORDER BY revenue DESC",
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// GET /vending/reports/meter-status - Meter status report
-router.get('/reports/meter-status', authenticateToken, (req, res) => {
+router.get('/reports/meter-status', authenticateToken, function(req, res) {
   db.query(
-    `SELECT status, COUNT(*) as count FROM VendingCustomers GROUP BY status
-     UNION ALL
-     SELECT 'Total' as status, COUNT(*) as count FROM VendingCustomers`,
-    (err, results) => {
+    "SELECT status, COUNT(*) as count FROM VendingCustomers GROUP BY status UNION ALL SELECT 'Total' as status, COUNT(*) as count FROM VendingCustomers",
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// GET /vending/reports/token-analysis - Token analysis
-router.get('/reports/token-analysis', authenticateToken, (req, res) => {
+router.get('/reports/token-analysis', authenticateToken, function(req, res) {
   db.query(
-    `SELECT type, status, COUNT(*) as count, COALESCE(SUM(amount), 0) as totalAmount, COALESCE(SUM(kWh), 0) as totalKwh
-     FROM VendingTransactions GROUP BY type, status ORDER BY type, status`,
-    (err, results) => {
+    'SELECT type, status, COUNT(*) as count, COALESCE(SUM(amount), 0) as totalAmount, COALESCE(SUM(kWh), 0) as totalKwh FROM VendingTransactions GROUP BY type, status ORDER BY type, status',
+    function(err, results) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, data: results || [] });
     }
   );
 });
 
-// GET /vending/reports/system-audit - System audit (alias for audit log)
-router.get('/reports/system-audit', authenticateToken, (req, res) => {
-  const { from, to, limit = 500 } = req.query;
-  let sql = 'SELECT * FROM AuditLog WHERE 1=1';
-  const params = [];
+router.get('/reports/system-audit', authenticateToken, function(req, res) {
+  var from = req.query.from;
+  var to = req.query.to;
+  var limit = parseInt(req.query.limit) || 500;
+  var sql = 'SELECT * FROM AuditLog WHERE 1=1';
+  var params = [];
   if (from) { sql += ' AND timestamp >= ?'; params.push(from); }
   if (to) { sql += ' AND timestamp <= ?'; params.push(to); }
   sql += ' ORDER BY timestamp DESC LIMIT ?';
-  params.push(parseInt(limit));
-  db.query(sql, params, (err, results) => {
+  params.push(limit);
+  db.query(sql, params, function(err, results) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, data: results || [] });
   });
 });
 
-// GET /vending/dashboard - Dashboard summary for vending
-router.get('/dashboard', authenticateToken, (req, res) => {
-  const queries = {
-    todayRevenue: `SELECT COALESCE(SUM(amount), 0) as val FROM VendingTransactions WHERE DATE(dateTime) = CURDATE() AND type = 'Vend' AND status = 'Completed'`,
-    todayTokens: `SELECT COUNT(*) as val FROM VendingTransactions WHERE DATE(dateTime) = CURDATE() AND type = 'Vend' AND status = 'Completed'`,
-    monthRevenue: `SELECT COALESCE(SUM(amount), 0) as val FROM VendingTransactions WHERE MONTH(dateTime) = MONTH(CURDATE()) AND YEAR(dateTime) = YEAR(CURDATE()) AND type = 'Vend' AND status = 'Completed'`,
-    totalCustomers: `SELECT COUNT(*) as val FROM VendingCustomers`,
-    activeCustomers: `SELECT COUNT(*) as val FROM VendingCustomers WHERE status = 'Active'`,
-    totalArrears: `SELECT COALESCE(SUM(arrears), 0) as val FROM VendingCustomers WHERE arrears > 0`,
-    vendorCount: `SELECT COUNT(*) as val FROM Vendors WHERE status = 'Active'`,
-    openBatches: `SELECT COUNT(*) as val FROM SalesBatches WHERE status = 'Open'`,
+// NEW: Line item audit report — trace every cent
+router.get('/reports/line-items', authenticateToken, function(req, res) {
+  var from = req.query.from;
+  var to = req.query.to;
+  var lineType = req.query.lineType;
+  var meterNo = req.query.meterNo;
+  var limit = parseInt(req.query.limit) || 200;
+
+  var sql = 'SELECT li.*, t.customerName, t.type as txnType, t.status as txnStatus, t.dateTime FROM TransactionLineItems li JOIN VendingTransactions t ON li.transactionId = t.id WHERE 1=1';
+  var params = [];
+  if (from) { sql += ' AND t.dateTime >= ?'; params.push(from); }
+  if (to) { sql += ' AND t.dateTime <= ?'; params.push(to); }
+  if (lineType) { sql += ' AND li.lineType = ?'; params.push(lineType); }
+  if (meterNo) { sql += ' AND li.meterNo = ?'; params.push(meterNo); }
+  sql += ' ORDER BY li.id DESC LIMIT ?';
+  params.push(limit);
+
+  db.query(sql, params, function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // Also get summary totals by line type
+    var summSql = 'SELECT li.lineType, COUNT(*) as count, COALESCE(SUM(li.amount), 0) as totalAmount, COALESCE(SUM(li.kWh), 0) as totalKwh FROM TransactionLineItems li JOIN VendingTransactions t ON li.transactionId = t.id WHERE 1=1';
+    var summParams = [];
+    if (from) { summSql += ' AND t.dateTime >= ?'; summParams.push(from); }
+    if (to) { summSql += ' AND t.dateTime <= ?'; summParams.push(to); }
+    if (meterNo) { summSql += ' AND li.meterNo = ?'; summParams.push(meterNo); }
+    summSql += ' GROUP BY li.lineType';
+
+    db.query(summSql, summParams, function(err2, summary) {
+      res.json({ success: true, data: results || [], summary: summary || [] });
+    });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.get('/dashboard', authenticateToken, function(req, res) {
+  var queries = {
+    todayRevenue: "SELECT COALESCE(SUM(amount), 0) as val FROM VendingTransactions WHERE DATE(dateTime) = CURDATE() AND type = 'Vend' AND status = 'Completed'",
+    todayTokens: "SELECT COUNT(*) as val FROM VendingTransactions WHERE DATE(dateTime) = CURDATE() AND type = 'Vend' AND status = 'Completed'",
+    monthRevenue: "SELECT COALESCE(SUM(amount), 0) as val FROM VendingTransactions WHERE MONTH(dateTime) = MONTH(CURDATE()) AND YEAR(dateTime) = YEAR(CURDATE()) AND type = 'Vend' AND status = 'Completed'",
+    totalCustomers: 'SELECT COUNT(*) as val FROM VendingCustomers',
+    activeCustomers: "SELECT COUNT(*) as val FROM VendingCustomers WHERE status = 'Active'",
+    totalArrears: 'SELECT COALESCE(SUM(arrears), 0) as val FROM VendingCustomers WHERE arrears > 0',
+    vendorCount: "SELECT COUNT(*) as val FROM Vendors WHERE status = 'Active'",
+    openBatches: "SELECT COUNT(*) as val FROM SalesBatches WHERE status = 'Open'",
+    todayReversals: "SELECT COUNT(*) as val FROM VendingTransactions WHERE DATE(dateTime) = CURDATE() AND type = 'Reversal'",
+    totalLineItems: 'SELECT COUNT(*) as val FROM TransactionLineItems'
   };
 
-  const result = {};
-  const keys = Object.keys(queries);
-  let done = 0;
+  var result = {};
+  var keys = Object.keys(queries);
+  var done = 0;
 
-  keys.forEach(key => {
-    db.query(queries[key], (err, rows) => {
+  keys.forEach(function(key) {
+    db.query(queries[key], function(err, rows) {
       result[key] = err ? 0 : ((rows[0] && rows[0].val) || 0);
       done++;
       if (done === keys.length) {
-        // Get weekly sales trend
         db.query(
-          `SELECT DAYNAME(dateTime) as day, COALESCE(SUM(amount), 0) as revenue, COUNT(*) as tokens, COALESCE(SUM(kWh), 0) as kWh
-           FROM VendingTransactions
-           WHERE dateTime >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND type = 'Vend' AND status = 'Completed'
-           GROUP BY DAYNAME(dateTime), DAYOFWEEK(dateTime) ORDER BY DAYOFWEEK(dateTime)`,
-          (err, trend) => {
+          "SELECT DAYNAME(dateTime) as day, COALESCE(SUM(amount), 0) as revenue, COUNT(*) as tokens, COALESCE(SUM(kWh), 0) as kWh FROM VendingTransactions WHERE dateTime >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND type = 'Vend' AND status = 'Completed' GROUP BY DAYNAME(dateTime), DAYOFWEEK(dateTime) ORDER BY DAYOFWEEK(dateTime)",
+          function(err, trend) {
             result.salesTrend = trend || [];
             res.json({ success: true, data: result });
           }
@@ -1137,5 +1432,6 @@ router.get('/dashboard', authenticateToken, (req, res) => {
     });
   });
 });
+
 
 module.exports = router;
