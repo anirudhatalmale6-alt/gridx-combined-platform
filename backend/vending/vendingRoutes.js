@@ -206,6 +206,32 @@ var TABLES = [
   "  INDEX idx_timestamp (timestamp)," +
   "  INDEX idx_type (type)," +
   "  INDEX idx_userId (userId)" +
+  ")",
+
+  // Non-GridX (third-party) customer registry
+  "CREATE TABLE IF NOT EXISTS NonGridxCustomers (" +
+  "  id INT AUTO_INCREMENT PRIMARY KEY," +
+  "  accountNo VARCHAR(50) NOT NULL UNIQUE," +
+  "  name VARCHAR(100) NOT NULL," +
+  "  phone VARCHAR(30)," +
+  "  email VARCHAR(100)," +
+  "  meterNo VARCHAR(50) NOT NULL," +
+  "  meterType VARCHAR(100)," +
+  "  meterMake VARCHAR(100)," +
+  "  utilityProvider VARCHAR(100)," +
+  "  area VARCHAR(100)," +
+  "  address VARCHAR(255)," +
+  "  gpsLat DECIMAL(10,6)," +
+  "  gpsLng DECIMAL(10,6)," +
+  "  tariffGroup VARCHAR(50) DEFAULT 'Residential'," +
+  "  status ENUM('Active','Suspended','Inactive') DEFAULT 'Active'," +
+  "  notes TEXT," +
+  "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+  "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
+  "  INDEX idx_meterNo (meterNo)," +
+  "  INDEX idx_area (area)," +
+  "  INDEX idx_status (status)," +
+  "  INDEX idx_provider (utilityProvider)" +
   ")"
 ];
 
@@ -421,7 +447,207 @@ router.put('/customers/:id', authenticateToken, function(req, res) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TOKEN VENDING — ATOMIC, with individual line items per NamPower spec
+// NON-GRIDX (THIRD-PARTY) CUSTOMERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+var multer = require('multer');
+var upload = multer({ dest: '/tmp/uploads/', limits: { fileSize: 5 * 1024 * 1024 } });
+var fs = require('fs');
+
+// GET all non-GridX customers
+router.get('/non-gridx-customers', authenticateToken, function(req, res) {
+  var search = req.query.search;
+  var area = req.query.area;
+  var status = req.query.status;
+  var provider = req.query.provider;
+  var sql = 'SELECT * FROM NonGridxCustomers WHERE 1=1';
+  var params = [];
+  if (search) {
+    sql += ' AND (name LIKE ? OR meterNo LIKE ? OR accountNo LIKE ? OR utilityProvider LIKE ?)';
+    params.push('%' + search + '%', '%' + search + '%', '%' + search + '%', '%' + search + '%');
+  }
+  if (area) { sql += ' AND area = ?'; params.push(area); }
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (provider) { sql += ' AND utilityProvider = ?'; params.push(provider); }
+  sql += ' ORDER BY name';
+  db.query(sql, params, function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, data: results || [] });
+  });
+});
+
+// GET single non-GridX customer
+router.get('/non-gridx-customers/:id', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM NonGridxCustomers WHERE id = ?', [req.params.id], function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!results || results.length === 0) return res.status(404).json({ error: 'Customer not found' });
+    res.json({ success: true, data: results[0] });
+  });
+});
+
+// POST create non-GridX customer
+router.post('/non-gridx-customers', authenticateToken, function(req, res) {
+  var b = req.body;
+  if (!b.name || !b.meterNo) return res.status(400).json({ error: 'name and meterNo are required' });
+  var acct = b.accountNo || ('EXT-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-6));
+  db.query(
+    'INSERT INTO NonGridxCustomers (accountNo, name, phone, email, meterNo, meterType, meterMake, utilityProvider, area, address, gpsLat, gpsLng, tariffGroup, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [acct, b.name, b.phone, b.email, b.meterNo, b.meterType, b.meterMake, b.utilityProvider, b.area, b.address, b.gpsLat, b.gpsLng, b.tariffGroup || 'Residential', b.notes],
+    function(err, result) {
+      if (err) return res.status(500).json({ error: err.message });
+      logAudit('Non-GridX customer created: ' + b.name, 'CREATE', 'Meter: ' + b.meterNo + ', Provider: ' + (b.utilityProvider || 'N/A'), getOperatorName(req), getOperatorId(req), req.ip);
+      res.json({ success: true, id: result.insertId });
+    }
+  );
+});
+
+// PUT update non-GridX customer
+router.put('/non-gridx-customers/:id', authenticateToken, function(req, res) {
+  var fields = ['name', 'phone', 'email', 'meterNo', 'meterType', 'meterMake', 'utilityProvider', 'area', 'address', 'gpsLat', 'gpsLng', 'tariffGroup', 'status', 'notes'];
+  var updates = [];
+  var params = [];
+  fields.forEach(function(f) {
+    if (req.body[f] !== undefined) { updates.push(f + ' = ?'); params.push(req.body[f]); }
+  });
+  if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+  params.push(req.params.id);
+  db.query('UPDATE NonGridxCustomers SET ' + updates.join(', ') + ' WHERE id = ?', params, function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true });
+  });
+});
+
+// DELETE non-GridX customer
+router.delete('/non-gridx-customers/:id', authenticateToken, function(req, res) {
+  db.query('DELETE FROM NonGridxCustomers WHERE id = ?', [req.params.id], function(err, result) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Customer not found' });
+    logAudit('Non-GridX customer deleted', 'DELETE', 'ID: ' + req.params.id, getOperatorName(req), getOperatorId(req), req.ip);
+    res.json({ success: true });
+  });
+});
+
+// POST batch import non-GridX customers (CSV)
+router.post('/non-gridx-customers/import', authenticateToken, upload.single('file'), function(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  var filePath = req.file.path;
+  try {
+    var content = fs.readFileSync(filePath, 'utf8');
+    fs.unlinkSync(filePath); // clean up
+    var lines = content.split(/\r?\n/).filter(function(l) { return l.trim(); });
+    if (lines.length < 2) return res.status(400).json({ error: 'File must have a header row and at least one data row' });
+
+    // Parse header
+    var header = lines[0].split(',').map(function(h) { return h.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''); });
+    var fieldMap = {
+      name: ['name', 'customername', 'customer_name', 'fullname'],
+      meterNo: ['meterno', 'meter_no', 'meternumber', 'meter_number', 'meter'],
+      phone: ['phone', 'telephone', 'tel', 'mobile', 'cell', 'phonenumber'],
+      email: ['email', 'emailaddress', 'email_address'],
+      meterType: ['metertype', 'meter_type', 'type'],
+      meterMake: ['metermake', 'meter_make', 'make', 'brand'],
+      utilityProvider: ['utilityprovider', 'utility_provider', 'provider', 'utility'],
+      area: ['area', 'location', 'city', 'town', 'suburb'],
+      address: ['address', 'streetaddress', 'street_address', 'street'],
+      gpsLat: ['gpslat', 'gps_lat', 'latitude', 'lat'],
+      gpsLng: ['gpslng', 'gps_lng', 'longitude', 'lng', 'lon'],
+      tariffGroup: ['tariffgroup', 'tariff_group', 'tariff'],
+      notes: ['notes', 'note', 'comments', 'comment']
+    };
+
+    // Map header columns to our fields
+    var colIndex = {};
+    Object.keys(fieldMap).forEach(function(field) {
+      for (var i = 0; i < header.length; i++) {
+        if (fieldMap[field].indexOf(header[i]) !== -1) {
+          colIndex[field] = i;
+          break;
+        }
+      }
+    });
+
+    if (colIndex.name === undefined || colIndex.meterNo === undefined) {
+      return res.status(400).json({ error: 'CSV must have "Name" and "MeterNo" columns' });
+    }
+
+    var rows = [];
+    var errors = [];
+    for (var i = 1; i < lines.length; i++) {
+      var cols = parseCSVLine(lines[i]);
+      var name = cols[colIndex.name] ? cols[colIndex.name].trim() : '';
+      var meterNo = cols[colIndex.meterNo] ? cols[colIndex.meterNo].trim() : '';
+      if (!name || !meterNo) {
+        errors.push('Row ' + (i + 1) + ': missing name or meterNo');
+        continue;
+      }
+      var acct = 'EXT-' + new Date().getFullYear() + '-' + (Date.now() + i).toString().slice(-6);
+      rows.push([
+        acct, name,
+        cols[colIndex.phone] ? cols[colIndex.phone].trim() : null,
+        cols[colIndex.email] ? cols[colIndex.email].trim() : null,
+        meterNo,
+        cols[colIndex.meterType] ? cols[colIndex.meterType].trim() : null,
+        cols[colIndex.meterMake] ? cols[colIndex.meterMake].trim() : null,
+        cols[colIndex.utilityProvider] ? cols[colIndex.utilityProvider].trim() : null,
+        cols[colIndex.area] ? cols[colIndex.area].trim() : null,
+        cols[colIndex.address] ? cols[colIndex.address].trim() : null,
+        cols[colIndex.gpsLat] ? parseFloat(cols[colIndex.gpsLat]) || null : null,
+        cols[colIndex.gpsLng] ? parseFloat(cols[colIndex.gpsLng]) || null : null,
+        cols[colIndex.tariffGroup] ? cols[colIndex.tariffGroup].trim() : 'Residential',
+        cols[colIndex.notes] ? cols[colIndex.notes].trim() : null
+      ]);
+    }
+
+    if (rows.length === 0) return res.status(400).json({ error: 'No valid rows found', details: errors });
+
+    var sql = 'INSERT INTO NonGridxCustomers (accountNo, name, phone, email, meterNo, meterType, meterMake, utilityProvider, area, address, gpsLat, gpsLng, tariffGroup, notes) VALUES ?';
+    db.query(sql, [rows], function(err, result) {
+      if (err) return res.status(500).json({ error: err.message });
+      logAudit('Batch import: ' + rows.length + ' non-GridX customers', 'CREATE', 'CSV import', getOperatorName(req), getOperatorId(req), req.ip);
+      res.json({ success: true, imported: result.affectedRows, errors: errors });
+    });
+  } catch (e) {
+    try { fs.unlinkSync(filePath); } catch(ex) {}
+    return res.status(500).json({ error: 'Failed to parse file: ' + e.message });
+  }
+});
+
+// Simple CSV line parser (handles quoted fields)
+function parseCSVLine(line) {
+  var result = [];
+  var current = '';
+  var inQuotes = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// GET providers list
+router.get('/non-gridx-customers/providers/list', authenticateToken, function(req, res) {
+  db.query('SELECT DISTINCT utilityProvider FROM NonGridxCustomers WHERE utilityProvider IS NOT NULL ORDER BY utilityProvider', function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, data: (results || []).map(function(r) { return r.utilityProvider; }) });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOKEN VENDING — ATOMIC, with individual line items
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**

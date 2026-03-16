@@ -45,7 +45,7 @@ import {
 } from "@react-google-maps/api";
 import Header from "../components/Header";
 import { tokens } from "../theme";
-import { meterAPI, energyAPI, financeAPI } from "../services/api";
+import { meterAPI, energyAPI, financeAPI, nonGridxAPI } from "../services/api";
 import {
   BarChart,
   Bar,
@@ -199,6 +199,33 @@ function selectedMeterIcon() {
   };
 }
 
+function nonGridxIcon() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+    <defs>
+      <filter id="nglow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <radialGradient id="ngrad" cx="40%" cy="35%">
+        <stop offset="0%" stop-color="#ffb347"/>
+        <stop offset="100%" stop-color="#e68100"/>
+      </radialGradient>
+    </defs>
+    <circle cx="22" cy="22" r="18" fill="none" stroke="#e68100" stroke-width="1.5" opacity="0.3">
+      <animate attributeName="r" values="14;20;14" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M22 5 L22 5 L37 14 L37 30 L22 39 L7 30 L7 14 Z" fill="url(#ngrad)" filter="url(#nglow)"/>
+    <path d="M22 5 L22 5 L37 14 L37 30 L22 39 L7 30 L7 14 Z" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2"/>
+    <text x="22" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="sans-serif">E</text>
+  </svg>`;
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+    scaledSize: { width: 44, height: 44, equals: () => false },
+    anchor: { x: 22, y: 22, equals: () => false },
+  };
+}
+
 /* ---- Point in polygon check (ray casting) ---- */
 function pointInPolygon(lat, lng, polygonPath) {
   let inside = false;
@@ -231,6 +258,8 @@ export default function MapPage() {
   const [mapRef, setMapRef] = useState(null);
   const [networkTab, setNetworkTab] = useState("meters");
   const [expandedTrans, setExpandedTrans] = useState(null);
+  const [nonGridxMeters, setNonGridxMeters] = useState([]);
+  const [selectedNonGridx, setSelectedNonGridx] = useState(null);
 
   // Polygon drawing state
   const [drawingMode, setDrawingMode] = useState(false);
@@ -254,9 +283,10 @@ export default function MapPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const [locResult, transResult] = await Promise.allSettled([
+      const [locResult, transResult, ngResult] = await Promise.allSettled([
         meterAPI.getAllLocations(),
         meterAPI.getAllTransformers(),
+        nonGridxAPI.getCustomers(),
       ]);
       if (locResult.status === "fulfilled") {
         setMeterLocations(
@@ -267,6 +297,9 @@ export default function MapPage() {
         setTransformers(
           Array.isArray(transResult.value) ? transResult.value : []
         );
+      }
+      if (ngResult.status === "fulfilled" && ngResult.value?.data) {
+        setNonGridxMeters(ngResult.value.data.filter(c => c.gpsLat && c.gpsLng));
       }
       setLoading(false);
     };
@@ -330,6 +363,7 @@ export default function MapPage() {
   const handleTransformerClick = useCallback(
     async (trans) => {
       setSelectedMeter(null);
+      setSelectedNonGridx(null);
       setSelectedTransformer(trans);
       try {
         const meters = await meterAPI.getMetersByTransformer(trans.DRN);
@@ -855,6 +889,7 @@ export default function MapPage() {
                         if (drawingMode) return;
                         setSelectedTransformer(null);
                         setConnectedMeters([]);
+                        setSelectedNonGridx(null);
                         setSelectedMeter(m);
                       }}
                       animation={isSelected ? 1 : undefined}
@@ -875,6 +910,27 @@ export default function MapPage() {
                       onClick={() => {
                         if (drawingMode) return;
                         handleTransformerClick(t);
+                      }}
+                    />
+                  );
+                })}
+
+                {/* Non-GridX meter markers */}
+                {nonGridxMeters.map((c) => {
+                  const lat = parseFloat(c.gpsLat);
+                  const lng = parseFloat(c.gpsLng);
+                  if (isNaN(lat) || isNaN(lng)) return null;
+                  return (
+                    <Marker
+                      key={`ng-${c.id}`}
+                      position={{ lat, lng }}
+                      icon={nonGridxIcon()}
+                      onClick={() => {
+                        if (drawingMode) return;
+                        setSelectedMeter(null);
+                        setSelectedTransformer(null);
+                        setConnectedMeters([]);
+                        setSelectedNonGridx(c);
                       }}
                     />
                   );
@@ -1011,6 +1067,50 @@ export default function MapPage() {
                             ))}
                           </Box>
                         )}
+                      </Box>
+                    </InfoWindow>
+                  );
+                })()}
+
+                {/* Non-GridX InfoWindow */}
+                {selectedNonGridx && (() => {
+                  const lat = parseFloat(selectedNonGridx.gpsLat);
+                  const lng = parseFloat(selectedNonGridx.gpsLng);
+                  if (isNaN(lat) || isNaN(lng)) return null;
+                  return (
+                    <InfoWindow position={{ lat, lng }} onCloseClick={() => setSelectedNonGridx(null)}>
+                      <Box sx={{ p: "4px", minWidth: 180, color: "#1a1a2e" }}>
+                        <Box display="flex" alignItems="center" gap="6px" mb="6px">
+                          <Box sx={{
+                            width: 10, height: 10, borderRadius: "2px",
+                            background: "#e68100",
+                          }} />
+                          <Typography variant="caption" fontWeight={700} color="#e68100">
+                            NON-GRIDX METER
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700}>{selectedNonGridx.name}</Typography>
+                        <Typography variant="caption" sx={{ fontFamily: "monospace", display: "block" }}>
+                          {selectedNonGridx.meterNo}
+                        </Typography>
+                        {selectedNonGridx.utilityProvider && (
+                          <Typography variant="caption" display="block" color="#666">
+                            Provider: {selectedNonGridx.utilityProvider}
+                          </Typography>
+                        )}
+                        {selectedNonGridx.meterType && (
+                          <Typography variant="caption" display="block" color="#666">
+                            Type: {selectedNonGridx.meterType}
+                          </Typography>
+                        )}
+                        {selectedNonGridx.area && (
+                          <Typography variant="caption" display="block" color="#666">
+                            {selectedNonGridx.area}
+                          </Typography>
+                        )}
+                        <Typography variant="caption" display="block" sx={{ mt: "2px", color: "#888" }}>
+                          {lat.toFixed(6)}, {lng.toFixed(6)}
+                        </Typography>
                       </Box>
                     </InfoWindow>
                   );

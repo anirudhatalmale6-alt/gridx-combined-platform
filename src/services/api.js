@@ -50,6 +50,26 @@ function del(url) {
   return request(url, { method: 'DELETE' });
 }
 
+async function uploadFile(url, formData) {
+  const token = sessionStorage.getItem('token');
+  const res = await fetch(`${API_BASE}${url}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (res.status === 401) {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || body.message || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
 // ===== AUTH =====
 export const authAPI = {
   login: (Email, Password) => post('/signin', { Email, Password }),
@@ -341,6 +361,20 @@ export const integrationAPI = {
   getWebhookLog: () => get('/integration/webhook-log'),
 };
 
+// ===== NON-GRIDX CUSTOMERS =====
+export const nonGridxAPI = {
+  getCustomers: (params) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return get(`/vending/non-gridx-customers${q ? '?' + q : ''}`);
+  },
+  getCustomer: (id) => get(`/vending/non-gridx-customers/${id}`),
+  createCustomer: (data) => post('/vending/non-gridx-customers', data),
+  updateCustomer: (id, data) => put(`/vending/non-gridx-customers/${id}`, data),
+  deleteCustomer: (id) => del(`/vending/non-gridx-customers/${id}`),
+  importCSV: (formData) => uploadFile('/vending/non-gridx-customers/import', formData),
+  getProviders: () => get('/vending/non-gridx-customers/providers/list'),
+};
+
 export default {
   auth: authAPI,
   meter: meterAPI,
@@ -362,4 +396,5 @@ export default {
   relayEvents: relayEventsAPI,
   vending: vendingAPI,
   integration: integrationAPI,
+  nonGridx: nonGridxAPI,
 };
