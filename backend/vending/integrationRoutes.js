@@ -1703,19 +1703,60 @@ router.get('/swagger', function(req, res) {
     '  <title>GRIDx Vending API - Swagger UI</title>' +
     '  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">' +
     '  <style>' +
-    '    body { margin: 0; background: #1a1a2e; }' +
+    '    body { margin: 0; background: #fafafa; }' +
     '    .swagger-ui .topbar { display: none; }' +
     '    .custom-header {' +
-    '      background: linear-gradient(135deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%);' +
-    '      padding: 24px 40px;' +
-    '      border-bottom: 2px solid #e94560;' +
+    '      background: linear-gradient(135deg, #0a2540 0%, #0d3b66 50%, #1a5276 100%);' +
+    '      padding: 28px 40px;' +
+    '      border-bottom: 4px solid #00b894;' +
     '    }' +
     '    .custom-header h1 {' +
-    '      margin: 0; color: #fff; font-family: sans-serif; font-size: 28px; font-weight: 700;' +
+    '      margin: 0; color: #ffffff; font-family: sans-serif; font-size: 28px; font-weight: 700;' +
     '    }' +
-    '    .custom-header h1 span { color: #4ecca3; }' +
-    '    .custom-header p { margin: 6px 0 0; color: #8892b0; font-family: sans-serif; font-size: 14px; }' +
-    '    #swagger-ui { max-width: 1400px; margin: 0 auto; }' +
+    '    .custom-header h1 span { color: #00e6a7; }' +
+    '    .custom-header p { margin: 6px 0 0; color: #d0d8e8; font-family: sans-serif; font-size: 14px; }' +
+    '    #swagger-ui { max-width: 1400px; margin: 0 auto; padding: 20px 0; }' +
+    /* High-contrast overrides for Swagger UI */
+    '    .swagger-ui .info .title { color: #1a1a2e; font-weight: 800; }' +
+    '    .swagger-ui .info { margin: 20px 0; }' +
+    '    .swagger-ui .info .description p, .swagger-ui .info .description li { color: #2d3748; font-size: 14px; line-height: 1.7; }' +
+    '    .swagger-ui .info a { color: #0066cc; }' +
+    '    .swagger-ui .scheme-container { background: #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 8px; padding: 16px; }' +
+    '    .swagger-ui .opblock-tag { color: #1a202c !important; font-size: 18px !important; font-weight: 700 !important; border-bottom: 2px solid #e2e8f0; }' +
+    '    .swagger-ui .opblock .opblock-summary-description { color: #2d3748; font-size: 13px; font-weight: 500; }' +
+    '    .swagger-ui .opblock .opblock-summary-path { color: #1a202c; font-weight: 700; }' +
+    '    .swagger-ui .opblock .opblock-summary-method { font-weight: 800; font-size: 14px; border-radius: 6px; }' +
+    '    .swagger-ui .opblock.opblock-post { background: #e8f5e9; border-color: #43a047; }' +
+    '    .swagger-ui .opblock.opblock-post .opblock-summary { border-color: #43a047; }' +
+    '    .swagger-ui .opblock.opblock-get { background: #e3f2fd; border-color: #1976d2; }' +
+    '    .swagger-ui .opblock.opblock-get .opblock-summary { border-color: #1976d2; }' +
+    '    .swagger-ui .opblock.opblock-delete { background: #ffebee; border-color: #e53935; }' +
+    '    .swagger-ui .opblock.opblock-delete .opblock-summary { border-color: #e53935; }' +
+    '    .swagger-ui .opblock.opblock-put { background: #fff3e0; border-color: #ef6c00; }' +
+    '    .swagger-ui .opblock.opblock-put .opblock-summary { border-color: #ef6c00; }' +
+    '    .swagger-ui .opblock-body { background: #ffffff; }' +
+    '    .swagger-ui table thead tr th { color: #1a202c !important; font-weight: 700; font-size: 13px; border-bottom: 2px solid #cbd5e0; }' +
+    '    .swagger-ui table tbody tr td { color: #2d3748; font-size: 13px; }' +
+    '    .swagger-ui .parameter__name { color: #1a202c !important; font-weight: 700 !important; }' +
+    '    .swagger-ui .parameter__type { color: #4a5568; font-weight: 600; }' +
+    '    .swagger-ui .parameter__in { color: #718096; }' +
+    '    .swagger-ui .response-col_status { color: #1a202c !important; font-weight: 700; }' +
+    '    .swagger-ui .response-col_description { color: #2d3748; }' +
+    '    .swagger-ui .responses-inner h4, .swagger-ui .responses-inner h5 { color: #1a202c; }' +
+    '    .swagger-ui .model-title { color: #1a202c !important; font-weight: 700; }' +
+    '    .swagger-ui .model { color: #2d3748; }' +
+    '    .swagger-ui .model-toggle::after { background: rgba(0,0,0,0.15); }' +
+    '    .swagger-ui section.models { border: 1px solid #e2e8f0; border-radius: 8px; }' +
+    '    .swagger-ui section.models h4 { color: #1a202c; }' +
+    '    .swagger-ui .btn { border-radius: 6px; font-weight: 600; }' +
+    '    .swagger-ui .btn.authorize { color: #00875a; border-color: #00875a; }' +
+    '    .swagger-ui .btn.authorize svg { fill: #00875a; }' +
+    '    .swagger-ui .authorization__btn svg { fill: #00875a; }' +
+    '    .swagger-ui input[type=text], .swagger-ui textarea { color: #1a202c; border: 1px solid #cbd5e0; border-radius: 4px; background: #ffffff; }' +
+    '    .swagger-ui select { color: #1a202c; border: 1px solid #cbd5e0; background: #ffffff; }' +
+    '    .swagger-ui .loading-container .loading::after { color: #2d3748; }' +
+    '    .swagger-ui .filter .operation-filter-input { border: 2px solid #cbd5e0; border-radius: 6px; color: #1a202c; background: #fff; }' +
+    '    .swagger-ui .wrapper { background: #fafafa; }' +
     '  </style>' +
     '</head>' +
     '<body>' +
