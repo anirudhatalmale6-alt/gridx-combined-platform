@@ -1175,7 +1175,7 @@ var openApiSpec = {
   },
   servers: [
     {
-      url: 'https://157.230.106.54/cb/integration',
+      url: 'https://gridx-meters.com/cb/integration',
       description: 'Production Server'
     },
     {
