@@ -60,7 +60,6 @@ let otaRoutes;
 try { otaRoutes = require('./routes/otaRoutes'); } catch (e) { /* optional */ }
 const groupControlRoutes = require('./routes/groupControlRoutes');
 const vendingRoutes = require('./vending/vendingRoutes');
-const integrationRoutes = require('./vending/integrationRoutes');
 
 // Initialize MQTT handler (subscribes to meter telemetry topics)
 const mqttHandler = require('./services/mqttHandler');
@@ -75,8 +74,6 @@ const commissionReportPublicRoutes = require('./meterProfile/commissionReportPub
 apiRouter.use('/commission-report', commissionReportPublicRoutes);
 const homeClassificationPublicRoutes = require('./meterProfile/homeClassificationPublicRoutes');
 apiRouter.use('/home-classification', homeClassificationPublicRoutes);
-// Integration API (has own auth via API keys — must be before global auth routes)
-apiRouter.use('/integration', integrationRoutes);
 
 // Authenticated routes
 apiRouter.use('/', getRoutes);
