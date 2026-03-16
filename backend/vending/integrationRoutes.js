@@ -1,6 +1,6 @@
 /**
  * GRIDx Third-Party Integration API Gateway
- * NamPower Tender Compliance — External Vendor API
+ * External Vendor Integration API
  *
  * This module provides:
  * 1. Partner (API Client) management — onboarding, API key generation, sandbox/production
@@ -1076,7 +1076,7 @@ router.get('/external/docs', function(req, res) {
   res.json({
     name: 'GRIDx Vending API',
     version: '1.0.0',
-    description: 'NamPower-compliant prepaid electricity vending API gateway',
+    description: 'Prepaid utility vending API gateway',
     baseUrl: '/cb/integration/external',
     authentication: {
       method: 'API Key',
@@ -1154,7 +1154,7 @@ var openApiSpec = {
   info: {
     title: 'GRIDx Vending Integration API',
     version: '1.0.0',
-    description: 'NamPower-compliant prepaid electricity vending API gateway for third-party integrations.\n\n' +
+    description: 'Prepaid utility vending API gateway for third-party integrations.\n\n' +
       '## Authentication\n' +
       'All external endpoints require an API key passed via the `X-Api-Key` header.\n' +
       'Register as a partner through the GRIDx admin dashboard to obtain your API key.\n\n' +
@@ -1762,7 +1762,7 @@ router.get('/swagger', function(req, res) {
     '<body>' +
     '  <div class="custom-header">' +
     '    <h1><span>GRIDx</span> Vending Integration API</h1>' +
-    '    <p>NamPower-compliant prepaid electricity vending gateway &mdash; Interactive API Testing</p>' +
+    '    <p>Prepaid utility vending gateway &mdash; Interactive API Testing</p>' +
     '  </div>' +
     '  <div id="swagger-ui"></div>' +
     '  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>' +
