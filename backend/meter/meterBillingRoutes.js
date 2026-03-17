@@ -413,4 +413,246 @@ router.get('/config/:DRN', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================================
+// Tariff Rate Table Management
+// ============================================================
+
+/**
+ * @route   POST /meter/config/tariff-rates
+ * @desc    Update tariff rate table for a meter and push via MQTT
+ * @body    { "DRN": "...", "rates": [0.00, 1.50, 2.80, 3.50, 4.50, 2.80, 2.80, 2.80, 2.80, 2.80] }
+ *          OR { "DRN": "...", "rates": { "0": 0.00, "3": 4.20 } } for partial updates
+ * @access  Private
+ */
+router.post('/config/tariff-rates', authenticateToken, async (req, res) => {
+  const { DRN, rates } = req.body;
+
+  if (!DRN) {
+    return res.status(400).json({ error: 'DRN is required' });
+  }
+
+  if (!rates) {
+    return res.status(400).json({ error: 'rates is required (array of 10 rates or object with index:rate pairs)' });
+  }
+
+  try {
+    let rateArray = new Array(10).fill(null);
+
+    if (Array.isArray(rates)) {
+      if (rates.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 tariff indices (0-9)' });
+      }
+      for (let i = 0; i < rates.length; i++) {
+        if (typeof rates[i] !== 'number' || rates[i] < 0) {
+          return res.status(400).json({ error: `Invalid rate at index ${i}: must be a non-negative number` });
+        }
+        rateArray[i] = rates[i];
+      }
+    } else if (typeof rates === 'object') {
+      for (const [key, value] of Object.entries(rates)) {
+        const index = parseInt(key);
+        if (isNaN(index) || index < 0 || index > 9) {
+          return res.status(400).json({ error: `Invalid index "${key}": must be 0-9` });
+        }
+        if (typeof value !== 'number' || value < 0) {
+          return res.status(400).json({ error: `Invalid rate for index ${key}: must be a non-negative number` });
+        }
+        rateArray[index] = value;
+      }
+    } else {
+      return res.status(400).json({ error: 'rates must be an array or object' });
+    }
+
+    // Ensure MeterTariffRates table exists
+    await new Promise((resolve, reject) => {
+      connection.query(`
+        CREATE TABLE IF NOT EXISTS MeterTariffRates (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          DRN VARCHAR(50) NOT NULL UNIQUE,
+          tariff_rates JSON NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_drn (DRN)
+        )
+      `, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+    // Load existing rates from DB for merge
+    const existing = await new Promise((resolve, reject) => {
+      connection.query(
+        'SELECT tariff_rates FROM MeterTariffRates WHERE DRN = ?',
+        [DRN],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    const defaultRates = [0.00, 1.50, 2.80, 3.50, 4.50, 2.80, 2.80, 2.80, 2.80, 2.80];
+    let currentRates = defaultRates;
+
+    if (existing.length > 0 && existing[0].tariff_rates) {
+      try {
+        currentRates = JSON.parse(existing[0].tariff_rates);
+      } catch (e) {
+        currentRates = defaultRates;
+      }
+    }
+
+    // Merge: only overwrite indices that were provided
+    for (let i = 0; i < 10; i++) {
+      if (rateArray[i] !== null) {
+        currentRates[i] = rateArray[i];
+      }
+    }
+
+    // Upsert into database
+    const ratesJson = JSON.stringify(currentRates);
+    if (existing.length > 0) {
+      await new Promise((resolve, reject) => {
+        connection.query(
+          'UPDATE MeterTariffRates SET tariff_rates = ?, updated_at = NOW() WHERE DRN = ?',
+          [ratesJson, DRN],
+          (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          }
+        );
+      });
+    } else {
+      await new Promise((resolve, reject) => {
+        connection.query(
+          'INSERT INTO MeterTariffRates (DRN, tariff_rates, updated_at) VALUES (?, ?, NOW())',
+          [DRN, ratesJson],
+          (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          }
+        );
+      });
+    }
+
+    // Send to meter via MQTT
+    const mqttHandler = require('../services/mqttHandler');
+    mqttHandler.publishCommand(DRN, { trt: currentRates });
+
+    const rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                        'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+
+    res.json({
+      success: true,
+      message: `Tariff rates updated and sent to meter ${DRN}`,
+      rates: currentRates.map((rate, i) => ({
+        index: i,
+        label: rateLabels[i],
+        rate: rate,
+        display: `N$ ${rate.toFixed(4)}/kWh`
+      }))
+    });
+
+  } catch (err) {
+    logger.error('Error updating tariff rates:', err);
+    res.status(500).json({ error: 'Failed to update tariff rates', details: err.message });
+  }
+});
+
+/**
+ * @route   GET /meter/config/tariff-rates/:DRN
+ * @desc    Get tariff rate table for a meter
+ * @access  Private
+ */
+router.get('/config/tariff-rates/:DRN', authenticateToken, async (req, res) => {
+  const { DRN } = req.params;
+
+  const rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                      'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+  const defaultRates = [0.00, 1.50, 2.80, 3.50, 4.50, 2.80, 2.80, 2.80, 2.80, 2.80];
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      connection.query(
+        'SELECT tariff_rates, updated_at FROM MeterTariffRates WHERE DRN = ?',
+        [DRN],
+        (err, data) => {
+          if (err) reject(err);
+          else resolve(data);
+        }
+      );
+    });
+
+    if (result.length === 0) {
+      return res.json({
+        DRN,
+        source: 'defaults',
+        rates: defaultRates.map((rate, i) => ({
+          index: i, label: rateLabels[i], rate, display: `N$ ${rate.toFixed(4)}/kWh`
+        }))
+      });
+    }
+
+    const rates = JSON.parse(result[0].tariff_rates);
+    res.json({
+      DRN,
+      source: 'database',
+      updated_at: result[0].updated_at,
+      rates: rates.map((rate, i) => ({
+        index: i, label: rateLabels[i], rate, display: `N$ ${rate.toFixed(4)}/kWh`
+      }))
+    });
+
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') {
+      return res.json({
+        DRN,
+        source: 'defaults',
+        rates: defaultRates.map((rate, i) => ({
+          index: i, label: rateLabels[i], rate, display: `N$ ${rate.toFixed(4)}/kWh`
+        }))
+      });
+    }
+    logger.error('Error fetching tariff rates:', err);
+    res.status(500).json({ error: 'Failed to fetch tariff rates', details: err.message });
+  }
+});
+
+/**
+ * @route   POST /meter/config/tariff-index
+ * @desc    Set the active tariff index on a meter via MQTT
+ * @body    { "DRN": "...", "index": 3 }
+ * @access  Private
+ */
+router.post('/config/tariff-index', authenticateToken, async (req, res) => {
+  const { DRN, index } = req.body;
+
+  if (!DRN) {
+    return res.status(400).json({ error: 'DRN is required' });
+  }
+
+  if (index === undefined || index === null || index < 0 || index > 9) {
+    return res.status(400).json({ error: 'index must be 0-9' });
+  }
+
+  try {
+    const mqttHandler = require('../services/mqttHandler');
+    mqttHandler.publishCommand(DRN, { ti: index });
+
+    const rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                        'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+
+    res.json({
+      success: true,
+      message: `Tariff index ${index} (${rateLabels[index]}) sent to meter ${DRN}`,
+      index,
+      label: rateLabels[index]
+    });
+
+  } catch (err) {
+    logger.error('Error setting tariff index:', err);
+    res.status(500).json({ error: 'Failed to set tariff index', details: err.message });
+  }
+});
+
 module.exports = router;
