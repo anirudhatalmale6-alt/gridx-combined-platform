@@ -89,12 +89,12 @@ function timeSince(d) {
 
 // ---- Status Colors ----
 var STATUS_MAP = {
-  Open: { color: "#4cceac", bg: "rgba(76,206,172,0.12)", icon: FolderOpenOutlined, label: "Open", step: 0 },
+  Open: { color: "#2E7D32", bg: "rgba(76,206,172,0.12)", icon: FolderOpenOutlined, label: "Open", step: 0 },
   Closed: { color: "#f2b705", bg: "rgba(242,183,5,0.12)", icon: LockOutlined, label: "Closed", step: 1 },
-  Banking: { color: "#6870fa", bg: "rgba(104,112,250,0.12)", icon: AccountBalanceOutlined, label: "Banking", step: 2 },
-  Reconciled: { color: "#4cceac", bg: "rgba(76,206,172,0.12)", icon: CheckCircleOutlined, label: "Reconciled", step: 3 },
+  Banking: { color: "#D4A843", bg: "rgba(104,112,250,0.12)", icon: AccountBalanceOutlined, label: "Banking", step: 2 },
+  Reconciled: { color: "#2E7D32", bg: "rgba(76,206,172,0.12)", icon: CheckCircleOutlined, label: "Reconciled", step: 3 },
   Pending: { color: "#f2b705", bg: "rgba(242,183,5,0.12)", icon: SyncOutlined, label: "Pending", step: 2 },
-  Submitted: { color: "#6870fa", bg: "rgba(104,112,250,0.12)", icon: ArrowForwardOutlined, label: "Submitted", step: 2 },
+  Submitted: { color: "#D4A843", bg: "rgba(104,112,250,0.12)", icon: ArrowForwardOutlined, label: "Submitted", step: 2 },
 };
 
 // ---- Component --------------------------------------------------------------
@@ -470,11 +470,11 @@ export default function Batches() {
           justifyContent="center"
           alignItems="center"
         >
-          <FolderOpenOutlined sx={{ color: "#4cceac", fontSize: 28, mb: "6px" }} />
+          <FolderOpenOutlined sx={{ color: "#2E7D32", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {openBatches.length}
           </Typography>
-          <Typography variant="body2" color="#4cceac" fontWeight={600}>
+          <Typography variant="body2" color="#2E7D32" fontWeight={600}>
             Open Batches
           </Typography>
           {openBatches.length > 0 && (
@@ -495,11 +495,11 @@ export default function Batches() {
           justifyContent="center"
           alignItems="center"
         >
-          <ReceiptLongOutlined sx={{ color: "#6870fa", fontSize: 28, mb: "6px" }} />
+          <ReceiptLongOutlined sx={{ color: "#D4A843", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {totalTxns.toLocaleString()}
           </Typography>
-          <Typography variant="body2" color="#6870fa" fontWeight={600}>
+          <Typography variant="body2" color="#D4A843" fontWeight={600}>
             Total Transactions
           </Typography>
           <Typography variant="caption" color={colors.grey[400]} mt="2px">
@@ -518,11 +518,11 @@ export default function Batches() {
           justifyContent="center"
           alignItems="center"
         >
-          <AttachMoneyOutlined sx={{ color: "#4cceac", fontSize: 28, mb: "6px" }} />
+          <AttachMoneyOutlined sx={{ color: "#2E7D32", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {fmtN$(totalRevenue)}
           </Typography>
-          <Typography variant="body2" color="#4cceac" fontWeight={600}>
+          <Typography variant="body2" color="#2E7D32" fontWeight={600}>
             Total Revenue
           </Typography>
           <Typography variant="caption" color={colors.grey[400]} mt="2px">
@@ -556,11 +556,11 @@ export default function Batches() {
             </>
           ) : (
             <>
-              <CheckCircleOutlined sx={{ color: "#4cceac", fontSize: 28, mb: "6px" }} />
+              <CheckCircleOutlined sx={{ color: "#2E7D32", fontSize: 28, mb: "6px" }} />
               <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
                 0
               </Typography>
-              <Typography variant="body2" color="#4cceac" fontWeight={600}>
+              <Typography variant="body2" color="#2E7D32" fontWeight={600}>
                 All Reconciled
               </Typography>
             </>
@@ -747,7 +747,7 @@ export default function Batches() {
                                   height: 6,
                                   borderRadius: "3px",
                                   backgroundColor: active
-                                    ? (STATUS_MAP[label] ? STATUS_MAP[label].color : "#4cceac")
+                                    ? (STATUS_MAP[label] ? STATUS_MAP[label].color : "#2E7D32")
                                     : colors.primary[300],
                                   transition: "all 0.3s",
                                 }}
@@ -803,12 +803,12 @@ export default function Batches() {
                                 setBankDlg(true);
                               }}
                               sx={{
-                                color: "#6870fa",
+                                color: "#D4A843",
                                 borderColor: "rgba(104,112,250,0.4)",
                                 fontSize: "0.72rem",
                                 textTransform: "none",
                                 py: "2px",
-                                "&:hover": { borderColor: "#6870fa", backgroundColor: "rgba(104,112,250,0.08)" },
+                                "&:hover": { borderColor: "#D4A843", backgroundColor: "rgba(104,112,250,0.08)" },
                               }}
                             >
                               Bank
@@ -859,7 +859,7 @@ export default function Batches() {
                                 color={
                                   hasDisc
                                     ? (Number(batch.discrepancyAmount) < 0 ? "#db4f4a" : "#f2b705")
-                                    : "#4cceac"
+                                    : "#2E7D32"
                                 }
                               >
                                 {batch.discrepancyAmount != null
@@ -915,7 +915,7 @@ export default function Batches() {
             borderBottom={"1px solid " + colors.primary[300]}
           >
             <Box display="flex" alignItems="center" gap="10px">
-              <AccountBalanceOutlined sx={{ color: "#6870fa", fontSize: 22 }} />
+              <AccountBalanceOutlined sx={{ color: "#D4A843", fontSize: 22 }} />
               <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
                 Banking & Reconciliation
               </Typography>
@@ -1005,11 +1005,11 @@ export default function Batches() {
                       <TableCell sx={bodyCellSx} align="right">
                         {bb.depositAmount != null ? (
                           <Box display="flex" alignItems="center" justifyContent="flex-end" gap="4px">
-                            <Typography variant="body2" fontWeight={600} color={depositMatch ? "#4cceac" : "#f2b705"}>
+                            <Typography variant="body2" fontWeight={600} color={depositMatch ? "#2E7D32" : "#f2b705"}>
                               {fmtN$(bb.depositAmount)}
                             </Typography>
                             {depositMatch ? (
-                              <CheckCircleOutlined sx={{ fontSize: 14, color: "#4cceac" }} />
+                              <CheckCircleOutlined sx={{ fontSize: 14, color: "#2E7D32" }} />
                             ) : (
                               <WarningAmberOutlined sx={{ fontSize: 14, color: "#f2b705" }} />
                             )}
@@ -1041,12 +1041,12 @@ export default function Batches() {
                             startIcon={<CheckCircleOutlined sx={{ fontSize: 14 }} />}
                             onClick={function() { handleOpenReconcile(bb); }}
                             sx={{
-                              color: "#4cceac",
+                              color: "#2E7D32",
                               borderColor: "rgba(76,206,172,0.4)",
                               fontSize: "0.72rem",
                               textTransform: "none",
                               py: "2px",
-                              "&:hover": { borderColor: "#4cceac", backgroundColor: "rgba(76,206,172,0.08)" },
+                              "&:hover": { borderColor: "#2E7D32", backgroundColor: "rgba(76,206,172,0.08)" },
                             }}
                           >
                             Reconcile
@@ -1080,7 +1080,7 @@ export default function Batches() {
       >
         <DialogTitle sx={{ fontWeight: 700, color: colors.grey[100], pb: 0 }}>
           <Box display="flex" alignItems="center" gap="10px">
-            <FolderOpenOutlined sx={{ color: "#4cceac" }} />
+            <FolderOpenOutlined sx={{ color: "#2E7D32" }} />
             Open New Sales Batch
           </Box>
         </DialogTitle>
@@ -1215,8 +1215,8 @@ export default function Batches() {
                 </Box>
                 <Divider sx={{ borderColor: colors.primary[300], my: "8px" }} />
                 <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body1" fontWeight={700} color="#4cceac">Expected Cash</Typography>
-                  <Typography variant="body1" fontWeight={700} color="#4cceac">
+                  <Typography variant="body1" fontWeight={700} color="#2E7D32">Expected Cash</Typography>
+                  <Typography variant="body1" fontWeight={700} color="#2E7D32">
                     {fmtN$(closeExpected)}
                   </Typography>
                 </Box>
@@ -1254,11 +1254,11 @@ export default function Batches() {
                   {closeHasDisc ? (
                     <WarningAmberOutlined sx={{ color: closeDiscrepancy < 0 ? "#db4f4a" : "#f2b705" }} />
                   ) : (
-                    <CheckCircleOutlined sx={{ color: "#4cceac" }} />
+                    <CheckCircleOutlined sx={{ color: "#2E7D32" }} />
                   )}
                   <Box>
                     <Typography variant="body2" fontWeight={600} color={
-                      closeHasDisc ? (closeDiscrepancy < 0 ? "#db4f4a" : "#f2b705") : "#4cceac"
+                      closeHasDisc ? (closeDiscrepancy < 0 ? "#db4f4a" : "#f2b705") : "#2E7D32"
                     }>
                       {closeHasDisc
                         ? (closeDiscrepancy < 0 ? "Shortage" : "Surplus") + ": N$ " + Math.abs(closeDiscrepancy).toFixed(2)
@@ -1328,7 +1328,7 @@ export default function Batches() {
       >
         <DialogTitle sx={{ fontWeight: 700, color: colors.grey[100], pb: 0 }}>
           <Box display="flex" alignItems="center" gap="10px">
-            <AccountBalanceOutlined sx={{ color: "#6870fa" }} />
+            <AccountBalanceOutlined sx={{ color: "#D4A843" }} />
             Create Banking Batch
           </Box>
         </DialogTitle>
@@ -1380,7 +1380,7 @@ export default function Batches() {
               <Typography variant="body2" color={colors.grey[300]}>
                 Deposit Amount
               </Typography>
-              <Typography variant="h5" fontWeight={700} color="#6870fa">
+              <Typography variant="h5" fontWeight={700} color="#D4A843">
                 {fmtN$((closedBatches.find(function(b) { return String(b.id) === String(bankSalesBatch); }) || {}).totalAmount)}
               </Typography>
             </Box>
@@ -1406,7 +1406,7 @@ export default function Batches() {
             onClick={handleCreateBanking}
             sx={{
               fontWeight: 600,
-              backgroundColor: "#6870fa",
+              backgroundColor: "#D4A843",
               color: "#fff",
               "&:hover": { backgroundColor: "#5a62d8" },
               "&.Mui-disabled": { backgroundColor: colors.primary[300], color: colors.grey[400] },
@@ -1435,7 +1435,7 @@ export default function Batches() {
       >
         <DialogTitle sx={{ fontWeight: 700, color: colors.grey[100], pb: 0 }}>
           <Box display="flex" alignItems="center" gap="10px">
-            <CheckCircleOutlined sx={{ color: "#4cceac" }} />
+            <CheckCircleOutlined sx={{ color: "#2E7D32" }} />
             Reconcile Banking Batch
           </Box>
         </DialogTitle>
@@ -1463,7 +1463,7 @@ export default function Batches() {
                 </Box>
                 <Box display="flex" justifyContent="space-between" mb="4px">
                   <Typography variant="body2" color={colors.grey[300]}>Expected Amount</Typography>
-                  <Typography variant="body1" fontWeight={700} color="#4cceac">
+                  <Typography variant="body1" fontWeight={700} color="#2E7D32">
                     {fmtN$(reconBatch.totalAmount)}
                   </Typography>
                 </Box>
@@ -1495,9 +1495,9 @@ export default function Batches() {
                   {reconHasDisc ? (
                     <WarningAmberOutlined sx={{ color: "#f2b705" }} />
                   ) : (
-                    <CheckCircleOutlined sx={{ color: "#4cceac" }} />
+                    <CheckCircleOutlined sx={{ color: "#2E7D32" }} />
                   )}
-                  <Typography variant="body2" fontWeight={600} color={reconHasDisc ? "#f2b705" : "#4cceac"}>
+                  <Typography variant="body2" fontWeight={600} color={reconHasDisc ? "#f2b705" : "#2E7D32"}>
                     {reconHasDisc
                       ? "Difference: N$ " + reconDiscrepancy.toFixed(2)
                       : "Deposit matches expected amount"}
@@ -1535,7 +1535,7 @@ export default function Batches() {
             onClick={handleReconcile}
             sx={{
               fontWeight: 600,
-              backgroundColor: "#4cceac",
+              backgroundColor: "#2E7D32",
               color: "#000",
               "&:hover": { backgroundColor: "#3db896" },
               "&.Mui-disabled": { backgroundColor: colors.primary[300], color: colors.grey[400] },

@@ -214,6 +214,34 @@ export const billingAPI = {
   setTier: (data) => post('/meter-billing/config/tier', data),
 };
 
+// ===== GRIDX METER TARIFF RATES =====
+export const meterTariffAPI = {
+  getRates: (drn) => get(`/meter-billing/config/tariff-rates/${drn}`),
+  getGlobalRates: () => get('/meter-billing/config/tariff-rates/global'),
+  updateRates: (DRN, rates) => post('/meter-billing/config/tariff-rates', { DRN, rates }),
+  updateRatesAll: (rates) => post('/meter-billing/config/tariff-rates/all', { rates }),
+  setActiveIndex: (DRN, index) => post('/meter-billing/config/tariff-index', { DRN, index }),
+  setActiveIndexAll: (index) => post('/meter-billing/config/tariff-index/all', { index }),
+};
+
+// ===== TAMPER DETECTION =====
+export const tamperAPI = {
+  getSummary: () => get('/tamper/summary'),
+  getPhysicalEvents: (days) => get('/tamper/physical' + (days ? '?days=' + days : '')),
+  getConfirmed: (days) => get('/tamper/analytical/confirmed' + (days ? '?days=' + days : '')),
+  getSuspected: (days) => get('/tamper/analytical/suspected' + (days ? '?days=' + days : '')),
+};
+
+// ===== VSM TESTING =====
+export const vsmAPI = {
+  getKeys: () => get('/vsm/keys'),
+  saveKey: (data) => post('/vsm/keys', data),
+  deleteKey: (id) => del('/vsm/keys/' + id),
+  serverGenerate: (data) => post('/vsm/server-generate', data),
+  logComparison: (data) => post('/vsm/log-comparison', data),
+  getTestHistory: (limit) => get('/vsm/test-history' + (limit ? '?limit=' + limit : '')),
+};
+
 // ===== METER PROFILE =====
 export const meterProfileAPI = {
   get: () => get('/settings/meterProfile'),

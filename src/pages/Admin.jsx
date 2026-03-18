@@ -50,18 +50,18 @@ import { useAuth } from "../context/AuthContext";
 /* ---- role chip color map ---- */
 const roleColor = {
   ADMIN: { bg: "rgba(0,180,216,0.15)", text: "#00b4d8" },
-  SUPERVISOR: { bg: "rgba(104,112,250,0.15)", text: "#6870fa" },
-  OPERATOR: { bg: "rgba(76,206,172,0.15)", text: "#4cceac" },
+  SUPERVISOR: { bg: "rgba(104,112,250,0.15)", text: "#D4A843" },
+  OPERATOR: { bg: "rgba(76,206,172,0.15)", text: "#2E7D32" },
   TECHNICIAN: { bg: "rgba(255,152,0,0.15)", text: "#ff9800" },
   VIEWER: { bg: "rgba(158,158,158,0.15)", text: "#9e9e9e" },
 };
 
 /* ---- audit type border colors ---- */
 const auditTypeColor = {
-  LOGIN: "#4cceac",
+  LOGIN: "#2E7D32",
   LOGIN_FAILED: "#db4f4a",
   LOCKOUT: "#f2b705",
-  PASSWORD_RESET: "#6870fa",
+  PASSWORD_RESET: "#D4A843",
   USER_CREATE: "#00b4d8",
   USER_UPDATE: "#f2b705",
   USER_DELETE: "#db4f4a",
@@ -299,7 +299,7 @@ export default function Admin() {
         <Alert
           severity="info"
           onClose={() => setStatusMsg("")}
-          sx={{ mb: 2, backgroundColor: "rgba(76,206,172,0.1)", border: "1px solid rgba(76,206,172,0.3)", color: "#4cceac" }}
+          sx={{ mb: 2, backgroundColor: "rgba(76,206,172,0.1)", border: "1px solid rgba(76,206,172,0.3)", color: "#2E7D32" }}
         >
           {statusMsg}
         </Alert>
@@ -432,7 +432,7 @@ export default function Admin() {
                         <TableCell>{formatDateTime(op.lastLogin)}</TableCell>
                         <TableCell>
                           {op.twofa ? (
-                            <SecurityOutlined sx={{ fontSize: 16, color: "#4cceac" }} />
+                            <SecurityOutlined sx={{ fontSize: 16, color: "#2E7D32" }} />
                           ) : (
                             <Typography variant="caption" color="rgba(255,255,255,0.3)">Off</Typography>
                           )}
@@ -459,7 +459,7 @@ export default function Admin() {
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title={op.status === "Active" ? "Deactivate" : "Activate"}>
-                                <IconButton size="small" onClick={() => handleToggleStatus(op.id)} sx={{ color: op.status === "Active" ? "#db4f4a" : "#4cceac" }}>
+                                <IconButton size="small" onClick={() => handleToggleStatus(op.id)} sx={{ color: op.status === "Active" ? "#db4f4a" : "#2E7D32" }}>
                                   {op.status === "Active" ? <BlockOutlined sx={{ fontSize: 16 }} /> : <CheckCircle sx={{ fontSize: 16 }} />}
                                 </IconButton>
                               </Tooltip>
@@ -652,7 +652,7 @@ export default function Admin() {
                   value={form.company_name}
                   onChange={(e) => setForm({ ...form, company_name: e.target.value })}
                   required
-                  placeholder="e.g. Pulsar Electronic"
+                  placeholder="e.g. NamPower"
                   sx={{ ...inputSx, gridColumn: "1 / -1" }}
                 />
                 <TextField
@@ -677,7 +677,7 @@ export default function Admin() {
             disabled={formLoading}
             variant="contained"
             sx={{
-              background: "linear-gradient(135deg, #4cceac 0%, #2e7c67 100%)",
+              background: "linear-gradient(135deg, #2E7D32 0%, #2e7c67 100%)",
               color: "#040509",
               fontWeight: 700,
               textTransform: "none",
@@ -742,7 +742,7 @@ export default function Admin() {
             onClick={handleResetPassword}
             variant="contained"
             sx={{
-              background: "linear-gradient(135deg, #4cceac 0%, #2e7c67 100%)",
+              background: "linear-gradient(135deg, #2E7D32 0%, #2e7c67 100%)",
               color: "#040509",
               fontWeight: 700,
               textTransform: "none",

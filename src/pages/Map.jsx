@@ -105,8 +105,8 @@ const MAP_OPTIONS = {
 
 /* ---- Marker icon helpers ---- */
 function meterIcon(isOnline) {
-  const fill = isOnline ? "#4cceac" : "#db4f4a";
-  const glow = isOnline ? "#4cceac" : "#db4f4a";
+  const fill = isOnline ? "#2E7D32" : "#db4f4a";
+  const glow = isOnline ? "#2E7D32" : "#db4f4a";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
     <defs>
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -180,15 +180,15 @@ function selectedMeterIcon() {
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     </defs>
-    <circle cx="28" cy="28" r="24" fill="none" stroke="#6870fa" stroke-width="2" opacity="0.4">
+    <circle cx="28" cy="28" r="24" fill="none" stroke="#D4A843" stroke-width="2" opacity="0.4">
       <animate attributeName="r" values="18;26;18" dur="1.5s" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="0.5;0;0.5" dur="1.5s" repeatCount="indefinite"/>
     </circle>
-    <circle cx="28" cy="28" r="20" fill="none" stroke="#6870fa" stroke-width="1.5" opacity="0.3">
+    <circle cx="28" cy="28" r="20" fill="none" stroke="#D4A843" stroke-width="1.5" opacity="0.3">
       <animate attributeName="r" values="16;22;16" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
       <animate attributeName="opacity" values="0.4;0;0.4" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
     </circle>
-    <circle cx="28" cy="28" r="15" fill="#6870fa" filter="url(#sglow)"/>
+    <circle cx="28" cy="28" r="15" fill="#D4A843" filter="url(#sglow)"/>
     <circle cx="28" cy="28" r="15" fill="none" stroke="white" stroke-width="2.5"/>
     <path d="M25 18 L21 27 H26 L24 34 L33 24 H28 L31 18 Z" fill="white"/>
   </svg>`;
@@ -958,7 +958,7 @@ export default function MapPage() {
                 {drawingMode && polygonPoints.length >= 2 && (
                   <Polyline
                     path={polygonPoints}
-                    options={{ strokeColor: "#4cceac", strokeWeight: 2, strokeOpacity: 0.8 }}
+                    options={{ strokeColor: "#2E7D32", strokeWeight: 2, strokeOpacity: 0.8 }}
                   />
                 )}
                 {drawingMode && polygonPoints.map((p, i) => (
@@ -968,7 +968,7 @@ export default function MapPage() {
                     icon={{
                       path: window.google.maps.SymbolPath.CIRCLE,
                       scale: 5,
-                      fillColor: "#4cceac",
+                      fillColor: "#2E7D32",
                       fillOpacity: 1,
                       strokeColor: "white",
                       strokeWeight: 2,
@@ -981,9 +981,9 @@ export default function MapPage() {
                   <Polygon
                     paths={completedPolygon}
                     options={{
-                      fillColor: "#4cceac",
+                      fillColor: "#2E7D32",
                       fillOpacity: 0.12,
-                      strokeColor: "#4cceac",
+                      strokeColor: "#2E7D32",
                       strokeWeight: 2,
                       strokeOpacity: 0.8,
                     }}
@@ -1086,7 +1086,7 @@ export default function MapPage() {
                             background: "#e68100",
                           }} />
                           <Typography variant="caption" fontWeight={700} color="#e68100">
-                            NON-GRIDX METER
+                            EXTERNAL METER
                           </Typography>
                         </Box>
                         <Typography variant="body2" fontWeight={700}>{selectedNonGridx.name}</Typography>

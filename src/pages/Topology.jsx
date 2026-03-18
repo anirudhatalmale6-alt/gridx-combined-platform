@@ -59,7 +59,7 @@ function collectMeters(node) {
 /* ---- type icons + colors ---- */
 const typeConfig = {
   utility: { icon: <LocationCityOutlined />, color: "#00e5ff", label: "Utility" },
-  location: { icon: <PlaceOutlined />, color: "#4cceac", label: "Location" },
+  location: { icon: <PlaceOutlined />, color: "#2E7D32", label: "Location" },
   transformer: { icon: <ElectricalServicesOutlined />, color: "#f2b705", label: "Transformer" },
   meter: { icon: <SpeedOutlined />, color: "#00b4d8", label: "Meter" },
 };
@@ -182,7 +182,7 @@ function CityDetail({ node, colors }) {
   const totalPw = sumPower(node);
 
   const stats = [
-    { label: "Locations", value: totalLoc, color: "#4cceac", icon: <PlaceOutlined /> },
+    { label: "Locations", value: totalLoc, color: "#2E7D32", icon: <PlaceOutlined /> },
     { label: "Transformers", value: totalTx, color: "#f2b705", icon: <ElectricalServicesOutlined /> },
     { label: "Meters", value: totalM, color: "#00b4d8", icon: <SpeedOutlined /> },
     { label: "kW Total Load", value: totalPw.toFixed(1), color: "#db4f4a", icon: <BoltOutlined /> },
@@ -262,7 +262,7 @@ function LocationDetail({ node, colors }) {
   return (
     <>
       <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-        <PlaceOutlined sx={{ color: "#4cceac", fontSize: 24 }} />
+        <PlaceOutlined sx={{ color: "#2E7D32", fontSize: 24 }} />
         <Typography variant="h5" color={colors.grey[100]} fontWeight="bold">
           {node.name}
         </Typography>

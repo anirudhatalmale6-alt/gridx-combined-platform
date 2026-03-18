@@ -11,7 +11,7 @@ export default function DataBadge({ live = false, sx = {} }) {
       size="small"
       sx={{
         bgcolor: live ? "rgba(76,206,172,0.15)" : "rgba(242,183,5,0.15)",
-        color: live ? "#4cceac" : "#f2b705",
+        color: live ? "#2E7D32" : "#f2b705",
         fontWeight: 700,
         fontSize: "0.58rem",
         height: 18,

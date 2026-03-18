@@ -37,7 +37,7 @@ import { authAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 const typeChip = {
-  INTERNAL: { bg: "rgba(76,206,172,0.15)", text: "#4cceac", label: "Internal" },
+  INTERNAL: { bg: "rgba(76,206,172,0.15)", text: "#2E7D32", label: "Internal" },
   THIRD_PARTY: { bg: "rgba(255,152,0,0.15)", text: "#ff9800", label: "3rd Party" },
 };
 
@@ -216,7 +216,7 @@ export default function Installers() {
             border: "1px solid rgba(76,206,172,0.2)",
           }}
         >
-          <Typography variant="h4" fontWeight={700} color="#4cceac">
+          <Typography variant="h4" fontWeight={700} color="#2E7D32">
             {internalCount}
           </Typography>
           <Typography variant="body2" color={colors.grey[300]}>
@@ -232,7 +232,7 @@ export default function Installers() {
             border: "1px solid rgba(104,112,250,0.2)",
           }}
         >
-          <Typography variant="h4" fontWeight={700} color="#6870fa">
+          <Typography variant="h4" fontWeight={700} color="#D4A843">
             {externalCount}
           </Typography>
           <Typography variant="body2" color={colors.grey[300]}>
@@ -530,7 +530,7 @@ export default function Installers() {
               value={form.company_name}
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
               required
-              placeholder="e.g. Pulsar Electronic"
+              placeholder="e.g. NamPower"
               sx={{ ...inputSx, gridColumn: "1 / -1" }}
             />
             <TextField

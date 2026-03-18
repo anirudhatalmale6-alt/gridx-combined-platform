@@ -655,4 +655,231 @@ router.post('/config/tariff-index', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /config/tariff-rates/all
+ * @desc    Push tariff rate table to ALL GRIDx meters via MQTT
+ * @body    { "rates": [0.00, 1.50, 2.80, 3.50, 4.50, 2.80, 2.80, 2.80, 2.80, 2.80] }
+ * @access  Private (Admin)
+ */
+router.post('/config/tariff-rates/all', authenticateToken, async (req, res) => {
+  var rates = req.body.rates;
+
+  if (!rates) {
+    return res.status(400).json({ error: 'rates is required (array of 10 rates)' });
+  }
+
+  if (!Array.isArray(rates) || rates.length !== 10) {
+    return res.status(400).json({ error: 'rates must be an array of exactly 10 values' });
+  }
+
+  for (var i = 0; i < 10; i++) {
+    if (typeof rates[i] !== 'number' || rates[i] < 0) {
+      return res.status(400).json({ error: 'Invalid rate at index ' + i + ': must be a non-negative number' });
+    }
+  }
+
+  try {
+    // Get all GRIDx meter DRNs
+    var meters = await new Promise(function(resolve, reject) {
+      connection.query('SELECT DRN FROM MeterProfileReal', function(err, result) {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+    if (!meters || meters.length === 0) {
+      return res.status(404).json({ error: 'No meters found in the system' });
+    }
+
+    // Ensure MeterTariffRates table exists
+    await new Promise(function(resolve, reject) {
+      connection.query(
+        'CREATE TABLE IF NOT EXISTS MeterTariffRates (' +
+        '  id INT AUTO_INCREMENT PRIMARY KEY,' +
+        '  DRN VARCHAR(50) NOT NULL UNIQUE,' +
+        '  tariff_rates JSON NOT NULL,' +
+        '  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,' +
+        '  INDEX idx_drn (DRN)' +
+        ')',
+        function(err, result) {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    var mqttHandler = require('../services/mqttHandler');
+    var ratesJson = JSON.stringify(rates);
+    var sent = 0;
+    var failed = 0;
+
+    for (var m = 0; m < meters.length; m++) {
+      var drn = meters[m].DRN;
+      try {
+        // Upsert rates in DB for each meter
+        await new Promise(function(resolve, reject) {
+          connection.query(
+            'INSERT INTO MeterTariffRates (DRN, tariff_rates, updated_at) VALUES (?, ?, NOW()) ' +
+            'ON DUPLICATE KEY UPDATE tariff_rates = ?, updated_at = NOW()',
+            [drn, ratesJson, ratesJson],
+            function(err, result) {
+              if (err) reject(err);
+              else resolve(result);
+            }
+          );
+        });
+
+        // Push via MQTT
+        mqttHandler.publishCommand(drn, { trt: rates });
+        sent++;
+      } catch (e) {
+        logger.error('Failed to push tariff to meter ' + drn + ':', e.message);
+        failed++;
+      }
+    }
+
+    var rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                      'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+
+    res.json({
+      success: true,
+      message: 'Tariff rates pushed to ' + sent + ' meters' + (failed > 0 ? ' (' + failed + ' failed)' : ''),
+      totalMeters: meters.length,
+      sent: sent,
+      failed: failed,
+      rates: rates.map(function(rate, i) {
+        return { index: i, label: rateLabels[i], rate: rate, display: 'N$ ' + rate.toFixed(4) + '/kWh' };
+      })
+    });
+
+  } catch (err) {
+    logger.error('Error pushing tariff rates to all meters:', err);
+    res.status(500).json({ error: 'Failed to push tariff rates', details: err.message });
+  }
+});
+
+/**
+ * @route   POST /config/tariff-index/all
+ * @desc    Set the active tariff index on ALL GRIDx meters via MQTT
+ * @body    { "index": 2 }
+ * @access  Private (Admin)
+ */
+router.post('/config/tariff-index/all', authenticateToken, async (req, res) => {
+  var index = req.body.index;
+
+  if (index === undefined || index === null || index < 0 || index > 9) {
+    return res.status(400).json({ error: 'index must be 0-9' });
+  }
+
+  try {
+    var meters = await new Promise(function(resolve, reject) {
+      connection.query('SELECT DRN FROM MeterProfileReal', function(err, result) {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+    if (!meters || meters.length === 0) {
+      return res.status(404).json({ error: 'No meters found in the system' });
+    }
+
+    var mqttHandler = require('../services/mqttHandler');
+    var sent = 0;
+    var failed = 0;
+
+    for (var m = 0; m < meters.length; m++) {
+      try {
+        mqttHandler.publishCommand(meters[m].DRN, { ti: index });
+        sent++;
+      } catch (e) {
+        logger.error('Failed to set tariff index on meter ' + meters[m].DRN + ':', e.message);
+        failed++;
+      }
+    }
+
+    var rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                      'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+
+    res.json({
+      success: true,
+      message: 'Tariff index ' + index + ' (' + rateLabels[index] + ') sent to ' + sent + ' meters' + (failed > 0 ? ' (' + failed + ' failed)' : ''),
+      totalMeters: meters.length,
+      sent: sent,
+      failed: failed,
+      index: index,
+      label: rateLabels[index]
+    });
+
+  } catch (err) {
+    logger.error('Error setting tariff index on all meters:', err);
+    res.status(500).json({ error: 'Failed to set tariff index', details: err.message });
+  }
+});
+
+/**
+ * @route   GET /config/tariff-rates/global
+ * @desc    Get the global tariff rate configuration (from first stored or defaults)
+ * @access  Private
+ */
+router.get('/config/tariff-rates/global', authenticateToken, async (req, res) => {
+  var rateLabels = ['Free/Emergency', 'Lifeline', 'Standard', 'Commercial', 'Industrial',
+                    'Custom 5', 'Custom 6', 'Custom 7', 'Custom 8', 'Custom 9'];
+  var defaultRates = [0.00, 1.50, 2.80, 3.50, 4.50, 2.80, 2.80, 2.80, 2.80, 2.80];
+
+  try {
+    var result = await new Promise(function(resolve, reject) {
+      connection.query(
+        'SELECT tariff_rates, updated_at FROM MeterTariffRates ORDER BY updated_at DESC LIMIT 1',
+        function(err, data) {
+          if (err) reject(err);
+          else resolve(data);
+        }
+      );
+    });
+
+    // Get total meter count
+    var meterCount = await new Promise(function(resolve, reject) {
+      connection.query('SELECT COUNT(*) as total FROM MeterProfileReal', function(err, data) {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
+
+    var totalMeters = (meterCount && meterCount[0]) ? meterCount[0].total : 0;
+
+    if (!result || result.length === 0) {
+      return res.json({
+        source: 'defaults',
+        totalMeters: totalMeters,
+        rates: defaultRates.map(function(rate, i) {
+          return { index: i, label: rateLabels[i], rate: rate, display: 'N$ ' + rate.toFixed(4) + '/kWh' };
+        })
+      });
+    }
+
+    var rates = JSON.parse(result[0].tariff_rates);
+    res.json({
+      source: 'database',
+      totalMeters: totalMeters,
+      updated_at: result[0].updated_at,
+      rates: rates.map(function(rate, i) {
+        return { index: i, label: rateLabels[i], rate: rate, display: 'N$ ' + rate.toFixed(4) + '/kWh' };
+      })
+    });
+
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') {
+      return res.json({
+        source: 'defaults',
+        totalMeters: 0,
+        rates: defaultRates.map(function(rate, i) {
+          return { index: i, label: rateLabels[i], rate: rate, display: 'N$ ' + rate.toFixed(4) + '/kWh' };
+        })
+      });
+    }
+    logger.error('Error fetching global tariff rates:', err);
+    res.status(500).json({ error: 'Failed to fetch tariff rates', details: err.message });
+  }
+});
+
 module.exports = router;

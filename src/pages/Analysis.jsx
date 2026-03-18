@@ -40,7 +40,7 @@ const fmtCurrency = (n) => `N$ ${Number(n).toLocaleString()}`;
 
 /* ---- suburb colors for charts ---- */
 const suburbColors = [
-  "#00b4d8", "#4cceac", "#6870fa", "#f2b705", "#db4f4a",
+  "#00b4d8", "#2E7D32", "#D4A843", "#f2b705", "#db4f4a",
   "#e76f51", "#2a9d8f", "#a855f7", "#f472b6",
 ];
 
@@ -92,7 +92,7 @@ function ChartTooltip({ active, payload, label }) {
 
 /* ---- availability color ---- */
 function availabilityColor(pct) {
-  if (pct >= 90) return "#4cceac";
+  if (pct >= 90) return "#2E7D32";
   if (pct >= 70) return "#f2b705";
   return "#db4f4a";
 }
@@ -274,8 +274,8 @@ export default function Analysis() {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend wrapperStyle={{ fontSize: "0.75rem", color: colors.grey[100] }} />
                 <Bar dataKey="Daily" fill="#00b4d8" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Weekly" fill="#4cceac" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Monthly" fill="#6870fa" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Weekly" fill="#2E7D32" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Monthly" fill="#D4A843" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Box>

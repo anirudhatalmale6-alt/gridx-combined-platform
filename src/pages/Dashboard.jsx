@@ -65,10 +65,10 @@ function formatTime(isoStr) {
 
 // Status chip color map
 const statusColor = {
-  Completed: "#4cceac",
+  Completed: "#2E7D32",
   Failed: "#db4f4a",
   Reversed: "#f2b705",
-  Pending: "#6870fa",
+  Pending: "#D4A843",
 };
 
 // Notification icon by type
@@ -79,9 +79,9 @@ const notifIcon = (type) => {
     case "Warning":
       return <WarningAmberIcon sx={{ color: "#f2b705", fontSize: 18 }} />;
     case "Success":
-      return <CheckCircleOutlineIcon sx={{ color: "#4cceac", fontSize: 18 }} />;
+      return <CheckCircleOutlineIcon sx={{ color: "#2E7D32", fontSize: 18 }} />;
     default:
-      return <InfoOutlinedIcon sx={{ color: "#6870fa", fontSize: 18 }} />;
+      return <InfoOutlinedIcon sx={{ color: "#D4A843", fontSize: 18 }} />;
   }
 };
 

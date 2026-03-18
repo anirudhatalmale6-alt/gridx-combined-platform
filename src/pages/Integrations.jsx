@@ -85,7 +85,7 @@ var TYPE_ICONS = {
 };
 
 var STATUS_COLORS = {
-  Active: "#4cceac",
+  Active: "#2E7D32",
   Pending: "#f2b705",
   Suspended: "#db4f4a",
   Revoked: "#868dfb",
@@ -300,8 +300,8 @@ export default function Integrations() {
         </Typography>
         <Box display="flex" gap="12px" justifyContent="center" flexWrap="wrap" mb="20px">
           {[
-            { icon: AccountBalanceOutlined, label: "Banks\n(ISO 8583)", color: "#6870fa" },
-            { icon: PhoneAndroidOutlined, label: "Mobile Money\n(REST API)", color: "#4cceac" },
+            { icon: AccountBalanceOutlined, label: "Banks\n(ISO 8583)", color: "#D4A843" },
+            { icon: PhoneAndroidOutlined, label: "Mobile Money\n(REST API)", color: "#2E7D32" },
             { icon: StorefrontOutlined, label: "Retail POS\n(REST API)", color: "#f2b705" },
             { icon: AtmOutlined, label: "ATM Network\n(ISO 8583)", color: "#868dfb" },
             { icon: LanguageOutlined, label: "Online Portal\n(REST API)", color: "#db4f4a" },
@@ -355,19 +355,19 @@ export default function Integrations() {
 
         {/* API Gateway */}
         <Box sx={{
-          border: "2px solid #6870fa",
+          border: "2px solid #D4A843",
           borderRadius: "8px",
           p: "14px",
           backgroundColor: "rgba(104,112,250,0.06)",
           mb: "12px",
         }}>
-          <Typography variant="body2" fontWeight={700} color="#6870fa" textAlign="center" mb="10px">
+          <Typography variant="body2" fontWeight={700} color="#D4A843" textAlign="center" mb="10px">
             <HubOutlined sx={{ fontSize: 16, mr: "4px", verticalAlign: "middle" }} />
-            GRIDx API Gateway / Switching Layer
+            NamPower API Gateway / Switching Layer
           </Typography>
           <Box display="flex" gap="12px" justifyContent="center" flexWrap="wrap">
-            <Box sx={boxSx("#6870fa", 150)}>
-              <Typography variant="caption" fontWeight={700} color="#6870fa">REST API</Typography>
+            <Box sx={boxSx("#D4A843", 150)}>
+              <Typography variant="caption" fontWeight={700} color="#D4A843">REST API</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">POST /vend</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">GET /meter/:no</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">GET /transaction/:ref</Typography>
@@ -378,8 +378,8 @@ export default function Integrations() {
               <Typography variant="caption" color={colors.grey[400]} display="block">MTI 0400 - Reversal</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">MTI 0800 - Echo</Typography>
             </Box>
-            <Box sx={boxSx("#4cceac", 150)}>
-              <Typography variant="caption" fontWeight={700} color="#4cceac">Webhooks</Typography>
+            <Box sx={boxSx("#2E7D32", 150)}>
+              <Typography variant="caption" fontWeight={700} color="#2E7D32">Webhooks</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">txn.completed</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">txn.reversed</Typography>
               <Typography variant="caption" color={colors.grey[400]} display="block">meter.alert</Typography>
@@ -394,20 +394,20 @@ export default function Integrations() {
 
         {/* Core Engine */}
         <Box sx={{
-          border: "2px solid #4cceac",
+          border: "2px solid #2E7D32",
           borderRadius: "8px",
           p: "14px",
           backgroundColor: "rgba(76,206,172,0.06)",
           mb: "12px",
         }}>
-          <Typography variant="body2" fontWeight={700} color="#4cceac" textAlign="center" mb="10px">
-            GRIDx Core Vending Engine (IEC 62055-41)
+          <Typography variant="body2" fontWeight={700} color="#2E7D32" textAlign="center" mb="10px">
+            NamPower Core Vending Engine (IEC 62055-41)
           </Typography>
           <Box display="flex" gap="12px" justifyContent="center" flexWrap="wrap">
             {[
-              { label: "Token Generation\n(STS/HSM)", color: "#4cceac" },
+              { label: "Token Generation\n(STS/HSM)", color: "#2E7D32" },
               { label: "Tariff Calculator\n(Block/Flat/TOU)", color: "#f2b705" },
-              { label: "Transaction Processor\n(Atomic + Idempotent)", color: "#6870fa" },
+              { label: "Transaction Processor\n(Atomic + Idempotent)", color: "#D4A843" },
               { label: "Arrears Manager\n(Auto-deduct)", color: "#db4f4a" },
             ].map(function(mod) {
               return (
@@ -433,8 +433,8 @@ export default function Integrations() {
         <Box display="flex" gap="12px" justifyContent="center" flexWrap="wrap">
           {[
             { label: "MySQL Database\n(Transactions, Line Items, Audit)", color: "#f2b705" },
-            { label: "Smart Meter MQTT\n(Telemetry & Remote)", color: "#4cceac" },
-            { label: "Financial Reports\n(Daily/Monthly)", color: "#6870fa" },
+            { label: "Smart Meter MQTT\n(Telemetry & Remote)", color: "#2E7D32" },
+            { label: "Financial Reports\n(Daily/Monthly)", color: "#D4A843" },
             { label: "Batch & Banking\n(Reconciliation)", color: "#868dfb" },
           ].map(function(sys) {
             return (
@@ -461,11 +461,11 @@ export default function Integrations() {
       <Box display="grid" gridTemplateColumns="repeat(12, 1fr)" gap="5px" gridAutoRows="140px">
         <Box gridColumn="span 3" backgroundColor={colors.primary[400]} borderRadius="4px"
           p="15px" display="flex" flexDirection="column" justifyContent="center" alignItems="center">
-          <HubOutlined sx={{ color: "#6870fa", fontSize: 28, mb: "6px" }} />
+          <HubOutlined sx={{ color: "#D4A843", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {partners.length}
           </Typography>
-          <Typography variant="body2" color="#6870fa" fontWeight={600}>API Partners</Typography>
+          <Typography variant="body2" color="#D4A843" fontWeight={600}>API Partners</Typography>
           <Typography variant="caption" color={colors.grey[400]} mt="2px">
             {productionPartners.length} in production
           </Typography>
@@ -473,11 +473,11 @@ export default function Integrations() {
 
         <Box gridColumn="span 3" backgroundColor={colors.primary[400]} borderRadius="4px"
           p="15px" display="flex" flexDirection="column" justifyContent="center" alignItems="center">
-          <SpeedOutlined sx={{ color: "#4cceac", fontSize: 28, mb: "6px" }} />
+          <SpeedOutlined sx={{ color: "#2E7D32", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {totalApiTxns.toLocaleString()}
           </Typography>
-          <Typography variant="body2" color="#4cceac" fontWeight={600}>API Transactions</Typography>
+          <Typography variant="body2" color="#2E7D32" fontWeight={600}>API Transactions</Typography>
           <Typography variant="caption" color={colors.grey[400]} mt="2px">
             {apiStats.todayRequests || 0} today
           </Typography>
@@ -497,11 +497,11 @@ export default function Integrations() {
 
         <Box gridColumn="span 3" backgroundColor={colors.primary[400]} borderRadius="4px"
           p="15px" display="flex" flexDirection="column" justifyContent="center" alignItems="center">
-          <SecurityOutlined sx={{ color: (apiStats.todayErrors || 0) > 0 ? "#db4f4a" : "#4cceac", fontSize: 28, mb: "6px" }} />
+          <SecurityOutlined sx={{ color: (apiStats.todayErrors || 0) > 0 ? "#db4f4a" : "#2E7D32", fontSize: 28, mb: "6px" }} />
           <Typography variant="h3" fontWeight="700" color={colors.grey[100]}>
             {(apiStats.todayErrors || 0)}
           </Typography>
-          <Typography variant="body2" color={(apiStats.todayErrors || 0) > 0 ? "#db4f4a" : "#4cceac"} fontWeight={600}>
+          <Typography variant="body2" color={(apiStats.todayErrors || 0) > 0 ? "#db4f4a" : "#2E7D32"} fontWeight={600}>
             Errors Today
           </Typography>
           <Typography variant="caption" color={colors.grey[400]} mt="2px">
@@ -517,8 +517,8 @@ export default function Integrations() {
           onChange={function(e, v) { setTabIndex(v); }}
           sx={{
             "& .MuiTab-root": { color: colors.grey[300], fontWeight: 600, textTransform: "none" },
-            "& .Mui-selected": { color: "#6870fa !important" },
-            "& .MuiTabs-indicator": { backgroundColor: "#6870fa" },
+            "& .Mui-selected": { color: "#D4A843 !important" },
+            "& .MuiTabs-indicator": { backgroundColor: "#D4A843" },
             borderBottom: "1px solid " + colors.primary[300],
             mb: "16px",
           }}
@@ -548,7 +548,7 @@ export default function Integrations() {
             <Box display="flex" justifyContent="space-between" alignItems="center"
               p="12px 15px" borderBottom={"1px solid " + colors.primary[300]}>
               <Box display="flex" alignItems="center" gap="10px">
-                <HubOutlined sx={{ color: "#6870fa", fontSize: 22 }} />
+                <HubOutlined sx={{ color: "#D4A843", fontSize: 22 }} />
                 <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
                   API Partners
                 </Typography>
@@ -610,7 +610,7 @@ export default function Integrations() {
                         <TableCell sx={bodyCellSx}>
                           <Chip label={p.environment} size="small" sx={{
                             fontWeight: 600, fontSize: "0.7rem", height: 22,
-                            color: p.environment === "Production" ? "#4cceac" : "#f2b705",
+                            color: p.environment === "Production" ? "#2E7D32" : "#f2b705",
                             backgroundColor: p.environment === "Production" ? "rgba(76,206,172,0.12)" : "rgba(242,183,5,0.12)",
                             border: "1px solid " + (p.environment === "Production" ? "rgba(76,206,172,0.3)" : "rgba(242,183,5,0.3)"),
                           }} />
@@ -636,14 +636,14 @@ export default function Integrations() {
                           <Box display="flex" gap="4px" justifyContent="center">
                             <Tooltip title="View API Key">
                               <IconButton size="small" onClick={function() { setCredPartner(p); setShowSecret(false); setCredDlg(true); }}
-                                sx={{ color: "#6870fa" }}>
+                                sx={{ color: "#D4A843" }}>
                                 <KeyOutlined sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Tooltip>
                             {p.status === "Pending" && (
                               <Tooltip title="Approve for Sandbox">
                                 <IconButton size="small" onClick={function() { handleApprove(p.id, "Sandbox"); }}
-                                  sx={{ color: "#4cceac" }}>
+                                  sx={{ color: "#2E7D32" }}>
                                   <CheckCircleOutlined sx={{ fontSize: 16 }} />
                                 </IconButton>
                               </Tooltip>
@@ -651,7 +651,7 @@ export default function Integrations() {
                             {p.status === "Active" && p.environment === "Sandbox" && (
                               <Tooltip title="Promote to Production">
                                 <IconButton size="small" onClick={function() { handleApprove(p.id, "Production"); }}
-                                  sx={{ color: "#4cceac" }}>
+                                  sx={{ color: "#2E7D32" }}>
                                   <ArrowForwardOutlined sx={{ fontSize: 16 }} />
                                 </IconButton>
                               </Tooltip>
@@ -715,15 +715,15 @@ export default function Integrations() {
                         <TableCell sx={bodyCellSx}>
                           <Chip label={log.method} size="small" sx={{
                             fontWeight: 700, fontSize: "0.65rem", height: 20,
-                            color: log.method === "POST" ? "#f2b705" : "#4cceac",
+                            color: log.method === "POST" ? "#f2b705" : "#2E7D32",
                             backgroundColor: "transparent",
-                            border: "1px solid " + (log.method === "POST" ? "#f2b705" : "#4cceac") + "44",
+                            border: "1px solid " + (log.method === "POST" ? "#f2b705" : "#2E7D32") + "44",
                           }} />
                         </TableCell>
                         <TableCell sx={bodyCellSx}>
                           <Chip label={log.responseStatus} size="small" sx={{
                             fontWeight: 700, fontSize: "0.65rem", height: 20,
-                            color: isError ? "#db4f4a" : "#4cceac",
+                            color: isError ? "#db4f4a" : "#2E7D32",
                             backgroundColor: isError ? "rgba(219,79,74,0.12)" : "rgba(76,206,172,0.12)",
                           }} />
                         </TableCell>
@@ -731,7 +731,7 @@ export default function Integrations() {
                           {log.processingTimeMs ? log.processingTimeMs + "ms" : "--"}
                         </TableCell>
                         <TableCell sx={bodyCellSx}>
-                          <Typography variant="caption" color={log.environment === "Production" ? "#4cceac" : "#f2b705"}>
+                          <Typography variant="caption" color={log.environment === "Production" ? "#2E7D32" : "#f2b705"}>
                             {log.environment}
                           </Typography>
                         </TableCell>
@@ -758,7 +758,7 @@ export default function Integrations() {
         PaperProps={{ sx: { backgroundColor: colors.primary[400], border: "1px solid " + colors.primary[300], color: colors.grey[100] } }}>
         <DialogTitle sx={{ fontWeight: 700, color: colors.grey[100], pb: 0 }}>
           <Box display="flex" alignItems="center" gap="10px">
-            <AddOutlined sx={{ color: "#6870fa" }} />
+            <AddOutlined sx={{ color: "#D4A843" }} />
             Register API Partner
           </Box>
         </DialogTitle>
@@ -809,7 +809,7 @@ export default function Integrations() {
           <Button onClick={function() { setCreateDlg(false); }} sx={{ color: colors.grey[300] }}>Cancel</Button>
           <Button variant="contained" disabled={!newPartner.name} onClick={handleCreatePartner}
             sx={{
-              fontWeight: 600, backgroundColor: "#6870fa", color: "#fff",
+              fontWeight: 600, backgroundColor: "#D4A843", color: "#fff",
               "&:hover": { backgroundColor: "#5a62d8" },
               "&.Mui-disabled": { backgroundColor: colors.primary[300], color: colors.grey[400] },
             }}>
@@ -850,7 +850,7 @@ export default function Integrations() {
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb="12px">
                   <Typography variant="body2" color={colors.grey[300]}>API Key</Typography>
                   <Box display="flex" alignItems="center" gap="6px">
-                    <Typography variant="body2" fontFamily="monospace" fontWeight={600} color="#4cceac"
+                    <Typography variant="body2" fontFamily="monospace" fontWeight={600} color="#2E7D32"
                       sx={{ wordBreak: "break-all", maxWidth: 280, textAlign: "right" }}>
                       {credPartner.apiKey}
                     </Typography>

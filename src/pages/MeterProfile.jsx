@@ -123,7 +123,7 @@ function formatDateTime(isoStr) {
 }
 
 function signalLabel(dbm) {
-  if (dbm >= -50) return { label: "Excellent", color: "#4cceac" };
+  if (dbm >= -50) return { label: "Excellent", color: "#2E7D32" };
   if (dbm >= -70) return { label: "Good", color: "#00b4d8" };
   if (dbm >= -85) return { label: "Fair", color: "#f2b705" };
   return { label: "Weak", color: "#db4f4a" };
@@ -697,10 +697,10 @@ export default function MeterProfile() {
       {(() => {
         const isDark = theme.palette.mode === "dark";
         const tabItems = [
-          { icon: <SpeedOutlined sx={{ fontSize: 18 }} />, label: "Overview", accent: "#4cceac" },
+          { icon: <SpeedOutlined sx={{ fontSize: 18 }} />, label: "Overview", accent: "#2E7D32" },
           { icon: <ShoppingCartOutlined sx={{ fontSize: 18 }} />, label: "Vend Token", accent: "#f2b705" },
           { icon: <PowerSettingsNewOutlined sx={{ fontSize: 18 }} />, label: "Load Control", accent: "#e2726e" },
-          { icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />, label: "Billing & Tariff", accent: "#6870fa" },
+          { icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />, label: "Billing & Tariff", accent: "#D4A843" },
           { icon: <TuneOutlined sx={{ fontSize: 18 }} />, label: "Configuration", accent: "#868dfb" },
           { icon: <BarChartOutlined sx={{ fontSize: 18 }} />, label: "Energy Charts", accent: "#00bcd4" },
           { icon: <HistoryOutlined sx={{ fontSize: 18 }} />, label: "History", accent: "#a3a3a3" },
@@ -870,7 +870,7 @@ export default function MeterProfile() {
                   label="Frequency"
                   value={parseFloat(frequency).toFixed(2)}
                   unit="Hz"
-                  color="#6870fa"
+                  color="#D4A843"
                 />
                 <MetricBox
                   label="Signal"
@@ -1008,7 +1008,7 @@ export default function MeterProfile() {
               <InfoRow
                 label="Frequency"
                 value={`${parseFloat(frequency).toFixed(2)} Hz`}
-                color="#6870fa"
+                color="#D4A843"
               />
               <InfoRow
                 label="Power Factor"
@@ -2107,8 +2107,8 @@ export default function MeterProfile() {
                 sx={{
                   textTransform: "none",
                   justifyContent: "flex-start",
-                  color: "#6870fa",
-                  borderColor: "#6870fa",
+                  color: "#D4A843",
+                  borderColor: "#D4A843",
                 }}
               >
                 Ping Meter
@@ -2816,7 +2816,7 @@ export default function MeterProfile() {
                   sx={{ textAlign: "center", py: 4 }}
                 >
                   No commission reports found for this meter. Run a commission
-                  test from the GRIDx Maintenance app to generate reports.
+                  test from the NamPower Maintenance app to generate reports.
                 </Typography>
               )}
             </Box>
@@ -2872,7 +2872,7 @@ export default function MeterProfile() {
                           cls.calibration_passed
                             ? colors.greenAccent[500]
                             : cls.calibration_status === "pending"
-                            ? colors.blueAccent?.[400] || "#6870fa"
+                            ? colors.blueAccent?.[400] || "#D4A843"
                             : "#db4f4a"
                         }`,
                         borderRadius: "2px",
@@ -2917,7 +2917,7 @@ export default function MeterProfile() {
                                 cls.calibration_passed
                                   ? colors.greenAccent[400]
                                   : cls.calibration_status === "pending"
-                                  ? "#6870fa"
+                                  ? "#D4A843"
                                   : "#f44336",
                               fontWeight: 700,
                               fontSize: "0.7rem",
@@ -3213,7 +3213,7 @@ export default function MeterProfile() {
                   sx={{ textAlign: "center", py: 4 }}
                 >
                   No home classification records found for this meter. Use the
-                  GRIDx Maintenance app to classify the home&apos;s electrical loads
+                  NamPower Maintenance app to classify the home&apos;s electrical loads
                   and run a calibration.
                 </Typography>
               )}
@@ -3230,7 +3230,7 @@ export default function MeterProfile() {
           {healthLoading && <LinearProgress sx={{ mb: 2 }} />}
           {healthData ? (() => {
             const score = healthData.health_score ?? 0;
-            const scoreColor = score >= 80 ? "#4cceac" : score >= 50 ? "#ff9800" : "#f44336";
+            const scoreColor = score >= 80 ? "#2E7D32" : score >= 50 ? "#ff9800" : "#f44336";
             const scoreLabel = score >= 80 ? "GOOD" : score >= 50 ? "WARNING" : "CRITICAL";
             return (
               <Box>
@@ -3262,14 +3262,14 @@ export default function MeterProfile() {
                   <Grid item xs={12} md={8}>
                     <Grid container spacing={1}>
                       {[
-                        { label: "Voltage", value: healthData.voltage, unit: "V", color: "#4cceac" },
-                        { label: "Current", value: healthData.current_a, unit: "A", color: "#6870fa" },
+                        { label: "Voltage", value: healthData.voltage, unit: "V", color: "#2E7D32" },
+                        { label: "Current", value: healthData.current_a, unit: "A", color: "#D4A843" },
                         { label: "Power", value: healthData.active_power, unit: "W", color: "#ff9800" },
                         { label: "Temperature", value: healthData.temperature, unit: "°C", color: "#f44336" },
                         { label: "Frequency", value: healthData.frequency, unit: "Hz", color: "#2196f3" },
                         { label: "Power Factor", value: healthData.power_factor, unit: "", color: "#ab47bc" },
-                        { label: "Mains", value: healthData.mains_state ? "ON" : "OFF", unit: "", color: healthData.mains_state ? "#4cceac" : "#f44336" },
-                        { label: "Geyser", value: healthData.geyser_state ? "ON" : "OFF", unit: "", color: healthData.geyser_state ? "#4cceac" : "#f44336" },
+                        { label: "Mains", value: healthData.mains_state ? "ON" : "OFF", unit: "", color: healthData.mains_state ? "#2E7D32" : "#f44336" },
+                        { label: "Geyser", value: healthData.geyser_state ? "ON" : "OFF", unit: "", color: healthData.geyser_state ? "#2E7D32" : "#f44336" },
                       ].map((stat) => (
                         <Grid item xs={6} sm={3} key={stat.label}>
                           <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 1, p: 1.5, border: `1px solid ${colors.primary[600]}` }}>
@@ -3307,7 +3307,7 @@ export default function MeterProfile() {
                         <XAxis dataKey="time" tick={{ fill: colors.grey[400], fontSize: 10 }} />
                         <YAxis domain={[0, 100]} tick={{ fill: colors.grey[400], fontSize: 10 }} />
                         <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                        <Line type="monotone" dataKey="score" stroke="#4cceac" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="score" stroke="#2E7D32" strokeWidth={2} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </Box>
@@ -3332,7 +3332,7 @@ export default function MeterProfile() {
       {/* TAB 10: Relay Events                                             */}
       {/* ================================================================ */}
       {tab === 10 && (() => {
-        const REASON_COLORS = ["#868dfb","#4cceac","#f44336","#ff9800","#2196f3","#ab47bc","#78909c","#e91e63","#ff5722"];
+        const REASON_COLORS = ["#868dfb","#2E7D32","#f44336","#ff9800","#2196f3","#ab47bc","#78909c","#e91e63","#ff5722"];
         const REASON_LABELS = ["Unknown","Manual Control","Credit Expired","Power Limit","Scheduled","Remote Command","System Startup","Tamper Detected","Overcurrent"];
         const fmtTime = (ts) => ts ? new Date(ts).toLocaleString("en-ZA", { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-";
 
@@ -3350,7 +3350,7 @@ export default function MeterProfile() {
             {/* Header */}
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
               <Box display="flex" alignItems="center" gap={1}>
-                <SwapVertOutlined sx={{ color: "#4cceac", fontSize: 28 }} />
+                <SwapVertOutlined sx={{ color: "#2E7D32", fontSize: 28 }} />
                 <Typography variant="h5" fontWeight="bold" color={colors.grey[100]}>Relay Event Log</Typography>
                 {relayTotal > 0 && <Chip label={`${relayTotal} events`} size="small" sx={{ backgroundColor: colors.primary[500], color: colors.grey[100] }} />}
               </Box>
@@ -3400,7 +3400,7 @@ export default function MeterProfile() {
                         <XAxis dataKey="name" tick={{ fill: colors.grey[400] }} />
                         <YAxis tick={{ fill: colors.grey[400] }} />
                         <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                        <Bar dataKey="count" fill="#4cceac" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="count" fill="#2E7D32" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </Box>
@@ -3426,13 +3426,13 @@ export default function MeterProfile() {
                       <TableCell sx={{ color: colors.grey[100], fontSize: 12, whiteSpace: "nowrap" }}>{fmtTime(evt.meter_timestamp || evt.received_at)}</TableCell>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={0.5}>
-                          {evt.relay_index === 0 ? <PowerOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> : <HotTub sx={{ fontSize: 16, color: "#f4a261" }} />}
+                          {evt.relay_index === 0 ? <PowerOutlined sx={{ fontSize: 16, color: "#2E7D32" }} /> : <HotTub sx={{ fontSize: 16, color: "#f4a261" }} />}
                           <Typography variant="body2" color={colors.grey[100]} fontWeight={500}>{evt.relay_name || (evt.relay_index === 0 ? "Mains" : "Geyser")}</Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip label={evt.entry_type === 0 ? "State" : "Control"} size="small" variant="outlined"
-                          sx={{ color: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", borderColor: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", fontSize: 11 }} />
+                          sx={{ color: evt.entry_type === 0 ? "#2E7D32" : "#ab47bc", borderColor: evt.entry_type === 0 ? "#2E7D32" : "#ab47bc", fontSize: 11 }} />
                       </TableCell>
                       <TableCell>
                         {evt.entry_type === 0 ? (

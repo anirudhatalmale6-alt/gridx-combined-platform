@@ -383,7 +383,7 @@ export default function NewMeterDash() {
 
   return (
     <Box m="20px">
-      <Header title="Manage Meters" subtitle="GRIDx Meter Management" />
+      <Header title="Manage Meters" subtitle="NamPower Meter Management" />
       <Box sx={{ backgroundColor: colors.primary[400] }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="secondary">
           <Tab label="New Meter" />

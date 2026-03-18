@@ -23,6 +23,8 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import SpeedIcon from "@mui/icons-material/Speed";
 import HubIcon from "@mui/icons-material/Hub";
 import BuildIcon from "@mui/icons-material/Build";
+import GppBadIcon from "@mui/icons-material/GppBad";
+import SecurityIcon from "@mui/icons-material/Security";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 
@@ -218,7 +220,7 @@ const Sidebar = () => {
                     WebkitTextFillColor: "transparent",
                   }}
                 >
-                  GRIDx
+                  NamPower
                 </Typography>
                 <Box
                   sx={{
@@ -374,6 +376,13 @@ const Sidebar = () => {
           isCollapsed={isCollapsed}
           accentColor="#f2b705"
         />
+        <NavItem
+          title="Installers"
+          to="/installers"
+          icon={<BuildIcon />}
+          isCollapsed={isCollapsed}
+          accentColor="#ff9800"
+        />
 
         {/* Vending */}
         <SectionHeader
@@ -423,6 +432,13 @@ const Sidebar = () => {
           isCollapsed={isCollapsed}
           accentColor={colors.yellowAccent[500]}
         />
+        <NavItem
+          title="VSM Testing"
+          to="/vsm-testing"
+          icon={<SecurityIcon />}
+          isCollapsed={isCollapsed}
+          accentColor="#00bfa5"
+        />
 
         {/* Data */}
         <SectionHeader
@@ -466,6 +482,13 @@ const Sidebar = () => {
           accentColor={colors.redAccent[500]}
         />
         <NavItem
+          title="Tamper Detection"
+          to="/tamper-detection"
+          icon={<GppBadIcon />}
+          isCollapsed={isCollapsed}
+          accentColor="#db4f4a"
+        />
+        <NavItem
           title="Analysis"
           to="/analysis"
           icon={<InsertChartIcon />}
@@ -500,14 +523,6 @@ const Sidebar = () => {
           isCollapsed={isCollapsed}
           accentColor={colors.redAccent[400]}
         />
-        <NavItem
-          title="Installers"
-          to="/installers"
-          icon={<BuildIcon />}
-          isCollapsed={isCollapsed}
-          accentColor="#ff9800"
-        />
-
         {/* Bottom spacer */}
         <Box sx={{ height: "20px" }} />
       </Box>
@@ -532,7 +547,7 @@ const Sidebar = () => {
               textAlign: "center",
             }}
           >
-            GRIDx Platform v2.0
+            NamPower Metering v2.0
           </Typography>
         ) : (
           <Box

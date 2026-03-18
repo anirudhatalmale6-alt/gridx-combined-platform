@@ -110,7 +110,7 @@ function makeMarkerIcon(fillColor, borderColor, innerSymbol, size = 40) {
 
 // Mains ON + Geyser ON = fully powered (green)
 function iconMainsOnGeyserOn() {
-  return makeMarkerIcon("#4cceac", "rgba(255,255,255,0.8)",
+  return makeMarkerIcon("#2E7D32", "rgba(255,255,255,0.8)",
     `<path d="M17 12 L14 20 H18 L16 26 L24 18 H20 L22 12 Z" fill="white" opacity="0.95"/>`, 40);
 }
 // Mains ON + Geyser OFF = mains only (orange)
@@ -131,7 +131,7 @@ function iconOffline() {
 }
 // Selected / in group (purple with ring)
 function iconSelected() {
-  return makeMarkerIcon("#6870fa", "rgba(255,255,255,0.9)",
+  return makeMarkerIcon("#D4A843", "rgba(255,255,255,0.9)",
     `<path d="M17 12 L14 20 H18 L16 26 L24 18 H20 L22 12 Z" fill="white"/>`, 44);
 }
 
@@ -495,8 +495,8 @@ export default function GroupControl() {
                 flex: 1,
                 textTransform: "none",
                 fontSize: "11px",
-                borderColor: "#6870fa",
-                color: "#6870fa",
+                borderColor: "#D4A843",
+                color: "#D4A843",
                 "&:hover": { bgcolor: "rgba(104,112,250,0.1)" },
               }}
             >
@@ -581,7 +581,7 @@ export default function GroupControl() {
                         bgcolor: g.control_type === "mains" ? "rgba(219,79,74,0.15)" :
                                  g.control_type === "geyser" ? "rgba(242,183,5,0.15)" : "rgba(104,112,250,0.15)",
                         color: g.control_type === "mains" ? "#db4f4a" :
-                               g.control_type === "geyser" ? "#f2b705" : "#6870fa",
+                               g.control_type === "geyser" ? "#f2b705" : "#D4A843",
                       }}
                     />
                   </Box>
@@ -609,7 +609,7 @@ export default function GroupControl() {
               </Typography>
               <Box display="flex" gap="6px" flexWrap="wrap" mb="6px">
                 <Chip icon={<BoltOutlined sx={{ fontSize: 12 }} />} label={`Mains ON: ${selectionStats.mainsOn}`} size="small"
-                  sx={{ height: 20, fontSize: 10, bgcolor: "rgba(76,206,172,0.12)", color: "#4cceac" }} />
+                  sx={{ height: 20, fontSize: 10, bgcolor: "rgba(76,206,172,0.12)", color: "#2E7D32" }} />
                 <Chip icon={<CancelOutlined sx={{ fontSize: 12 }} />} label={`Mains OFF: ${selectionStats.mainsOff}`} size="small"
                   sx={{ height: 20, fontSize: 10, bgcolor: "rgba(219,79,74,0.12)", color: "#db4f4a" }} />
                 <Chip icon={<WaterDropOutlined sx={{ fontSize: 12 }} />} label={`Geyser ON: ${selectionStats.geyserOn}`} size="small"
@@ -626,8 +626,8 @@ export default function GroupControl() {
                       flex: 1,
                       textTransform: "none",
                       fontSize: "10px",
-                      borderColor: "#6870fa",
-                      color: "#6870fa",
+                      borderColor: "#D4A843",
+                      color: "#D4A843",
                     }}
                   >
                     Save to Group
@@ -706,7 +706,7 @@ export default function GroupControl() {
                     </Typography>
                   </Box>
                   <Box display="flex" gap="8px" mt="1px">
-                    <Typography variant="caption" color="#4cceac" fontSize="9px">
+                    <Typography variant="caption" color="#2E7D32" fontSize="9px">
                       {a.online} online
                     </Typography>
                     <Typography variant="caption" color="#db4f4a" fontSize="9px">
@@ -803,11 +803,11 @@ export default function GroupControl() {
           {/* Legend */}
           <Box display="flex" gap="16px" justifyContent="center" py="4px">
             {[
-              { color: "#4cceac", label: "Mains ON + Geyser ON" },
+              { color: "#2E7D32", label: "Mains ON + Geyser ON" },
               { color: "#f2b705", label: "Mains ON + Geyser OFF" },
               { color: "#db4f4a", label: "Mains OFF" },
               { color: "#4a5568", label: "Offline" },
-              { color: "#6870fa", label: "Selected" },
+              { color: "#D4A843", label: "Selected" },
             ].map(item => (
               <Box key={item.label} display="flex" alignItems="center" gap="4px">
                 <FiberManualRecord sx={{ fontSize: 10, color: item.color }} />
@@ -892,7 +892,7 @@ export default function GroupControl() {
                             height: 16,
                             fontSize: 9,
                             bgcolor: mainsOn ? "rgba(76,206,172,0.15)" : "rgba(219,79,74,0.15)",
-                            color: mainsOn ? "#4cceac" : "#db4f4a",
+                            color: mainsOn ? "#2E7D32" : "#db4f4a",
                           }}
                         />
                         <Chip
@@ -965,7 +965,7 @@ export default function GroupControl() {
           <Button
             onClick={handleCreateGroup}
             variant="contained"
-            sx={{ bgcolor: "#6870fa", "&:hover": { bgcolor: "#5a62e8" } }}
+            sx={{ bgcolor: "#D4A843", "&:hover": { bgcolor: "#5a62e8" } }}
           >
             Create
           </Button>
@@ -1046,7 +1046,7 @@ export default function GroupControl() {
               </MenuItem>
               <MenuItem value="geyser_on">
                 <Box display="flex" alignItems="center" gap="8px">
-                  <WaterDropOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> Turn ON Geysers
+                  <WaterDropOutlined sx={{ fontSize: 16, color: "#2E7D32" }} /> Turn ON Geysers
                 </Box>
               </MenuItem>
               <MenuItem value="mains_off">
@@ -1056,7 +1056,7 @@ export default function GroupControl() {
               </MenuItem>
               <MenuItem value="mains_on">
                 <Box display="flex" alignItems="center" gap="8px">
-                  <BoltOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> Turn ON Mains
+                  <BoltOutlined sx={{ fontSize: 16, color: "#2E7D32" }} /> Turn ON Mains
                 </Box>
               </MenuItem>
             </Select>
@@ -1089,7 +1089,7 @@ export default function GroupControl() {
             disabled={actionLoading}
             startIcon={actionLoading ? <CircularProgress size={16} /> : <PowerSettingsNewOutlined />}
             sx={{
-              bgcolor: controlAction.endsWith("_off") ? "#db4f4a" : "#4cceac",
+              bgcolor: controlAction.endsWith("_off") ? "#db4f4a" : "#2E7D32",
               color: "#fff",
               "&:hover": { bgcolor: controlAction.endsWith("_off") ? "#c53030" : "#38a89d" },
             }}
@@ -1145,7 +1145,7 @@ export default function GroupControl() {
                           bgcolor: h.action_type?.endsWith("_off")
                             ? "rgba(219,79,74,0.15)"
                             : "rgba(76,206,172,0.15)",
-                          color: h.action_type?.endsWith("_off") ? "#db4f4a" : "#4cceac",
+                          color: h.action_type?.endsWith("_off") ? "#db4f4a" : "#2E7D32",
                         }}
                       />
                     </TableCell>
@@ -1161,7 +1161,7 @@ export default function GroupControl() {
                           fontSize: 10,
                           bgcolor: h.status === "completed" ? "rgba(76,206,172,0.15)" :
                                    h.status === "failed" ? "rgba(219,79,74,0.15)" : "rgba(242,183,5,0.15)",
-                          color: h.status === "completed" ? "#4cceac" :
+                          color: h.status === "completed" ? "#2E7D32" :
                                  h.status === "failed" ? "#db4f4a" : "#f2b705",
                         }}
                       />

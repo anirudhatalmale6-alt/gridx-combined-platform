@@ -23,8 +23,8 @@ import { notifications } from "../services/mockData";
 const typeConfig = {
   Critical: { color: "#db4f4a", icon: ErrorOutlined, bg: "rgba(219,79,74,0.15)" },
   Warning: { color: "#f2b705", icon: WarningAmberOutlined, bg: "rgba(242,183,5,0.15)" },
-  Success: { color: "#4cceac", icon: CheckCircleOutlined, bg: "rgba(76,206,172,0.15)" },
-  Info: { color: "#6870fa", icon: InfoOutlined, bg: "rgba(104,112,250,0.15)" },
+  Success: { color: "#2E7D32", icon: CheckCircleOutlined, bg: "rgba(76,206,172,0.15)" },
+  Info: { color: "#D4A843", icon: InfoOutlined, bg: "rgba(104,112,250,0.15)" },
 };
 
 /* ---- helpers ---- */

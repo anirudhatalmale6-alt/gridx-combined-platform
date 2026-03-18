@@ -47,19 +47,19 @@ const CircuitBG = () => (
       pointerEvents: "none",
     }}
   >
-    <line x1="0" y1="120" x2="500" y2="120" stroke="#4cceac" strokeWidth="1" />
-    <line x1="0" y1="300" x2="500" y2="300" stroke="#4cceac" strokeWidth="1" />
-    <line x1="0" y1="480" x2="500" y2="480" stroke="#4cceac" strokeWidth="1" />
-    <line x1="0" y1="660" x2="500" y2="660" stroke="#4cceac" strokeWidth="1" />
-    <line x1="0" y1="780" x2="500" y2="780" stroke="#4cceac" strokeWidth="1" />
-    <line x1="80" y1="0" x2="80" y2="900" stroke="#4cceac" strokeWidth="1" />
-    <line x1="200" y1="0" x2="200" y2="900" stroke="#4cceac" strokeWidth="1" />
-    <line x1="350" y1="0" x2="350" y2="900" stroke="#4cceac" strokeWidth="1" />
-    <line x1="430" y1="0" x2="430" y2="900" stroke="#4cceac" strokeWidth="1" />
-    <line x1="80" y1="120" x2="200" y2="300" stroke="#4cceac" strokeWidth="1.5" />
-    <line x1="350" y1="300" x2="430" y2="480" stroke="#4cceac" strokeWidth="1.5" />
-    <line x1="200" y1="480" x2="80" y2="660" stroke="#4cceac" strokeWidth="1.5" />
-    <line x1="430" y1="660" x2="350" y2="780" stroke="#4cceac" strokeWidth="1.5" />
+    <line x1="0" y1="120" x2="500" y2="120" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="0" y1="300" x2="500" y2="300" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="0" y1="480" x2="500" y2="480" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="0" y1="660" x2="500" y2="660" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="0" y1="780" x2="500" y2="780" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="80" y1="0" x2="80" y2="900" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="200" y1="0" x2="200" y2="900" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="350" y1="0" x2="350" y2="900" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="430" y1="0" x2="430" y2="900" stroke="#2E7D32" strokeWidth="1" />
+    <line x1="80" y1="120" x2="200" y2="300" stroke="#2E7D32" strokeWidth="1.5" />
+    <line x1="350" y1="300" x2="430" y2="480" stroke="#2E7D32" strokeWidth="1.5" />
+    <line x1="200" y1="480" x2="80" y2="660" stroke="#2E7D32" strokeWidth="1.5" />
+    <line x1="430" y1="660" x2="350" y2="780" stroke="#2E7D32" strokeWidth="1.5" />
     {[
       [80, 120], [200, 120], [350, 120], [430, 120],
       [80, 300], [200, 300], [350, 300], [430, 300],
@@ -67,12 +67,12 @@ const CircuitBG = () => (
       [80, 660], [200, 660], [350, 660], [430, 660],
       [80, 780], [200, 780], [350, 780], [430, 780],
     ].map(([cx, cy], i) => (
-      <circle key={i} cx={cx} cy={cy} r="3" fill="#4cceac" />
+      <circle key={i} cx={cx} cy={cy} r="3" fill="#2E7D32" />
     ))}
     {[
       [200, 300], [350, 480], [80, 660], [430, 120],
     ].map(([cx, cy], i) => (
-      <circle key={`lg-${i}`} cx={cx} cy={cy} r="6" fill="none" stroke="#4cceac" strokeWidth="1.5" />
+      <circle key={`lg-${i}`} cx={cx} cy={cy} r="6" fill="none" stroke="#2E7D32" strokeWidth="1.5" />
     ))}
   </Box>
 );
@@ -108,8 +108,8 @@ function FeatureItem({ icon, title, desc, delay }) {
           height: 44,
           minWidth: 44,
           borderRadius: "10px",
-          background: "linear-gradient(135deg, rgba(76,206,172,0.15) 0%, rgba(76,206,172,0.05) 100%)",
-          border: "1px solid rgba(76,206,172,0.2)",
+          background: "linear-gradient(135deg, rgba(46,125,50,0.15) 0%, rgba(46,125,50,0.05) 100%)",
+          border: "1px solid rgba(46,125,50,0.2)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -149,7 +149,7 @@ const darkInputSx = (accent) => ({
     backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: "10px",
     "& fieldset": { borderColor: "rgba(255,255,255,0.08)" },
-    "&:hover fieldset": { borderColor: "rgba(76,206,172,0.3)" },
+    "&:hover fieldset": { borderColor: "rgba(46,125,50,0.3)" },
     "&.Mui-focused fieldset": { borderColor: accent, borderWidth: 1 },
   },
   "& input": { color: "#fff", fontSize: "0.9rem", py: 1.5 },
@@ -320,7 +320,7 @@ export default function Login() {
     setForgotSuccess("");
   };
 
-  const ACCENT = "#4cceac";
+  const ACCENT = "#2E7D32";
 
   return (
     <Box
@@ -338,7 +338,7 @@ export default function Login() {
         sx={{
           width: { xs: "100%", md: "46%" },
           minHeight: { xs: "40vh", md: "100vh" },
-          background: `linear-gradient(165deg, #040509 0%, #0c101b 35%, #101624 60%, #0a1628 100%)`,
+          background: `linear-gradient(165deg, #030604 0%, #081a0e 35%, #0d2414 60%, #0a1e10 100%)`,
           position: "relative",
           display: "flex",
           flexDirection: "column",
@@ -357,7 +357,7 @@ export default function Login() {
             width: "500px",
             height: "500px",
             borderRadius: "50%",
-            background: `radial-gradient(circle, rgba(76,206,172,0.08) 0%, transparent 70%)`,
+            background: `radial-gradient(circle, rgba(46,125,50,0.08) 0%, transparent 70%)`,
             pointerEvents: "none",
           }}
         />
@@ -369,7 +369,7 @@ export default function Login() {
             width: "400px",
             height: "400px",
             borderRadius: "50%",
-            background: `radial-gradient(circle, rgba(104,112,250,0.06) 0%, transparent 70%)`,
+            background: `radial-gradient(circle, rgba(212,168,67,0.06) 0%, transparent 70%)`,
             pointerEvents: "none",
           }}
         />
@@ -390,16 +390,16 @@ export default function Login() {
                 height: 56,
                 borderRadius: "14px",
                 overflow: "hidden",
-                border: `1px solid rgba(76,206,172,0.3)`,
-                boxShadow: "0 0 24px rgba(76,206,172,0.15)",
+                border: `1px solid rgba(46,125,50,0.3)`,
+                boxShadow: "0 0 24px rgba(46,125,50,0.15)",
                 flexShrink: 0,
               }}
             >
-              <img src={logoImage} alt="GRIDx" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img src={logoImage} alt="NamPower" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </Box>
             <Box>
               <Typography sx={{ color: "#fff", fontWeight: 800, fontSize: "1.6rem", letterSpacing: "0.08em", lineHeight: 1 }}>
-                GRIDx
+                NamPower
               </Typography>
               <Typography sx={{ color: ACCENT, fontSize: "0.68rem", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", mt: 0.3 }}>
                 Smart Metering Platform
@@ -421,7 +421,7 @@ export default function Login() {
             <Box
               component="span"
               sx={{
-                background: `linear-gradient(90deg, ${ACCENT}, #6870fa)`,
+                background: `linear-gradient(90deg, ${ACCENT}, #D4A843)`,
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
@@ -492,7 +492,7 @@ export default function Login() {
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
-          background: `linear-gradient(180deg, #080b12 0%, #0c101b 50%, #101624 100%)`,
+          background: `linear-gradient(180deg, #050b07 0%, #081a0e 50%, #0d2414 100%)`,
           position: "relative",
           px: { xs: 3, sm: 6 },
           py: { xs: 5, md: 0 },
@@ -516,19 +516,19 @@ export default function Login() {
               position: "absolute",
               inset: -20,
               borderRadius: "50%",
-              background: `radial-gradient(circle, rgba(76,206,172,0.12) 0%, rgba(76,206,172,0.03) 50%, transparent 70%)`,
+              background: `radial-gradient(circle, rgba(46,125,50,0.12) 0%, rgba(46,125,50,0.03) 50%, transparent 70%)`,
             },
           }}
         >
           <Box
             component="img"
             src={meterImage}
-            alt="GRIDx Smart Meter"
+            alt="NamPower Smart Meter"
             sx={{
               width: "100%",
               height: "100%",
               objectFit: "contain",
-              filter: "drop-shadow(0 0 20px rgba(76,206,172,0.25))",
+              filter: "drop-shadow(0 0 20px rgba(46,125,50,0.25))",
               animation: "pulse 4s ease-in-out infinite",
               opacity: 0.85,
             }}
@@ -592,13 +592,13 @@ export default function Login() {
                 sx={{
                   py: 1.6,
                   borderRadius: "10px",
-                  background: twoFALoading ? "rgba(76,206,172,0.3)" : `linear-gradient(135deg, ${ACCENT} 0%, #2e7c67 100%)`,
+                  background: twoFALoading ? "rgba(46,125,50,0.3)" : `linear-gradient(135deg, ${ACCENT} 0%, #145218 100%)`,
                   color: "#040509",
                   fontWeight: 700,
                   fontSize: "0.92rem",
                   textTransform: "none",
-                  boxShadow: "0 4px 24px rgba(76,206,172,0.25)",
-                  "&:hover": { background: `linear-gradient(135deg, #70d8bd 0%, #3da58a 100%)` },
+                  boxShadow: "0 4px 24px rgba(46,125,50,0.25)",
+                  "&:hover": { background: `linear-gradient(135deg, #66bb6a 0%, #1B5E20 100%)` },
                   "&.Mui-disabled": { color: "rgba(4,5,9,0.6)" },
                   mb: 2,
                 }}
@@ -657,7 +657,7 @@ export default function Login() {
                   name="Email"
                   autoComplete="email"
                   autoFocus
-                  placeholder="admin@gridx-meters.com"
+                  placeholder="admin@nampower.com.na"
                   value={formData.Email}
                   onChange={handleInputChange}
                   error={!!formErrors.Email}
@@ -717,7 +717,7 @@ export default function Login() {
                       color: ACCENT,
                       fontSize: "0.78rem",
                       fontWeight: 500,
-                      "&:hover": { color: "#70d8bd" },
+                      "&:hover": { color: "#66bb6a" },
                     }}
                   >
                     Forgot Password?
@@ -732,17 +732,17 @@ export default function Login() {
                   sx={{
                     py: 1.6,
                     borderRadius: "10px",
-                    background: loading ? "rgba(76,206,172,0.3)" : `linear-gradient(135deg, ${ACCENT} 0%, #2e7c67 100%)`,
+                    background: loading ? "rgba(46,125,50,0.3)" : `linear-gradient(135deg, ${ACCENT} 0%, #145218 100%)`,
                     color: "#040509",
                     fontWeight: 700,
                     fontSize: "0.92rem",
                     letterSpacing: "0.04em",
                     textTransform: "none",
-                    boxShadow: "0 4px 24px rgba(76,206,172,0.25)",
+                    boxShadow: "0 4px 24px rgba(46,125,50,0.25)",
                     transition: "all 0.3s ease",
                     "&:hover": {
-                      background: `linear-gradient(135deg, #70d8bd 0%, #3da58a 100%)`,
-                      boxShadow: "0 6px 32px rgba(76,206,172,0.35)",
+                      background: `linear-gradient(135deg, #66bb6a 0%, #1B5E20 100%)`,
+                      boxShadow: "0 6px 32px rgba(46,125,50,0.35)",
                       transform: "translateY(-1px) scale(1)",
                     },
                     "&.Mui-disabled": { color: "rgba(4,5,9,0.6)" },
@@ -802,7 +802,7 @@ export default function Login() {
             letterSpacing: "0.06em",
           }}
         >
-          &copy; 2026 Pulsar Electronic Solutions | GRIDx
+          &copy; 2026 NamPower | Smart Metering Platform
         </Typography>
       </Box>
 
@@ -814,7 +814,7 @@ export default function Login() {
         fullWidth
         PaperProps={{
           sx: {
-            background: "linear-gradient(180deg, #101624 0%, #0c101b 100%)",
+            background: "linear-gradient(180deg, #0d2414 0%, #081a0e 100%)",
             border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: "12px",
           },
@@ -832,7 +832,7 @@ export default function Login() {
             </Alert>
           )}
           {forgotSuccess && (
-            <Alert severity="success" sx={{ mb: 2, backgroundColor: "rgba(76,206,172,0.1)", border: "1px solid rgba(76,206,172,0.3)", color: "#4cceac" }}>
+            <Alert severity="success" sx={{ mb: 2, backgroundColor: "rgba(46,125,50,0.1)", border: "1px solid rgba(46,125,50,0.3)", color: "#2E7D32" }}>
               {forgotSuccess}
             </Alert>
           )}
@@ -897,11 +897,11 @@ export default function Login() {
             disabled={forgotLoading}
             variant="contained"
             sx={{
-              background: `linear-gradient(135deg, ${ACCENT} 0%, #2e7c67 100%)`,
+              background: `linear-gradient(135deg, ${ACCENT} 0%, #145218 100%)`,
               color: "#040509",
               fontWeight: 700,
               textTransform: "none",
-              "&:hover": { background: `linear-gradient(135deg, #70d8bd 0%, #3da58a 100%)` },
+              "&:hover": { background: `linear-gradient(135deg, #66bb6a 0%, #1B5E20 100%)` },
             }}
           >
             {forgotLoading ? <CircularProgress size={20} sx={{ color: "#040509" }} /> :

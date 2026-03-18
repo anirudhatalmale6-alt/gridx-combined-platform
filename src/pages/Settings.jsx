@@ -96,7 +96,7 @@ export default function Settings() {
             <Typography variant="body2" color={colors.greenAccent[500]} fontWeight={600} fontSize="0.78rem" mb={1}>
               Power & Frequency
             </Typography>
-            <InfoRow label="Frequency Range" value="49.5 - 50.5 Hz" color="#6870fa" />
+            <InfoRow label="Frequency Range" value="49.5 - 50.5 Hz" color="#D4A843" />
             <InfoRow label="Power Factor Minimum" value="0.850" color={colors.greenAccent[500]} />
             <InfoRow label="Over-Power Trip Delay" value="5 seconds" />
             <InfoRow label="Temperature Alarm" value="65\u00B0C" color="#db4f4a" />
@@ -164,7 +164,7 @@ export default function Settings() {
           overflow="auto"
         >
           <Box display="flex" alignItems="center" gap={1} mb={2}>
-            <LockOutlined sx={{ color: "#6870fa" }} />
+            <LockOutlined sx={{ color: "#D4A843" }} />
             <Typography variant="h6" color={colors.grey[100]} fontWeight="bold">
               STS Configuration
             </Typography>
@@ -177,14 +177,14 @@ export default function Settings() {
           <InfoRow label="Key Revision Number (KRN)" value="1" />
           <InfoRow label="Supply Group Code (SGC)" value="48901" color="#f2b705" />
           <InfoRow label="Tariff Index (TI)" value="01" />
-          <InfoRow label="Key Type" value="AES-128" color="#6870fa" />
+          <InfoRow label="Key Type" value="AES-128" color="#D4A843" />
           <InfoRow label="Key Change Token Support" value="Enabled" color={colors.greenAccent[500]} />
 
           <Box mt={2}>
             <Typography variant="body2" color={colors.greenAccent[500]} fontWeight={600} fontSize="0.78rem" mb={1}>
               Gateway
             </Typography>
-            <InfoRow label="STS Gateway Host" value="sts-gateway.gridx-meters.com" />
+            <InfoRow label="STS Gateway Host" value="sts-gateway.nampower.com.na" />
             <InfoRow label="API Port (ISO 8583)" value="8583" />
             <InfoRow label="Connection Status" value="Connected" color={colors.greenAccent[500]} />
             <InfoRow label="TLS Version" value="1.3" />

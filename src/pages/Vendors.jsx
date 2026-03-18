@@ -103,7 +103,7 @@ function getInitials(name) {
 }
 
 const vendorColors = [
-  "#6870fa", "#4cceac", "#f2b705", "#db4f4a", "#a4a9fc", "#70d8bd",
+  "#D4A843", "#2E7D32", "#f2b705", "#db4f4a", "#a4a9fc", "#70d8bd",
 ];
 
 // ---- Main Component ----
