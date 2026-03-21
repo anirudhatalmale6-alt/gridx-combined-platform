@@ -82,7 +82,7 @@ exports.registerMeter = async (req, res) => {
 };
 
 /**
- * Get distinct locations for commissioning dropdown
+ * Get distinct locations for commissioning dropdown (database only)
  */
 exports.getLocations = async (req, res) => {
   try {
@@ -90,6 +90,23 @@ exports.getLocations = async (req, res) => {
     res.json({ success: true, data: locations });
   } catch (error) {
     console.error('Error fetching locations:', error);
+    res.status(500).json({
+      error: 'Failed to fetch locations',
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Get all available locations (predefined + database) for commissioning dropdown
+ * Includes all Windhoek suburbs and other cities from the web app
+ */
+exports.getAllLocations = async (req, res) => {
+  try {
+    const locations = await meterRegistrationService.getAllLocations();
+    res.json({ success: true, data: locations });
+  } catch (error) {
+    console.error('Error fetching all locations:', error);
     res.status(500).json({
       error: 'Failed to fetch locations',
       details: error.message,

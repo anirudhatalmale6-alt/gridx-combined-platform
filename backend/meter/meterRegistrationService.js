@@ -1,6 +1,34 @@
 const db = require('../config/db');
 
 /**
+ * Predefined city/suburb master list - matches web application MapData.js
+ * Used for commissioning dropdown so all areas are available even before meters are registered
+ */
+const PREDEFINED_LOCATIONS = {
+  "Windhoek": [
+    "Academia", "Auasblick", "Avis", "Cimbebasia", "Eros", "Hochland Park",
+    "Katutura", "Klein Windhoek", "Lafrenz", "Ludwigsdorf", "Luxury Hill",
+    "Olympia", "Pioneers Park", "Rocky Crest", "Southern Industrial",
+    "Suiderhof", "Windhoek Central", "Windhoek North", "Windhoek West",
+  ],
+  "Swakopmund": [
+    "Town Centre", "Vineta", "Mile 4", "Ocean View", "Kramersdorf",
+    "Vogelstrand", "Waterfront", "Mondesa", "Matutura", "Industrial Area", "Tamariskia",
+  ],
+  "Walvis Bay": [
+    "Meersig", "Narraville", "Kuisebmond", "Town Centre", "Lagoon", "Long Beach",
+  ],
+  "Mariental": ["Aranos", "Daweb", "Gibeon", "Mariental Rural", "Mariental Urban"],
+  "Okahandja": ["Vyfrand", "Nau-aib", "Veddersdal", "Okahandja"],
+  "Rehoboth": ["Block A", "Block B", "Block C", "Block D", "Block E", "Block F", "Block G", "Block H"],
+  "Katima Mulilo": [
+    "Nghweeze", "Katima Mulilo Proper", "Butterfly", "Cowboy", "Chotto",
+    "Mahohoma", "Nambweza", "Soweto", "New Look", "Mabuluma", "Lyambai",
+    "Bebi", "Greenwell Matongo", "NHE",
+  ],
+};
+
+/**
  * Register a new meter with location and profile information
  * @param {Object} location - Location details
  * @param {Object} meterProfile - Meter profile details
@@ -108,6 +136,63 @@ exports.getDistinctLocations = () => {
         return reject(err);
       }
       resolve(results || []);
+    });
+  });
+};
+
+/**
+ * Get all available locations: predefined master list merged with any
+ * additional locations from the database. This ensures all areas are
+ * available for commissioning even before any meters are registered there.
+ * @returns {Promise} - Resolves with array of {LocationName, Suburb} objects
+ */
+exports.getAllLocations = () => {
+  return new Promise((resolve, reject) => {
+    // Build set from predefined locations
+    const locationSet = new Set();
+    const locations = [];
+
+    for (const [city, suburbs] of Object.entries(PREDEFINED_LOCATIONS)) {
+      for (const suburb of suburbs) {
+        const key = `${city}||${suburb}`;
+        if (!locationSet.has(key)) {
+          locationSet.add(key);
+          locations.push({ LocationName: city, Suburb: suburb });
+        }
+      }
+    }
+
+    // Merge with database locations (adds any that aren't in the predefined list)
+    const query = `SELECT DISTINCT LocationName, Suburb
+                   FROM MeterLocationInfoTable
+                   WHERE LocationName IS NOT NULL AND LocationName != ''
+                   ORDER BY LocationName, Suburb`;
+
+    db.query(query, (err, results) => {
+      if (err) {
+        // If DB query fails, still return predefined locations
+        console.error('DB query failed, returning predefined locations only:', err.message);
+        return resolve(locations);
+      }
+
+      if (results) {
+        for (const row of results) {
+          const key = `${row.LocationName}||${row.Suburb || ''}`;
+          if (!locationSet.has(key)) {
+            locationSet.add(key);
+            locations.push({ LocationName: row.LocationName, Suburb: row.Suburb || '' });
+          }
+        }
+      }
+
+      // Sort by city then suburb
+      locations.sort((a, b) => {
+        const cityCompare = a.LocationName.localeCompare(b.LocationName);
+        if (cityCompare !== 0) return cityCompare;
+        return a.Suburb.localeCompare(b.Suburb);
+      });
+
+      resolve(locations);
     });
   });
 };

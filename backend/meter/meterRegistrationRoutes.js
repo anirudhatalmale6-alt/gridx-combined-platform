@@ -11,9 +11,16 @@ router.post('/register', meterRegistrationController.registerMeter);
 
 /**
  * @route GET /api/meter/locations
- * @description Get distinct locations for commissioning dropdown
+ * @description Get all locations (predefined + database) for commissioning dropdown
  * @access Public
  */
-router.get('/locations', meterRegistrationController.getLocations);
+router.get('/locations', meterRegistrationController.getAllLocations);
+
+/**
+ * @route GET /api/meter/locations/registered
+ * @description Get only locations where meters are already registered
+ * @access Public
+ */
+router.get('/locations/registered', meterRegistrationController.getLocations);
 
 module.exports = router;
