@@ -11,8 +11,9 @@ const verifyToken = (req, res, next) => {
     return res.status(403).send({err:535});
   }
   try {
-    const decoded = jwt.verify(token, config.ACCESS_TOKEN_SECRET);
-    req.DRN = decoded.meterDRN;
+    const secret = config.ACCESS_TOKEN_SECRET || config.SECRET_KEY;
+    const decoded = jwt.verify(token, secret);
+    req.DRN = decoded.meterDRN || decoded.drn;
   } catch (err) {
     return res.status(401).send({err:535});
   }

@@ -1,74 +1,59 @@
 const express = require("express");
-const connection = require("./service/hwDatabase.js");
-const meter = require("./models/meterProfileModel");
-const auth = require("./middleware/hwAuth");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 
-// creating JWT token
+const SECRET = process.env.SECRET_KEY || 'gridx-combined-secret-key-2026';
+const TOKEN_EXPIRY = '30d'; // 30-day expiry for meter JWT tokens
+
+// POST /meters/getAccessToken — ESP32 meter registration
 router.post("/getAccessToken", (req, res) => {
-  // Authenticate User
-  const DRN = req.body.DRN;
-  if (DRN === undefined || DRN === null) {
-    res.status(500).send({
-      message: "Error invalid request",
-    });
+  const DRN = req.body.DRN || req.body.drn;
+  if (!DRN) {
+    return res.status(400).json({ error: "Missing DRN in request body" });
   }
-  const config = process.env;
-  const api_key = config.METER_API_KEY;
 
-  res.json({ accessToken: api_key });
+  // Generate a JWT token for this meter
+  const accessToken = jwt.sign(
+    { drn: DRN, type: 'meter' },
+    SECRET,
+    { expiresIn: TOKEN_EXPIRY }
+  );
+
+  console.log('[METER-AUTH] Issued JWT for meter:', DRN);
+  return res.json({ accessToken: accessToken });
 });
 
-// creating JWT token
+// POST /meters/getAccessTokenWeb — web dashboard meter token
 router.post("/getAccessTokenWeb", (req, res) => {
-  // Authenticate User
-  const DRN = req.body.DRN;
-  if (DRN === undefined || DRN === null) {
-    res.status(500).send({
-      message: "Error invalid request",
-    });
+  const DRN = req.body.DRN || req.body.drn;
+  if (!DRN) {
+    return res.status(400).json({ error: "Missing DRN in request body" });
   }
 
+  const accessToken = jwt.sign(
+    { meterDRN: DRN, type: 'meter-web' },
+    SECRET,
+    { expiresIn: '1h' }
+  );
 
-  meter.findByIdReal(DRN, (err, data) => {
-
-    if (err) {
-      if (err.kind === "not_found") {
-
-        const initMeterProfile = {
-          Surname: "None",
-          Name: "None",
-          Region: "None",
-          City: "None",
-          StreetName: "None",
-          HouseNumber: "None",
-          SIMNumber: "None",
-          UserCategory: "None ",
-        };
-
-
-        const meterEnergy = new meter(DRN, initMeterProfile);
-
-        meter.createReal(meterEnergy, (err, data) => {
-          if (err) {
-            res.status(500).send({
-              message: err.message || "Some error occurred",  
-            });
-          }
-        });
-      }
-    }
-
-  });
-
-  const user = { meterDRN: DRN };
-  accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
-  res.json({ accessToken: accessToken });
+  return res.json({ accessToken: accessToken });
 });
 
-router.get("/testToken", auth, function (req, res, next) {
-  res.json("token is uathentic");
+// GET /meters/testToken — verify token is valid
+router.get("/testToken", (req, res) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
+
+  jwt.verify(token, SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid token", details: err.message });
+    }
+    return res.json({ valid: true, decoded: decoded });
+  });
 });
 
 module.exports = router;
