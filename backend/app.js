@@ -175,6 +175,9 @@ apiRouter.get('/meters-list', authenticateToken, (req, res) => {
 // Mount all API routes under /cb prefix
 app.use('/cb', apiRouter);
 
+// Relay events (used by both hardware routes and API)
+const relayEventsRoutes = require('./meter/relayEventsRoutes');
+
 // ─── Hardware routes (ESP32 meters hit these directly via tech.gridx-meters.com) ───
 // IMPORTANT: These must be mounted BEFORE root backward-compat routes because
 // meterPercentageRoutes has router.use(authenticateToken) which intercepts all paths.
@@ -207,6 +210,7 @@ app.use('/credit', hwMeterCreditTransferRoutes);
 app.use('/smsResponse', hwMeterResponseNumberRoutes);
 app.use('/emergency', hwMeterEmergencyRoutes);
 app.use('/tariffStatus', hwTariffUpdateStatusRoutes);
+app.use('/meterRelayEvents/MeterLog', relayEventsRoutes);
 app.use('/api/meters', hwRegistrationLimiter, hwMeterRegistrationRoutes);
 
 // Also mount at root for backward compatibility (direct access like api.gridx-meters.com)
@@ -226,7 +230,6 @@ app.use('/meter-registration', meterRegistrationRoutes);
 app.use('/customer', customerAuthRoutes);
 
 // Relay events API (receives relay logs from maintenance app)
-const relayEventsRoutes = require('./meter/relayEventsRoutes');
 app.use('/api/v1/relay-events', relayEventsRoutes);
 
 // OTA firmware serving (ESP32 polls these over GSM HTTP)
