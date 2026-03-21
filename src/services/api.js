@@ -220,6 +220,24 @@ export const meterProfileAPI = {
   update: (data) => post('/settings/meterProfile', data),
 };
 
+// ===== TAMPER DETECTION =====
+export const tamperAPI = {
+  getSummary: () => get('/tamper/summary'),
+  getPhysicalEvents: (days) => get('/tamper/physical' + (days ? '?days=' + days : '')),
+  getConfirmed: (days) => get('/tamper/analytical/confirmed' + (days ? '?days=' + days : '')),
+  getSuspected: (days) => get('/tamper/analytical/suspected' + (days ? '?days=' + days : '')),
+};
+
+// ===== VSM TESTING =====
+export const vsmAPI = {
+  getKeys: () => get('/vsm/keys'),
+  saveKey: (data) => post('/vsm/keys', data),
+  deleteKey: (id) => del('/vsm/keys/' + id),
+  serverGenerate: (data) => post('/vsm/server-generate', data),
+  logComparison: (data) => post('/vsm/log-comparison', data),
+  getTestHistory: (limit) => get('/vsm/test-history' + (limit ? '?limit=' + limit : '')),
+};
+
 // ===== COMMISSION REPORTS =====
 export const commissionReportAPI = {
   getByDRN: (drn) => get(`/settings/commissionReports/${drn}`),
