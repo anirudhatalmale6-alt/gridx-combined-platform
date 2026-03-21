@@ -175,23 +175,9 @@ apiRouter.get('/meters-list', authenticateToken, (req, res) => {
 // Mount all API routes under /cb prefix
 app.use('/cb', apiRouter);
 
-// Also mount at root for backward compatibility (direct access like api.gridx-meters.com)
-app.use('/', getRoutes);
-app.use('/', meterRoutes);
-app.use('/', suburbEnergyRoute);
-app.use('/', adminAuthRoutes);
-app.use('/', notificationRoutes);
-app.use('/', meterPercentageRoutes);
-app.use('/finance', financialRoutes);
-app.use('/finance', suburbFinance);
-app.use('/settings', meterProfileRoutes);
-app.use('/systemSettings', systemSettingsRoutes);
-app.use('/api/meter', meterBillingRoutes);
-app.use('/api/billing', billingNotificationRoutes);
-app.use('/meter-registration', meterRegistrationRoutes);
-app.use('/customer', customerAuthRoutes);
-
 // ─── Hardware routes (ESP32 meters hit these directly via tech.gridx-meters.com) ───
+// IMPORTANT: These must be mounted BEFORE root backward-compat routes because
+// meterPercentageRoutes has router.use(authenticateToken) which intercepts all paths.
 app.use('/meters', hwMeterTokenRoutes);
 app.use('/createMeterToken', hwMeterTokenRoutes);
 app.use('/meterPower', hwMeterPowerRoutes);
@@ -222,6 +208,22 @@ app.use('/smsResponse', hwMeterResponseNumberRoutes);
 app.use('/emergency', hwMeterEmergencyRoutes);
 app.use('/tariffStatus', hwTariffUpdateStatusRoutes);
 app.use('/api/meters', hwRegistrationLimiter, hwMeterRegistrationRoutes);
+
+// Also mount at root for backward compatibility (direct access like api.gridx-meters.com)
+app.use('/', getRoutes);
+app.use('/', meterRoutes);
+app.use('/', suburbEnergyRoute);
+app.use('/', adminAuthRoutes);
+app.use('/', notificationRoutes);
+app.use('/', meterPercentageRoutes);
+app.use('/finance', financialRoutes);
+app.use('/finance', suburbFinance);
+app.use('/settings', meterProfileRoutes);
+app.use('/systemSettings', systemSettingsRoutes);
+app.use('/api/meter', meterBillingRoutes);
+app.use('/api/billing', billingNotificationRoutes);
+app.use('/meter-registration', meterRegistrationRoutes);
+app.use('/customer', customerAuthRoutes);
 
 // Relay events API (receives relay logs from maintenance app)
 const relayEventsRoutes = require('./meter/relayEventsRoutes');
