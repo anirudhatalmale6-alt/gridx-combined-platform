@@ -543,7 +543,7 @@ async function checkAndUpdateTariffUpdates(DRN) {
 
         TariffUpdateStatus.updateStatusToUpdated(
           DRN,
-          tariffUpdate.tariff_id,
+          tariffUpdate.data.tariff_id,
           (updateErr) => {
             if (updateErr) {
               console.error("❌ Error updating tariff status:", updateErr);

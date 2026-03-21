@@ -160,6 +160,33 @@ TariffUpdateStatus.create= (data, result) =>  {
 };
 
 
+// 🔍 Get records by Meter DRN
+TariffUpdateStatus.findByMeter = (meterDRN, result) => {
+  const sql = `SELECT * FROM tariff_update_status WHERE meterDRN = ? ORDER BY id DESC`;
+  connection.query(sql, [meterDRN], (err, res) => {
+    if (err) {
+      console.error("Error fetching by meter:", err);
+      return result(err, null);
+    }
+    if (res.length === 0) {
+      return result({ kind: "not_found" }, null);
+    }
+    result(null, { success: true, data: res });
+  });
+};
+
+// 🔍 Get all meters with pending updates
+TariffUpdateStatus.getPendingMeters = (result) => {
+  const sql = `SELECT * FROM tariff_update_status WHERE update_status = 'Pending' ORDER BY id DESC`;
+  connection.query(sql, (err, res) => {
+    if (err) {
+      console.error("Error fetching pending meters:", err);
+      return result(err, null);
+    }
+    result(null, { success: true, data: res });
+  });
+};
+
 // 🔍 Get ALL records
 TariffUpdateStatus.getAll = (result) => {
   connection.query("SELECT * FROM tariff_update_status", (err, res) => {
@@ -288,7 +315,7 @@ TariffUpdateStatus.updateStatusToUpdated = (meterDRN, tariff_id, result) => {
   const updateSql = `
     UPDATE tariff_update_status
     SET update_status = 'Updated', updated_at = NOW()
-    WHERE meterDRN = ?;
+    WHERE meterDRN = ? AND tariff_id = ?;
   `;
 
   connection.query(updateSql, [meterDRN, tariff_id], (err, res) => {
