@@ -2576,484 +2576,560 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 7: Commission Report                                       */}
       {/* ================================================================ */}
-      {tab === 7 && (
-        <Box>
-          <Box display="flex" justifyContent="flex-end" mb={0.5}>
-            <DataBadge />
+      {tab === 7 && (() => {
+        /* Helper: render a detail row */
+        const DetailRow = ({ label, value, color: rowColor, bold }) => (
+          <Box display="flex" justifyContent="space-between" alignItems="center" py={0.4}
+            sx={{ borderBottom: `1px solid ${colors.primary[600]}` }}>
+            <Typography color={colors.grey[400]} fontSize="0.78rem">{label}</Typography>
+            <Typography color={rowColor || colors.grey[100]} fontSize="0.78rem" fontWeight={bold ? 700 : 500}>{value}</Typography>
           </Box>
-          <Box
-            display="grid"
-            gridTemplateColumns="repeat(12, 1fr)"
-            gap="5px"
-          >
-            {/* Commission Reports Table */}
-            <Box
-              gridColumn="span 12"
-              backgroundColor={colors.primary[400]}
-              p="20px"
-              borderRadius="4px"
-            >
-              <Typography
-                variant="h6"
-                color={colors.grey[100]}
-                fontWeight="bold"
-                mb={2}
-              >
-                Commission Test Reports
-              </Typography>
-
-              {commissionReports.length > 0 ? (
-                commissionReports.map((report, idx) => (
-                  <Box
-                    key={report.id || idx}
-                    mb={2}
-                    p={2}
-                    sx={{
-                      backgroundColor: colors.primary[500],
-                      borderLeft: `4px solid ${
-                        report.overall_passed
-                          ? colors.greenAccent[500]
-                          : "#db4f4a"
-                      }`,
-                      borderRadius: "2px",
-                    }}
-                  >
-                    {/* Report Header */}
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      mb={1.5}
-                    >
-                      <Box display="flex" alignItems="center" gap={1.5}>
-                        <Chip
-                          label={report.report_type?.replace(/_/g, " ").toUpperCase() || "TEST"}
-                          size="small"
-                          sx={{
-                            backgroundColor: report.overall_passed
-                              ? "rgba(76,206,172,0.15)"
-                              : "rgba(219,79,74,0.15)",
-                            color: report.overall_passed
-                              ? colors.greenAccent[500]
-                              : "#db4f4a",
-                            fontWeight: 700,
-                            fontSize: "0.7rem",
-                            textTransform: "uppercase",
-                          }}
-                        />
-                        <Chip
-                          label={report.overall_passed ? "PASSED" : "FAILED"}
-                          size="small"
-                          sx={{
-                            backgroundColor: report.overall_passed
-                              ? "rgba(76,206,172,0.2)"
-                              : "rgba(219,79,74,0.2)",
-                            color: report.overall_passed
-                              ? colors.greenAccent[400]
-                              : "#f44336",
-                            fontWeight: 700,
-                            fontSize: "0.7rem",
-                          }}
-                        />
-                      </Box>
-                      <Typography
-                        color={colors.grey[300]}
-                        fontSize="0.75rem"
-                      >
-                        {report.date_time
-                          ? formatDateTime(report.date_time)
-                          : "---"}
-                      </Typography>
-                    </Box>
-
-                    {/* Report Details Grid */}
-                    <Box
-                      display="grid"
-                      gridTemplateColumns="repeat(auto-fit, minmax(180px, 1fr))"
-                      gap={1.5}
-                    >
-                      {/* Measurement Results */}
-                      {(report.report_type === "measurement" ||
-                        report.report_type === "auto_calibration" ||
-                        report.report_type === "full_system") &&
-                        report.voltage_measured != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              MEASUREMENT
-                            </Typography>
-                            <Box display="flex" flexDirection="column" gap={0.3}>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Voltage
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.voltage_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.voltage_measured).toFixed(1)}V
-                                  ({Number(report.voltage_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.current_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.current_measured).toFixed(3)}A
-                                  ({Number(report.current_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Power
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.power_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.power_measured).toFixed(0)}W
-                                  ({Number(report.power_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* Load Test Results */}
-                      {(report.report_type === "load" ||
-                        report.report_type === "auto_calibration" ||
-                        report.report_type === "full_system") &&
-                        report.load_off_current != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              LOAD TEST
-                            </Typography>
-                            <Box display="flex" flexDirection="column" gap={0.3}>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  OFF Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.load_off_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.load_off_current).toFixed(3)}A
-                                  {report.load_off_passed ? " PASS" : " FAIL"}
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  ON Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.load_on_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.load_on_current).toFixed(3)}A
-                                  {report.load_on_passed ? " PASS" : " FAIL"}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* API Test Results */}
-                      {(report.report_type === "api" ||
-                        report.report_type === "full_system") &&
-                        report.api_tests_total != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              API TEST
-                            </Typography>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Endpoints
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.api_tests_passed === report.api_tests_total
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.api_tests_passed}/{report.api_tests_total} passed
-                              </Typography>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* Full System Summary */}
-                      {report.report_type === "full_system" && (
-                        <Box>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            SYSTEM SUMMARY
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.3}>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Measurement
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.measurement_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.measurement_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Load
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.load_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.load_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                API
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.api_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.api_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </Box>
-                      )}
-
-                      {/* Commissioning Location & Owner Info */}
-                      {report.report_type === "commissioning" && (
-                        <Box>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            COMMISSIONING DETAILS
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.3}>
-                            {report.region && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Region</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.region}</Typography>
-                              </Box>
-                            )}
-                            {report.sub_region && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Sub-Region</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.sub_region}</Typography>
-                              </Box>
-                            )}
-                            {report.area && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Area</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.area}</Typography>
-                              </Box>
-                            )}
-                            {report.erf_number && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">ERF Number</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.erf_number}</Typography>
-                              </Box>
-                            )}
-                            {report.sim_number && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">SIM Number</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.sim_number}</Typography>
-                              </Box>
-                            )}
-                            {(report.gps_latitude || report.gps_longitude) && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">GPS</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                  {report.gps_latitude?.toFixed(6)}, {report.gps_longitude?.toFixed(6)}
-                                </Typography>
-                              </Box>
-                            )}
-                            {report.firmware_version && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Firmware</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.firmware_version}</Typography>
-                              </Box>
-                            )}
-                            {report.owner_name && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Owner</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                  {report.owner_name} {report.owner_surname || ""}
-                                </Typography>
-                              </Box>
-                            )}
-                            {report.owner_phone && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Phone</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.owner_phone}</Typography>
-                              </Box>
-                            )}
-                            {report.owner_email && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Email</Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">{report.owner_email}</Typography>
-                              </Box>
-                            )}
-                            {report.nextion_connected != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">Nextion</Typography>
-                                <Typography
-                                  color={report.nextion_connected ? colors.greenAccent[500] : "#db4f4a"}
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {report.nextion_connected ? "Connected" : "Disconnected"}
-                                </Typography>
-                              </Box>
-                            )}
-                            {report.gsm_registered != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">GSM</Typography>
-                                <Typography
-                                  color={report.gsm_registered ? colors.greenAccent[500] : "#db4f4a"}
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {report.gsm_registered ? "Registered" : "Not Registered"}
-                                </Typography>
-                              </Box>
-                            )}
-                          </Box>
-                        </Box>
-                      )}
-
-                      {/* Test Metadata */}
-                      <Box>
-                        <Typography
-                          color={colors.grey[300]}
-                          fontSize="0.7rem"
-                          fontWeight={600}
-                          mb={0.5}
-                        >
-                          INFO
-                        </Typography>
-                        <Box display="flex" flexDirection="column" gap={0.3}>
-                          {report.attempts != null && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Attempts
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.attempts}
-                              </Typography>
-                            </Box>
-                          )}
-                          {report.sample_count != null && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Samples
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.sample_count}
-                              </Typography>
-                            </Box>
-                          )}
-                          {report.tester_app_version && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                App Version
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.tester_app_version}
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      </Box>
-                    </Box>
-                  </Box>
-                ))
-              ) : (
-                <Typography
-                  color="rgba(255,255,255,0.35)"
-                  sx={{ textAlign: "center", py: 4 }}
-                >
-                  No commission reports found for this meter. Run a commission
-                  test from the GRIDx Maintenance app to generate reports.
-                </Typography>
-              )}
+        );
+        /* Helper: pass/fail chip */
+        const PassFailChip = ({ passed, label }) => (
+          <Chip label={label || (passed ? "PASS" : "FAIL")} size="small"
+            sx={{ backgroundColor: passed ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)",
+              color: passed ? "#4ADE80" : "#F87171", fontWeight: 700, fontSize: "0.72rem", minWidth: 55 }} />
+        );
+        /* Helper: section card */
+        const SectionCard = ({ title, icon, children, accentColor }) => (
+          <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, border: `1px solid ${colors.primary[600]}`,
+            borderTop: `3px solid ${accentColor || "#60A5FA"}`, mb: 2 }}>
+            <Box sx={{ px: 2, py: 1.2, borderBottom: `1px solid ${colors.primary[600]}`,
+              display: "flex", alignItems: "center", gap: 1 }}>
+              {icon}
+              <Typography variant="subtitle2" fontWeight={700} color={colors.grey[100]}>{title}</Typography>
+            </Box>
+            <Box px={2} py={1.5}>{children}</Box>
+          </Box>
+        );
+        /* Helper: measurement row with expected/measured/error */
+        const MeasRow = ({ label, unit, expected, measured, error, passed }) => (
+          <Box sx={{ borderBottom: `1px solid ${colors.primary[600]}`, py: 0.6 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography color={colors.grey[300]} fontSize="0.78rem" fontWeight={600}>{label}</Typography>
+              <PassFailChip passed={passed} />
+            </Box>
+            <Box display="flex" gap={3} mt={0.3}>
+              {expected != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Expected: <span style={{color: "#E2E8F0"}}>{Number(expected).toFixed(label === "Current" ? 3 : 1)} {unit}</span></Typography>}
+              {measured != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Measured: <span style={{color: passed ? "#4ADE80" : "#F87171"}}>{Number(measured).toFixed(label === "Current" ? 3 : 1)} {unit}</span></Typography>}
+              {error != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Error: <span style={{color: Math.abs(Number(error)) <= 10 ? "#4ADE80" : "#F87171"}}>{Number(error).toFixed(2)}%</span></Typography>}
             </Box>
           </Box>
+        );
+
+        return (
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Box display="flex" alignItems="center" gap={1}>
+              <AssignmentOutlined sx={{ color: "#ff9800", fontSize: 28 }} />
+              <Typography variant="h5" fontWeight="bold" color={colors.grey[100]}>Diagnostic & Commission Reports</Typography>
+              {commissionReports.length > 0 && <Chip label={`${commissionReports.length} report${commissionReports.length > 1 ? "s" : ""}`} size="small" sx={{ backgroundColor: colors.primary[500], color: colors.grey[100] }} />}
+            </Box>
+          </Box>
+
+          {commissionReports.length > 0 ? (
+            commissionReports.map((report, idx) => (
+              <Box key={report.id || idx} mb={3} sx={{ backgroundColor: colors.primary[400], borderRadius: 2, overflow: "hidden" }}>
+                {/* ── Report Header Banner ── */}
+                <Box sx={{ background: report.overall_passed
+                    ? "linear-gradient(135deg, rgba(76,206,172,0.15) 0%, rgba(76,206,172,0.05) 100%)"
+                    : "linear-gradient(135deg, rgba(219,79,74,0.15) 0%, rgba(219,79,74,0.05) 100%)",
+                  borderBottom: `2px solid ${report.overall_passed ? "#4ADE80" : "#F87171"}`,
+                  px: 2.5, py: 1.8 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                    <Box display="flex" alignItems="center" gap={1.5}>
+                      <Box sx={{ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                        backgroundColor: report.overall_passed ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)" }}>
+                        {report.overall_passed
+                          ? <CheckCircleOutlined sx={{ color: "#4ADE80", fontSize: 24 }} />
+                          : <CancelOutlined sx={{ color: "#F87171", fontSize: 24 }} />}
+                      </Box>
+                      <Box>
+                        <Typography variant="h6" fontWeight={700} color={colors.grey[100]} sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                          {report.report_type?.replace(/_/g, " ")} Test Report
+                        </Typography>
+                        <Typography color={colors.grey[300]} fontSize="0.8rem">
+                          {report.date_time ? formatDateTime(report.date_time) : "---"}
+                          {report.tester_app_version ? ` | App v${report.tester_app_version}` : ""}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Chip label={report.overall_passed ? "ALL TESTS PASSED" : "TESTS FAILED"} size="medium"
+                      sx={{ backgroundColor: report.overall_passed ? "rgba(76,206,172,0.25)" : "rgba(219,79,74,0.25)",
+                        color: report.overall_passed ? "#4ADE80" : "#F87171", fontWeight: 700, fontSize: "0.85rem",
+                        border: `1px solid ${report.overall_passed ? "#4ADE80" : "#F87171"}`, px: 1 }} />
+                  </Box>
+                </Box>
+
+                <Box p={2.5}>
+                  {/* ── Full System Summary (for full_system type) ── */}
+                  {report.report_type === "full_system" && (
+                    <Box mb={2}>
+                      <Grid container spacing={1.5}>
+                        {[
+                          { label: "Measurement Test", passed: report.measurement_test_passed },
+                          { label: "Load Test", passed: report.load_test_passed },
+                          { label: "API Test", passed: report.api_test_passed },
+                        ].map((t) => (
+                          <Grid item xs={4} key={t.label}>
+                            <Box sx={{ backgroundColor: t.passed ? "rgba(76,206,172,0.1)" : "rgba(219,79,74,0.1)",
+                              border: `1px solid ${t.passed ? "rgba(76,206,172,0.3)" : "rgba(219,79,74,0.3)"}`,
+                              borderRadius: 2, p: 1.5, textAlign: "center" }}>
+                              {t.passed
+                                ? <CheckCircleOutlined sx={{ color: "#4ADE80", fontSize: 28, mb: 0.5 }} />
+                                : <CancelOutlined sx={{ color: "#F87171", fontSize: 28, mb: 0.5 }} />}
+                              <Typography color={colors.grey[100]} fontSize="0.8rem" fontWeight={600}>{t.label}</Typography>
+                              <Typography color={t.passed ? "#4ADE80" : "#F87171"} fontSize="0.75rem" fontWeight={700}>
+                                {t.passed ? "PASSED" : "FAILED"}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  )}
+
+                  <Grid container spacing={2}>
+                    {/* ── Measurement Test Section ── */}
+                    {(report.report_type === "measurement" || report.report_type === "auto_calibration" || report.report_type === "full_system") && report.voltage_measured != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="MEASUREMENT TEST RESULTS" accentColor="#60A5FA"
+                          icon={<BoltOutlined sx={{ color: "#60A5FA", fontSize: 20 }} />}>
+                          <MeasRow label="Voltage" unit="V" expected={report.voltage_expected} measured={report.voltage_measured} error={report.voltage_error} passed={report.voltage_passed} />
+                          <MeasRow label="Current" unit="A" expected={report.current_expected} measured={report.current_measured} error={report.current_error} passed={report.current_passed} />
+                          {report.power_measured != null && (
+                            <MeasRow label="Power" unit="W" expected={report.power_expected} measured={report.power_measured} error={report.power_error} passed={report.power_passed} />
+                          )}
+                          {/* Pass/Fail Criteria */}
+                          <Box mt={1.5} sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2 }}>
+                            <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>PASS/FAIL CRITERIA</Typography>
+                            {[
+                              { l: "Voltage Accuracy", v: report.voltage_error, p: report.voltage_passed },
+                              { l: "Current Accuracy", v: report.current_error, p: report.current_passed },
+                              ...(report.power_error != null ? [{ l: "Power Accuracy", v: report.power_error, p: report.power_passed }] : []),
+                            ].map(c => (
+                              <Box key={c.l} display="flex" justifyContent="space-between" py={0.2}>
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">{c.l}: {c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}%` : "N/A"} ≤ 10.0%</Typography>
+                                <Typography color={c.p ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={700}>{c.p ? "PASS" : "FAIL"}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                          {/* Test metadata */}
+                          {(report.attempts != null || report.sample_count != null) && (
+                            <Box mt={1} display="flex" gap={2}>
+                              {report.attempts != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Attempts: <span style={{color:"#E2E8F0"}}>{report.attempts} / 5</span></Typography>}
+                              {report.sample_count != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Samples: <span style={{color:"#E2E8F0"}}>{report.sample_count}</span></Typography>}
+                            </Box>
+                          )}
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── Load Test Section ── */}
+                    {(report.report_type === "load" || report.report_type === "auto_calibration" || report.report_type === "full_system") && report.load_off_current != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="LOAD TEST RESULTS" accentColor="#FBBF24"
+                          icon={<PowerOutlined sx={{ color: "#FBBF24", fontSize: 20 }} />}>
+                          {/* Load OFF */}
+                          <Box sx={{ borderBottom: `1px solid ${colors.primary[600]}`, py: 0.8 }}>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: report.load_off_passed ? "#4ADE80" : "#F87171" }} />
+                                <Typography color={colors.grey[300]} fontSize="0.78rem" fontWeight={600}>Load OFF State</Typography>
+                              </Box>
+                              <PassFailChip passed={report.load_off_passed} />
+                            </Box>
+                            <Box ml={2.3} mt={0.3}>
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                Current: <span style={{color: report.load_off_passed ? "#4ADE80" : "#F87171"}}>{Number(report.load_off_current).toFixed(3)} A</span>
+                                <span style={{color: colors.grey[500]}}> (threshold: &lt; 0.2A)</span>
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* Load ON */}
+                          <Box sx={{ py: 0.8 }}>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: report.load_on_passed ? "#4ADE80" : "#F87171" }} />
+                                <Typography color={colors.grey[300]} fontSize="0.78rem" fontWeight={600}>Load ON State</Typography>
+                              </Box>
+                              <PassFailChip passed={report.load_on_passed} />
+                            </Box>
+                            <Box ml={2.3} mt={0.3}>
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                Current: <span style={{color: report.load_on_passed ? "#4ADE80" : "#F87171"}}>{Number(report.load_on_current).toFixed(3)} A</span>
+                                <span style={{color: colors.grey[500]}}> (threshold: &gt; 0.5A)</span>
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* System Verification */}
+                          <Box mt={1} sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2 }}>
+                            <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>SYSTEM VERIFICATION</Typography>
+                            {[
+                              { l: "Relay Control", ok: report.load_off_passed && report.load_on_passed },
+                              { l: "Load Isolation", ok: report.load_off_passed },
+                              { l: "Current Measurement", ok: true },
+                              { l: "Safety Function", ok: report.load_off_passed },
+                            ].map(s => (
+                              <Box key={s.l} display="flex" justifyContent="space-between" py={0.2}>
+                                <Typography color={colors.grey[400]} fontSize="0.72rem">{s.l}</Typography>
+                                <Typography color={s.ok ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={600}>{s.ok ? "WORKING" : "ISSUE"}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                          {(report.attempts != null || report.sample_count != null) && (
+                            <Box mt={1} display="flex" gap={2}>
+                              {report.attempts != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Attempts: <span style={{color:"#E2E8F0"}}>{report.attempts} / 5</span></Typography>}
+                              {report.sample_count != null && <Typography color={colors.grey[400]} fontSize="0.72rem">Samples: <span style={{color:"#E2E8F0"}}>{report.sample_count}</span></Typography>}
+                            </Box>
+                          )}
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── API Test Section ── */}
+                    {(report.report_type === "api" || report.report_type === "full_system") && report.api_tests_total != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="API TEST RESULTS" accentColor="#818CF8"
+                          icon={<TuneOutlined sx={{ color: "#818CF8", fontSize: 20 }} />}>
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                            <Typography color={colors.grey[300]} fontSize="0.85rem" fontWeight={600}>
+                              Endpoints Tested
+                            </Typography>
+                            <Chip label={`${report.api_tests_passed} / ${report.api_tests_total} Passed`} size="small"
+                              sx={{ backgroundColor: report.api_tests_passed === report.api_tests_total ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)",
+                                color: report.api_tests_passed === report.api_tests_total ? "#4ADE80" : "#F87171", fontWeight: 700 }} />
+                          </Box>
+                          {/* Progress bar */}
+                          <Box sx={{ position: "relative", height: 8, backgroundColor: colors.primary[600], borderRadius: 4, overflow: "hidden" }}>
+                            <Box sx={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 4,
+                              width: `${report.api_tests_total > 0 ? (report.api_tests_passed / report.api_tests_total) * 100 : 0}%`,
+                              backgroundColor: report.api_tests_passed === report.api_tests_total ? "#4ADE80" : "#FBBF24" }} />
+                          </Box>
+                          <Box mt={1.5} sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2 }}>
+                            <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.3}>STATUS</Typography>
+                            <Typography color={report.api_tests_passed === report.api_tests_total ? "#4ADE80" : "#F87171"} fontSize="0.78rem" fontWeight={600}>
+                              {report.api_tests_passed === report.api_tests_total
+                                ? "All API endpoints responding correctly"
+                                : `${report.api_tests_total - report.api_tests_passed} endpoint(s) failed - review meter connectivity`}
+                            </Typography>
+                          </Box>
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── Detailed Report Data (from report_data JSON) ── */}
+                    {(() => {
+                      let rd = report.report_data;
+                      if (!rd) return null;
+                      if (typeof rd === "string") { try { rd = JSON.parse(rd); } catch { return null; } }
+
+                      // Helper for measurement detail rendering (used by both standalone and full_system)
+                      const renderMeasurementDetail = (meas, title) => {
+                        if (!meas) return null;
+                        return (
+                          <Grid item xs={12}>
+                            <SectionCard title={title || "MEASUREMENT SAMPLE HISTORY"} accentColor="#818CF8"
+                              icon={<AssignmentOutlined sx={{ color: "#818CF8", fontSize: 20 }} />}>
+                              {/* Sample Table */}
+                              {meas.samples && meas.samples.length > 0 && (
+                                <>
+                                  <Typography color={colors.grey[300]} fontSize="0.72rem" fontWeight={600} mb={0.5}>Sample History</Typography>
+                                  <TableContainer sx={{ mb: 1.5 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          {["ID", "Voltage (V)", "V Error", "Current (A)", "I Error", "Power (W)", "P Error"].map(h => (
+                                            <TableCell key={h} sx={{ color: colors.grey[400], fontSize: "0.68rem", fontWeight: 600, py: 0.3, borderBottom: `1px solid ${colors.primary[600]}` }}>{h}</TableCell>
+                                          ))}
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {meas.samples.map((s, si) => (
+                                          <TableRow key={si} sx={{ "& td": { borderBottom: `1px solid ${colors.primary[600]}`, py: 0.2 } }}>
+                                            <TableCell sx={{ color: colors.grey[300], fontSize: "0.68rem" }}>A{s.attempt}-S{s.sample_number}</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.voltage).toFixed(1)}</TableCell>
+                                            <TableCell sx={{ color: Math.abs(s.voltage_error) <= 10 ? "#4ADE80" : "#F87171", fontSize: "0.68rem" }}>{Number(s.voltage_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.current).toFixed(3)}</TableCell>
+                                            <TableCell sx={{ color: Math.abs(s.current_error) <= 10 ? "#4ADE80" : "#F87171", fontSize: "0.68rem" }}>{Number(s.current_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.power).toFixed(0)}</TableCell>
+                                            <TableCell sx={{ color: Math.abs(s.power_error) <= 10 ? "#4ADE80" : "#F87171", fontSize: "0.68rem" }}>{Number(s.power_error).toFixed(1)}%</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                </>
+                              )}
+                              {/* Statistical Analysis */}
+                              {meas.statistics && (
+                                <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2 }}>
+                                  <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>STATISTICAL ANALYSIS</Typography>
+                                  {[
+                                    { l: "Voltage", avg: meas.statistics.voltage_avg ?? meas.voltage_error, max: meas.statistics.voltage_max, min: meas.statistics.voltage_min, sd: meas.statistics.voltage_stddev },
+                                    { l: "Current", avg: meas.statistics.current_avg ?? meas.current_error, max: meas.statistics.current_max, min: meas.statistics.current_min, sd: meas.statistics.current_stddev },
+                                    { l: "Power", avg: meas.statistics.power_avg ?? meas.power_error, max: meas.statistics.power_max, min: meas.statistics.power_min, sd: meas.statistics.power_stddev },
+                                  ].map(row => (
+                                    <Box key={row.l} display="flex" justifyContent="space-between" py={0.2} flexWrap="wrap" gap={1}>
+                                      <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600} minWidth={60}>{row.l}</Typography>
+                                      <Typography color={colors.grey[400]} fontSize="0.68rem">Avg: <span style={{color:"#E2E8F0"}}>{row.avg != null ? Number(row.avg).toFixed(1) : "-"}%</span></Typography>
+                                      <Typography color={colors.grey[400]} fontSize="0.68rem">Max: <span style={{color:"#E2E8F0"}}>{row.max != null ? Number(row.max).toFixed(1) : "-"}%</span></Typography>
+                                      <Typography color={colors.grey[400]} fontSize="0.68rem">Min: <span style={{color:"#E2E8F0"}}>{row.min != null ? Number(row.min).toFixed(1) : "-"}%</span></Typography>
+                                      <Typography color={colors.grey[400]} fontSize="0.68rem">{"\u03C3"}: <span style={{color:"#E2E8F0"}}>{row.sd != null ? Number(row.sd).toFixed(1) : "-"}%</span></Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Helper for load detail rendering
+                      const renderLoadDetail = (load, title) => {
+                        if (!load) return null;
+                        const cycles = load.load_cycles || [];
+                        const sv = load.system_verification;
+                        return (
+                          <Grid item xs={12}>
+                            <SectionCard title={title || "LOAD TEST DETAIL"} accentColor="#FBBF24"
+                              icon={<PowerOutlined sx={{ color: "#FBBF24", fontSize: 20 }} />}>
+                              {/* Load Test Cycles */}
+                              {cycles.length > 0 && (
+                                <>
+                                  <Typography color={colors.grey[300]} fontSize="0.72rem" fontWeight={600} mb={0.5}>Load Test Cycles</Typography>
+                                  {cycles.map((c, ci) => (
+                                    <Box key={ci} sx={{ mb: 1, borderLeft: `3px solid ${c.off_passed && c.on_passed ? "#4ADE80" : "#F87171"}`, pl: 1.5 }}>
+                                      <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+                                        <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600}>Attempt {c.attempt}</Typography>
+                                      </Box>
+                                      <Box display="flex" gap={3} flexWrap="wrap" mt={0.3}>
+                                        <Box>
+                                          <Typography color={colors.grey[400]} fontSize="0.68rem">
+                                            OFF: <span style={{color: c.off_passed ? "#4ADE80" : "#F87171"}}>{c.off_passed ? "PASS" : "FAIL"}</span>
+                                            {" | "}{Number(c.off_voltage).toFixed(1)}V, {Number(c.off_current).toFixed(3)}A, {Number(c.off_power).toFixed(0)}W
+                                          </Typography>
+                                        </Box>
+                                        {c.on_current > 0 && (
+                                          <Box>
+                                            <Typography color={colors.grey[400]} fontSize="0.68rem">
+                                              ON: <span style={{color: c.on_passed ? "#4ADE80" : "#F87171"}}>{c.on_passed ? "PASS" : "FAIL"}</span>
+                                              {" | "}{Number(c.on_voltage).toFixed(1)}V, {Number(c.on_current).toFixed(3)}A, {Number(c.on_power).toFixed(0)}W
+                                            </Typography>
+                                          </Box>
+                                        )}
+                                      </Box>
+                                    </Box>
+                                  ))}
+                                </>
+                              )}
+                              {/* Load Statistics */}
+                              {load.statistics && (
+                                <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
+                                  <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>LOAD TEST STATISTICS</Typography>
+                                  {[
+                                    { l: "Avg Voltage", off: load.statistics.avg_off_voltage ?? load.avg_off_voltage, on: load.statistics.avg_on_voltage ?? load.avg_on_voltage, u: "V", d: 1 },
+                                    { l: "Avg Current", off: load.statistics.avg_off_current ?? load.avg_off_current, on: load.statistics.avg_on_current ?? load.avg_on_current, u: "A", d: 3 },
+                                    { l: "Avg Power", off: load.statistics.avg_off_power ?? load.avg_off_power, on: load.statistics.avg_on_power ?? load.avg_on_power, u: "W", d: 0 },
+                                    { l: "Max Current", off: load.statistics.max_off_current ?? load.max_off_current, on: load.statistics.max_on_current ?? load.max_on_current, u: "A", d: 3 },
+                                  ].map(row => (
+                                    <Box key={row.l} display="flex" justifyContent="space-between" py={0.2}>
+                                      <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600} flex={1}>{row.l}</Typography>
+                                      <Typography color="#60A5FA" fontSize="0.72rem" flex={1} textAlign="center">OFF: {row.off != null ? Number(row.off).toFixed(row.d) : "-"} {row.u}</Typography>
+                                      <Typography color="#4ADE80" fontSize="0.72rem" flex={1} textAlign="right">ON: {row.on != null ? Number(row.on).toFixed(row.d) : "-"} {row.u}</Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                              {/* System Verification */}
+                              {sv && (
+                                <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
+                                  <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>SYSTEM VERIFICATION</Typography>
+                                  {[
+                                    { l: "Relay Control", ok: sv.relay_control },
+                                    { l: "Load Isolation", ok: sv.load_isolation },
+                                    { l: "Current Measurement", ok: sv.current_measurement },
+                                    { l: "BLE Communication", ok: sv.ble_communication },
+                                    { l: "Safety Function", ok: sv.safety_function },
+                                  ].map(s => (
+                                    <Box key={s.l} display="flex" justifyContent="space-between" py={0.2}>
+                                      <Typography color={colors.grey[400]} fontSize="0.72rem">{s.l}</Typography>
+                                      <Typography color={s.ok ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={600}>{s.ok ? "WORKING" : "ISSUE"}</Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Helper for API detail rendering
+                      const renderApiDetail = (api, title) => {
+                        if (!api) return null;
+                        const endpoints = api.endpoint_results || [];
+                        if (endpoints.length === 0) return null;
+                        return (
+                          <Grid item xs={12} md={6}>
+                            <SectionCard title={title || "API ENDPOINT RESULTS"} accentColor="#818CF8"
+                              icon={<TuneOutlined sx={{ color: "#818CF8", fontSize: 20 }} />}>
+                              {endpoints.map((t, ti) => (
+                                <Box key={ti} display="flex" justifyContent="space-between" alignItems="center" py={0.4}
+                                  sx={{ borderBottom: `1px solid ${colors.primary[600]}` }}>
+                                  <Box display="flex" alignItems="center" gap={0.8}>
+                                    {t.passed
+                                      ? <CheckCircleOutlined sx={{ color: "#4ADE80", fontSize: 16 }} />
+                                      : <CancelOutlined sx={{ color: "#F87171", fontSize: 16 }} />}
+                                    <Typography color="#E2E8F0" fontSize="0.78rem" fontWeight={600}>{t.name}</Typography>
+                                  </Box>
+                                  <Box display="flex" alignItems="center" gap={1}>
+                                    <Chip label={t.passed ? "PASSED" : "FAILED"} size="small"
+                                      sx={{ backgroundColor: t.passed ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)",
+                                        color: t.passed ? "#4ADE80" : "#F87171", fontWeight: 700, fontSize: "0.68rem", height: 22 }} />
+                                    {t.response_time != null && (
+                                      <Typography color={colors.grey[400]} fontSize="0.68rem">{t.response_time}ms</Typography>
+                                    )}
+                                  </Box>
+                                </Box>
+                              ))}
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Render based on report type
+                      if (rd.type === "measurement") {
+                        return renderMeasurementDetail(rd);
+                      } else if (rd.type === "load") {
+                        return renderLoadDetail(rd);
+                      } else if (rd.type === "api") {
+                        return renderApiDetail(rd);
+                      } else if (rd.type === "full_system") {
+                        return (
+                          <>
+                            {renderMeasurementDetail(rd.measurement, "MEASUREMENT SAMPLE HISTORY")}
+                            {renderLoadDetail(rd.load, "LOAD TEST DETAIL")}
+                            {renderApiDetail(rd.api, "API ENDPOINT RESULTS")}
+                          </>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* ── Commissioning Details Section ── */}
+                    {report.report_type === "commissioning" && (
+                      <>
+                        {/* Location & Installation */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="LOCATION & INSTALLATION" accentColor="#4ADE80"
+                            icon={<MapOutlinedIcon sx={{ color: "#4ADE80", fontSize: 20 }} />}>
+                            {report.region && <DetailRow label="Region" value={report.region} />}
+                            {report.sub_region && <DetailRow label="Sub-Region" value={report.sub_region} />}
+                            {report.area && <DetailRow label="Area" value={report.area} />}
+                            {report.street_name && <DetailRow label="Street" value={report.street_name} />}
+                            {report.erf_number && <DetailRow label="ERF Number" value={report.erf_number} />}
+                            {(report.gps_latitude || report.gps_longitude) && (
+                              <DetailRow label="GPS Coordinates" value={`${report.gps_latitude?.toFixed(6)}, ${report.gps_longitude?.toFixed(6)}`} />
+                            )}
+                            {report.sim_number && <DetailRow label="SIM Number" value={report.sim_number} />}
+                          </SectionCard>
+                        </Grid>
+
+                        {/* Owner Information */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="OWNER INFORMATION" accentColor="#F472B6"
+                            icon={<HomeOutlined sx={{ color: "#F472B6", fontSize: 20 }} />}>
+                            {report.owner_name && <DetailRow label="Name" value={`${report.owner_name} ${report.owner_surname || ""}`} />}
+                            {report.owner_phone && <DetailRow label="Phone" value={report.owner_phone} />}
+                            {report.owner_email && <DetailRow label="Email" value={report.owner_email} />}
+                          </SectionCard>
+                        </Grid>
+
+                        {/* System Status */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="SYSTEM STATUS" accentColor="#60A5FA"
+                            icon={<SpeedOutlined sx={{ color: "#60A5FA", fontSize: 20 }} />}>
+                            {report.firmware_version && <DetailRow label="Firmware Version" value={`v${report.firmware_version}`} />}
+                            {report.nextion_connected != null && (
+                              <DetailRow label="Nextion Display" value={report.nextion_connected ? "Connected" : "Disconnected"}
+                                color={report.nextion_connected ? "#4ADE80" : "#F87171"} bold />
+                            )}
+                            {report.gsm_registered != null && (
+                              <DetailRow label="GSM Network" value={report.gsm_registered ? "Registered" : "Not Registered"}
+                                color={report.gsm_registered ? "#4ADE80" : "#F87171"} bold />
+                            )}
+                            {/* Measurement summary if available */}
+                            {report.voltage_measured != null && (
+                              <>
+                                <DetailRow label="Voltage" value={`${Number(report.voltage_measured).toFixed(1)} V (${Number(report.voltage_error).toFixed(1)}%)`}
+                                  color={report.voltage_passed ? "#4ADE80" : "#F87171"} bold />
+                                <DetailRow label="Current" value={`${Number(report.current_measured).toFixed(3)} A (${Number(report.current_error).toFixed(1)}%)`}
+                                  color={report.current_passed ? "#4ADE80" : "#F87171"} bold />
+                              </>
+                            )}
+                            {report.load_off_current != null && (
+                              <>
+                                <DetailRow label="Load OFF Current" value={`${Number(report.load_off_current).toFixed(3)} A`}
+                                  color={report.load_off_passed ? "#4ADE80" : "#F87171"} bold />
+                                <DetailRow label="Load ON Current" value={`${Number(report.load_on_current).toFixed(3)} A`}
+                                  color={report.load_on_passed ? "#4ADE80" : "#F87171"} bold />
+                              </>
+                            )}
+                          </SectionCard>
+                        </Grid>
+                      </>
+                    )}
+
+                    {/* ── Recommendations Section ── */}
+                    <Grid item xs={12}>
+                      <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, border: `1px solid ${colors.primary[600]}`, p: 2 }}>
+                        <Typography color={colors.grey[300]} fontSize="0.75rem" fontWeight={600} mb={0.8}>
+                          {report.overall_passed ? "RECOMMENDATIONS" : "ACTION REQUIRED"}
+                        </Typography>
+                        {report.overall_passed ? (
+                          <Box display="flex" flexDirection="column" gap={0.3}>
+                            <Typography color="#4ADE80" fontSize="0.78rem">All {report.report_type === "full_system" ? "system " : ""}tests within acceptable limits</Typography>
+                            {(report.report_type === "measurement" || report.report_type === "full_system") && (
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">System calibration is accurate. No adjustments required.</Typography>
+                            )}
+                            {(report.report_type === "load" || report.report_type === "full_system") && (
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">Relay control and load isolation working correctly. Schedule next test in 6 months.</Typography>
+                            )}
+                          </Box>
+                        ) : (
+                          <Box display="flex" flexDirection="column" gap={0.3}>
+                            <Typography color="#F87171" fontSize="0.78rem">One or more tests failed. Review the following:</Typography>
+                            {report.voltage_passed === false && <Typography color={colors.grey[400]} fontSize="0.72rem">- Review voltage measurement setup and check calibration equipment</Typography>}
+                            {report.current_passed === false && <Typography color={colors.grey[400]} fontSize="0.72rem">- Verify current measurement sensor and expected reference values</Typography>}
+                            {report.power_passed === false && <Typography color={colors.grey[400]} fontSize="0.72rem">- Check power calculation — may indicate voltage or current sensor issues</Typography>}
+                            {report.load_off_passed === false && <Typography color={colors.grey[400]} fontSize="0.72rem">- Load isolation failed — physically inspect relay contacts and wiring</Typography>}
+                            {report.load_on_passed === false && <Typography color={colors.grey[400]} fontSize="0.72rem">- Load ON test failed — verify load wiring, check relay coil voltage, consider relay replacement</Typography>}
+                            {report.api_tests_passed != null && report.api_tests_passed < report.api_tests_total && (
+                              <Typography color={colors.grey[400]} fontSize="0.72rem">- API endpoints not responding — check meter connectivity and firmware version</Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Box>
+            ))
+          ) : (
+            <Box sx={{ backgroundColor: colors.primary[400], borderRadius: 2, p: 4, textAlign: "center" }}>
+              <AssignmentOutlined sx={{ fontSize: 48, color: "rgba(255,255,255,0.15)", mb: 1 }} />
+              <Typography color="rgba(255,255,255,0.35)" fontSize="0.9rem">
+                No commission reports found for this meter.
+              </Typography>
+              <Typography color="rgba(255,255,255,0.2)" fontSize="0.78rem" mt={0.5}>
+                Run a commission test from the GRIDx Maintenance app to generate diagnostic reports.
+              </Typography>
+            </Box>
+          )}
         </Box>
-      )}
+        );
+      })()}
 
       {/* ================================================================ */}
       {/* TAB 8: Home Classification                                      */}

@@ -122,6 +122,10 @@ apiRouter.use('/home-classification', homeClassificationPublicRoutes);
 // Integration API (has own auth via API keys — must be before global auth routes)
 apiRouter.use('/integration', integrationRoutes);
 
+// Relay events & meter health (must be before admin auth routes to avoid interception)
+apiRouter.use('/api/v1/relay-events', require('./meter/relayEventsRoutes'));
+apiRouter.use('/api/v1/meter-health', meterHealthRoutes);
+
 // Customer auth routes (public — before admin auth middleware)
 apiRouter.use('/customer', customerAuthRoutes);
 
@@ -144,7 +148,6 @@ apiRouter.use('/', groupControlRoutes);
 apiRouter.use('/vending', vendingRoutes);
 apiRouter.use('/', tamperRoutes);
 apiRouter.use('/', vsmRoutes);
-apiRouter.use('/api/v1/meter-health', meterHealthRoutes);
 
 // Fast meters-list endpoint (avoids slow JOINs in meterService)
 const db = require('./config/db');
