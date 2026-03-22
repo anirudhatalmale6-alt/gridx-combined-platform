@@ -141,6 +141,7 @@ apiRouter.use('/', groupControlRoutes);
 apiRouter.use('/vending', vendingRoutes);
 apiRouter.use('/', tamperRoutes);
 apiRouter.use('/', vsmRoutes);
+apiRouter.use('/api/v1/meter-health', meterHealthRoutes);
 
 // Fast meters-list endpoint (avoids slow JOINs in meterService)
 const db = require('./config/db');
@@ -177,6 +178,7 @@ app.use('/cb', apiRouter);
 
 // Relay events (used by both hardware routes and API)
 const relayEventsRoutes = require('./meter/relayEventsRoutes');
+const meterHealthRoutes = require('./meter/meterHealthRoutes');
 
 // ─── Hardware routes (ESP32 meters hit these directly via tech.gridx-meters.com) ───
 // IMPORTANT: These must be mounted BEFORE root backward-compat routes because
@@ -211,6 +213,7 @@ app.use('/smsResponse', hwMeterResponseNumberRoutes);
 app.use('/emergency', hwMeterEmergencyRoutes);
 app.use('/tariffStatus', hwTariffUpdateStatusRoutes);
 app.use('/meterRelayEvents/MeterLog', relayEventsRoutes);
+app.use('/meterHealth/MeterLog', meterHealthRoutes);
 app.use('/api/meters', hwRegistrationLimiter, hwMeterRegistrationRoutes);
 
 // Also mount at root for backward compatibility (direct access like api.gridx-meters.com)
@@ -231,6 +234,9 @@ app.use('/customer', customerAuthRoutes);
 
 // Relay events API (receives relay logs from maintenance app)
 app.use('/api/v1/relay-events', relayEventsRoutes);
+
+// Meter health API (dashboard reads health data)
+app.use('/api/v1/meter-health', meterHealthRoutes);
 
 // OTA firmware serving (ESP32 polls these over GSM HTTP)
 if (otaRoutes) {

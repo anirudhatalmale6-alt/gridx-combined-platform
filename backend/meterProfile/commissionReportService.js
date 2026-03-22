@@ -87,7 +87,8 @@ const migrationColumns = [
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS area VARCHAR(255) NULL AFTER sub_region",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS gps_latitude DOUBLE NULL AFTER area",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS gps_longitude DOUBLE NULL AFTER gps_latitude",
-  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS erf_number VARCHAR(50) NULL AFTER gps_longitude",
+  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS street_name VARCHAR(200) NULL AFTER gps_longitude",
+  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS erf_number VARCHAR(50) NULL AFTER street_name",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS owner_name VARCHAR(100) NULL AFTER erf_number",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS owner_surname VARCHAR(100) NULL AFTER owner_name",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS owner_phone VARCHAR(20) NULL AFTER owner_surname",
@@ -95,7 +96,8 @@ const migrationColumns = [
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(20) NULL AFTER owner_email",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS nextion_connected BOOLEAN NULL AFTER firmware_version",
   "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS gsm_registered BOOLEAN NULL AFTER nextion_connected",
-  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS street_name VARCHAR(200) NULL AFTER gps_longitude",
+  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS report_data JSON NULL AFTER gsm_registered",
+  "ALTER TABLE MeterCommissionReport ADD COLUMN IF NOT EXISTS tester_app_version VARCHAR(20) NULL AFTER report_data",
 ];
 
 migrationColumns.forEach(sql => {
