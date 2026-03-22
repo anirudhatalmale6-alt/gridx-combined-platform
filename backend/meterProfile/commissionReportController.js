@@ -52,7 +52,9 @@ exports.saveReport = function(req, res) {
     firmware_version: report.firmware_version || null,
     nextion_connected: report.nextion_connected != null ? report.nextion_connected : null,
     gsm_registered: report.gsm_registered != null ? report.gsm_registered : null,
-    report_data: report.report_data ? JSON.stringify(report.report_data) : null,
+    report_data: report.report_data
+      ? (typeof report.report_data === 'string' ? report.report_data : JSON.stringify(report.report_data))
+      : null,
     tester_app_version: report.tester_app_version || null,
   };
 

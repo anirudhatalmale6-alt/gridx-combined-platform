@@ -2891,6 +2891,18 @@ export default function MeterProfile() {
                         if (!load) return null;
                         const cycles = load.load_cycles || [];
                         const sv = load.system_verification;
+
+                        // Build flat sample measurements list from cycles
+                        const allSamples = [];
+                        cycles.forEach(c => {
+                          if (c.off_samples) {
+                            c.off_samples.forEach(s => allSamples.push({ attempt: c.attempt, state: "OFF", ...s }));
+                          }
+                          if (c.on_samples) {
+                            c.on_samples.forEach(s => allSamples.push({ attempt: c.attempt, state: "ON", ...s }));
+                          }
+                        });
+
                         return (
                           <Grid item xs={12}>
                             <SectionCard title={title || "LOAD TEST DETAIL"} accentColor="#FBBF24"
@@ -2900,48 +2912,139 @@ export default function MeterProfile() {
                                 <>
                                   <Typography color={colors.grey[300]} fontSize="0.72rem" fontWeight={600} mb={0.5}>Load Test Cycles</Typography>
                                   {cycles.map((c, ci) => (
-                                    <Box key={ci} sx={{ mb: 1, borderLeft: `3px solid ${c.off_passed && c.on_passed ? "#4ADE80" : "#F87171"}`, pl: 1.5 }}>
-                                      <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-                                        <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600}>Attempt {c.attempt}</Typography>
-                                      </Box>
-                                      <Box display="flex" gap={3} flexWrap="wrap" mt={0.3}>
-                                        <Box>
-                                          <Typography color={colors.grey[400]} fontSize="0.68rem">
-                                            OFF: <span style={{color: c.off_passed ? "#4ADE80" : "#F87171"}}>{c.off_passed ? "PASS" : "FAIL"}</span>
-                                            {" | "}{Number(c.off_voltage).toFixed(1)}V, {Number(c.off_current).toFixed(3)}A, {Number(c.off_power).toFixed(0)}W
-                                          </Typography>
+                                    <Box key={ci} sx={{ mb: 1.2 }}>
+                                      {/* OFF row */}
+                                      <Box display="flex" alignItems="center" gap={1} py={0.3} sx={{ borderBottom: `1px solid ${colors.primary[600]}` }}>
+                                        <Box sx={{ width: 18, textAlign: "center" }}>
+                                          {c.off_passed ? <span style={{color:"#4ADE80"}}>&#10003;</span> : <span style={{color:"#F87171"}}>&#10007;</span>}
                                         </Box>
-                                        {c.on_current > 0 && (
-                                          <Box>
-                                            <Typography color={colors.grey[400]} fontSize="0.68rem">
-                                              ON: <span style={{color: c.on_passed ? "#4ADE80" : "#F87171"}}>{c.on_passed ? "PASS" : "FAIL"}</span>
-                                              {" | "}{Number(c.on_voltage).toFixed(1)}V, {Number(c.on_current).toFixed(3)}A, {Number(c.on_power).toFixed(0)}W
+                                        <Typography color="#E2E8F0" fontSize="0.75rem" fontWeight={600} flex={1}>
+                                          Attempt {c.attempt} &mdash; OFF
+                                        </Typography>
+                                        <Typography color={c.off_passed ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={700}>
+                                          {c.off_passed ? "PASS" : "FAIL"}
+                                        </Typography>
+                                      </Box>
+                                      <Box pl={3.5} pb={0.5}>
+                                        <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                          V: <span style={{color:"#E2E8F0"}}>{Number(c.off_voltage).toFixed(1)} V</span>
+                                          {"   "}I: <span style={{color:"#E2E8F0"}}>{Number(c.off_current).toFixed(3)} A</span>
+                                          {"   "}P: <span style={{color:"#E2E8F0"}}>{Number(c.off_power).toFixed(0)} W</span>
+                                        </Typography>
+                                      </Box>
+                                      {/* ON row */}
+                                      {c.on_current > 0 && (
+                                        <>
+                                          <Box display="flex" alignItems="center" gap={1} py={0.3} sx={{ borderBottom: `1px solid ${colors.primary[600]}` }}>
+                                            <Box sx={{ width: 18, textAlign: "center" }}>
+                                              {c.on_passed ? <span style={{color:"#4ADE80"}}>&#10003;</span> : <span style={{color:"#F87171"}}>&#10007;</span>}
+                                            </Box>
+                                            <Typography color="#E2E8F0" fontSize="0.75rem" fontWeight={600} flex={1}>
+                                              Attempt {c.attempt} &mdash; ON
+                                            </Typography>
+                                            <Typography color={c.on_passed ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={700}>
+                                              {c.on_passed ? "PASS" : "FAIL"}
                                             </Typography>
                                           </Box>
-                                        )}
-                                      </Box>
+                                          <Box pl={3.5} pb={0.5}>
+                                            <Typography color={colors.grey[400]} fontSize="0.72rem">
+                                              V: <span style={{color:"#E2E8F0"}}>{Number(c.on_voltage).toFixed(1)} V</span>
+                                              {"   "}I: <span style={{color:"#E2E8F0"}}>{Number(c.on_current).toFixed(3)} A</span>
+                                              {"   "}P: <span style={{color:"#E2E8F0"}}>{Number(c.on_power).toFixed(0)} W</span>
+                                            </Typography>
+                                          </Box>
+                                        </>
+                                      )}
                                     </Box>
                                   ))}
                                 </>
                               )}
-                              {/* Load Statistics */}
-                              {load.statistics && (
-                                <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
-                                  <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>LOAD TEST STATISTICS</Typography>
-                                  {[
-                                    { l: "Avg Voltage", off: load.statistics.avg_off_voltage ?? load.avg_off_voltage, on: load.statistics.avg_on_voltage ?? load.avg_on_voltage, u: "V", d: 1 },
-                                    { l: "Avg Current", off: load.statistics.avg_off_current ?? load.avg_off_current, on: load.statistics.avg_on_current ?? load.avg_on_current, u: "A", d: 3 },
-                                    { l: "Avg Power", off: load.statistics.avg_off_power ?? load.avg_off_power, on: load.statistics.avg_on_power ?? load.avg_on_power, u: "W", d: 0 },
-                                    { l: "Max Current", off: load.statistics.max_off_current ?? load.max_off_current, on: load.statistics.max_on_current ?? load.max_on_current, u: "A", d: 3 },
-                                  ].map(row => (
-                                    <Box key={row.l} display="flex" justifyContent="space-between" py={0.2}>
-                                      <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600} flex={1}>{row.l}</Typography>
-                                      <Typography color="#60A5FA" fontSize="0.72rem" flex={1} textAlign="center">OFF: {row.off != null ? Number(row.off).toFixed(row.d) : "-"} {row.u}</Typography>
-                                      <Typography color="#4ADE80" fontSize="0.72rem" flex={1} textAlign="right">ON: {row.on != null ? Number(row.on).toFixed(row.d) : "-"} {row.u}</Typography>
-                                    </Box>
-                                  ))}
-                                </Box>
+
+                              {/* Sample Measurements Table */}
+                              {allSamples.length > 0 && (
+                                <>
+                                  <Divider sx={{ my: 1.5, borderColor: colors.primary[600] }} />
+                                  <Typography color={colors.grey[300]} fontSize="0.72rem" fontWeight={600} mb={0.5}>Sample Measurements</Typography>
+                                  <TableContainer sx={{ mb: 1.5 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          {["Attempt", "State", "Sample", "Voltage (V)", "Current (A)", "Power (W)"].map(h => (
+                                            <TableCell key={h} sx={{ color: colors.grey[400], fontSize: "0.68rem", fontWeight: 600, py: 0.3, borderBottom: `1px solid ${colors.primary[600]}` }}>{h}</TableCell>
+                                          ))}
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {allSamples.map((s, si) => (
+                                          <TableRow key={si} sx={{ "& td": { borderBottom: `1px solid ${colors.primary[600]}`, py: 0.2 } }}>
+                                            <TableCell sx={{ color: colors.grey[300], fontSize: "0.68rem" }}>A{s.attempt}</TableCell>
+                                            <TableCell sx={{ color: s.state === "ON" ? "#4ADE80" : "#60A5FA", fontSize: "0.68rem", fontWeight: 600 }}>{s.state}</TableCell>
+                                            <TableCell sx={{ color: colors.grey[300], fontSize: "0.68rem" }}>S{s.sample_number}</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.voltage).toFixed(1)}</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.current).toFixed(3)}</TableCell>
+                                            <TableCell sx={{ color: "#E2E8F0", fontSize: "0.68rem" }}>{Number(s.power).toFixed(0)}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                </>
                               )}
+
+                              {/* Load Statistics */}
+                              {(() => {
+                                const stats = load.statistics || load;
+                                const hasStats = stats.avg_off_voltage != null || stats.avg_on_voltage != null;
+                                if (!hasStats) return null;
+                                return (
+                                  <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
+                                    <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>LOAD TEST STATISTICS</Typography>
+                                    {[
+                                      { l: "Avg Voltage", off: stats.avg_off_voltage, on: stats.avg_on_voltage, u: "V", d: 1 },
+                                      { l: "Avg Current", off: stats.avg_off_current, on: stats.avg_on_current, u: "A", d: 3 },
+                                      { l: "Avg Power", off: stats.avg_off_power, on: stats.avg_on_power, u: "W", d: 0 },
+                                      { l: "Max Current", off: stats.max_off_current, on: stats.max_on_current, u: "A", d: 3 },
+                                    ].map(row => (
+                                      <Box key={row.l} display="flex" justifyContent="space-between" py={0.2}>
+                                        <Typography color="#E2E8F0" fontSize="0.72rem" fontWeight={600} flex={1}>{row.l}</Typography>
+                                        <Typography color="#60A5FA" fontSize="0.72rem" flex={1} textAlign="center">OFF: {row.off != null ? Number(row.off).toFixed(row.d) : "-"} {row.u}</Typography>
+                                        <Typography color="#4ADE80" fontSize="0.72rem" flex={1} textAlign="right">ON: {row.on != null ? Number(row.on).toFixed(row.d) : "-"} {row.u}</Typography>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                );
+                              })()}
+
+                              {/* Analysis */}
+                              {(() => {
+                                const offCurrent = load.avg_off_current ?? load.statistics?.avg_off_current;
+                                const onCurrent = load.avg_on_current ?? load.statistics?.avg_on_current;
+                                if (offCurrent == null && onCurrent == null) return null;
+                                return (
+                                  <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
+                                    <Typography color={colors.grey[300]} fontSize="0.7rem" fontWeight={600} mb={0.5}>ANALYSIS</Typography>
+                                    {offCurrent != null && (
+                                      <Box display="flex" alignItems="center" gap={0.8} py={0.2}>
+                                        <span style={{color: offCurrent < 0.2 ? "#4ADE80" : "#F87171"}}>{offCurrent < 0.2 ? "\u2713" : "\u2717"}</span>
+                                        <Box>
+                                          <Typography color={offCurrent < 0.2 ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={600}>Load OFF</Typography>
+                                          <Typography color={colors.grey[400]} fontSize="0.68rem">Current {Number(offCurrent).toFixed(3)} A {offCurrent < 0.2 ? "<" : ">"} 0.2A threshold</Typography>
+                                        </Box>
+                                      </Box>
+                                    )}
+                                    {onCurrent != null && (
+                                      <Box display="flex" alignItems="center" gap={0.8} py={0.2}>
+                                        <span style={{color: onCurrent > 0.5 ? "#4ADE80" : "#F87171"}}>{onCurrent > 0.5 ? "\u2713" : "\u2717"}</span>
+                                        <Box>
+                                          <Typography color={onCurrent > 0.5 ? "#4ADE80" : "#F87171"} fontSize="0.72rem" fontWeight={600}>Load ON</Typography>
+                                          <Typography color={colors.grey[400]} fontSize="0.68rem">Current {Number(onCurrent).toFixed(3)} A {onCurrent > 0.5 ? ">" : "<"} 0.5A threshold</Typography>
+                                        </Box>
+                                      </Box>
+                                    )}
+                                  </Box>
+                                );
+                              })()}
+
                               {/* System Verification */}
                               {sv && (
                                 <Box sx={{ backgroundColor: colors.primary[600], borderRadius: 1, p: 1.2, mt: 1 }}>
@@ -2974,25 +3077,37 @@ export default function MeterProfile() {
                           <Grid item xs={12} md={6}>
                             <SectionCard title={title || "API ENDPOINT RESULTS"} accentColor="#818CF8"
                               icon={<TuneOutlined sx={{ color: "#818CF8", fontSize: 20 }} />}>
-                              {endpoints.map((t, ti) => (
-                                <Box key={ti} display="flex" justifyContent="space-between" alignItems="center" py={0.4}
-                                  sx={{ borderBottom: `1px solid ${colors.primary[600]}` }}>
-                                  <Box display="flex" alignItems="center" gap={0.8}>
-                                    {t.passed
-                                      ? <CheckCircleOutlined sx={{ color: "#4ADE80", fontSize: 16 }} />
-                                      : <CancelOutlined sx={{ color: "#F87171", fontSize: 16 }} />}
-                                    <Typography color="#E2E8F0" fontSize="0.78rem" fontWeight={600}>{t.name}</Typography>
-                                  </Box>
-                                  <Box display="flex" alignItems="center" gap={1}>
-                                    <Chip label={t.passed ? "PASSED" : "FAILED"} size="small"
-                                      sx={{ backgroundColor: t.passed ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)",
-                                        color: t.passed ? "#4ADE80" : "#F87171", fontWeight: 700, fontSize: "0.68rem", height: 22 }} />
-                                    {t.response_time != null && (
-                                      <Typography color={colors.grey[400]} fontSize="0.68rem">{t.response_time}ms</Typography>
-                                    )}
-                                  </Box>
-                                </Box>
-                              ))}
+                              <TableContainer>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow>
+                                      {["", "Endpoint", "Status", "Response Time"].map(h => (
+                                        <TableCell key={h} sx={{ color: colors.grey[400], fontSize: "0.68rem", fontWeight: 600, py: 0.3, borderBottom: `1px solid ${colors.primary[600]}` }}>{h}</TableCell>
+                                      ))}
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {endpoints.map((t, ti) => (
+                                      <TableRow key={ti} sx={{ "& td": { borderBottom: `1px solid ${colors.primary[600]}`, py: 0.3 } }}>
+                                        <TableCell sx={{ width: 24 }}>
+                                          {t.passed
+                                            ? <CheckCircleOutlined sx={{ color: "#4ADE80", fontSize: 16 }} />
+                                            : <CancelOutlined sx={{ color: "#F87171", fontSize: 16 }} />}
+                                        </TableCell>
+                                        <TableCell sx={{ color: "#E2E8F0", fontSize: "0.75rem", fontWeight: 600 }}>{t.name}</TableCell>
+                                        <TableCell>
+                                          <Chip label={t.passed ? "PASSED" : "FAILED"} size="small"
+                                            sx={{ backgroundColor: t.passed ? "rgba(76,206,172,0.2)" : "rgba(219,79,74,0.2)",
+                                              color: t.passed ? "#4ADE80" : "#F87171", fontWeight: 700, fontSize: "0.68rem", height: 22 }} />
+                                        </TableCell>
+                                        <TableCell sx={{ color: colors.grey[400], fontSize: "0.72rem" }}>
+                                          {t.response_time != null ? `${t.response_time}ms` : "-"}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
                             </SectionCard>
                           </Grid>
                         );

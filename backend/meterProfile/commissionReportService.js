@@ -111,13 +111,22 @@ migrationColumns.forEach(sql => {
   });
 });
 
-// Save a commission report
+// Save a commission report (upsert — one report per meter per type)
 exports.saveReport = (reportData) => {
-  const sql = `INSERT INTO MeterCommissionReport SET ?`;
   return new Promise((resolve, reject) => {
-    db.query(sql, reportData, (err, result) => {
-      if (err) reject(err);
-      else resolve(result);
+    // First delete any existing report for this DRN + report_type
+    const deleteSql = `DELETE FROM MeterCommissionReport WHERE DRN = ? AND report_type = ?`;
+    db.query(deleteSql, [reportData.DRN, reportData.report_type], (delErr) => {
+      if (delErr) {
+        console.error('Error deleting old commission report:', delErr.message);
+        // Continue with insert even if delete fails
+      }
+      // Insert the new report
+      const insertSql = `INSERT INTO MeterCommissionReport SET ?`;
+      db.query(insertSql, reportData, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
     });
   });
 };
