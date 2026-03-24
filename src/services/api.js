@@ -216,6 +216,23 @@ export const meterConfigAPI = {
   resetBLE: (drn) => post(`/meterResetBLE/update/${drn}`, { state: 1, processed: 0 }),
   resetAuthNumbers: (drn) => post(`/meterResetAuthNumber/update/${drn}`, { state: 1, processed: 0 }),
   resetMeter: (drn) => post(`/meterReset/update/${drn}`, { state: 1, processed: 0 }),
+  // Relay controls
+  setMainsControl: (drn, state) => post(`/meterMainsControl/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),
+  setHeaterControl: (drn, state) => post(`/meterHeaterControl/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),
+  setMainsState: (drn, state) => post(`/meterMainsState/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),
+  setHeaterState: (drn, state) => post(`/meterHeaterState/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),
+  // Token
+  sendToken: (drn, tokenId) => post(`/meterSendSTSToken/update/${drn}`, { token_ID: tokenId, processed: 0 }),
+  // Authorized number
+  addAuthNumber: (drn, number) => post(`/meter-config/auth-number/${drn}`, { number }),
+  // SMS config
+  setSMSResponse: (drn, number, enabled) => post(`/smsResponse/update/${drn}`, { sms_response_number: number, sms_response_enabled: enabled ? 1 : 0, processed: 0 }),
+  // Sleep mode
+  setSleepMode: (drn, enabled) => post(`/meter-config/sleep/${drn}`, { sleep_mode_enabled: enabled ? 1 : 0, processed: 0 }),
+  // Base URL
+  setBaseUrl: (drn, url) => post(`/meter-config/base-url/${drn}`, { base_url: url }),
+  // Get current config status
+  getStatus: (drn) => get(`/meter-config/status/${drn}`),
 };
 
 // ===== METER BILLING =====

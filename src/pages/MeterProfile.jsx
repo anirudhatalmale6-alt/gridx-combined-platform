@@ -37,6 +37,8 @@ import {
   Tooltip,
   Divider,
   Grid,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import {
   BoltOutlined,
@@ -72,6 +74,13 @@ import {
   HotTub,
   BluetoothDisabled,
   PersonRemoveOutlined,
+  PhoneAndroidOutlined,
+  SmsOutlined,
+  LinkOutlined,
+  BedtimeOutlined,
+  WbSunnyOutlined,
+  TokenOutlined,
+  PersonAddOutlined,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -329,6 +338,13 @@ export default function MeterProfile() {
     action: "",
   });
   const [commandLoading, setCommandLoading] = useState(false);
+  /* ---------- Config tab input state ---------- */
+  const [configAuthNumber, setConfigAuthNumber] = useState("");
+  const [configSmsNumber, setConfigSmsNumber] = useState("");
+  const [configSmsEnabled, setConfigSmsEnabled] = useState(true);
+  const [configBaseUrl, setConfigBaseUrl] = useState("");
+  const [configTokenId, setConfigTokenId] = useState("");
+  const [configStatus, setConfigStatus] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -630,25 +646,89 @@ export default function MeterProfile() {
   };
 
   /* ---------- config action handler ---------- */
-  const handleConfigAction = async (actionType) => {
+  const handleConfigAction = async (actionType, payload) => {
     setCommandLoading(true);
     try {
-      if (actionType === "reset_ble") {
-        await meterConfigAPI.resetBLE(drn);
-        setSnackbar({ open: true, message: "Reset BLE PIN command sent successfully", severity: "success" });
-      } else if (actionType === "clear_auth") {
-        await meterConfigAPI.resetAuthNumbers(drn);
-        setSnackbar({ open: true, message: "Clear Authorized Numbers command sent successfully", severity: "success" });
-      } else if (actionType === "restart_meter") {
-        await meterConfigAPI.resetMeter(drn);
-        setSnackbar({ open: true, message: "Restart Meter command sent successfully", severity: "success" });
+      switch (actionType) {
+        case "reset_ble":
+          await meterConfigAPI.resetBLE(drn);
+          setSnackbar({ open: true, message: "Reset BLE PIN command sent", severity: "success" });
+          break;
+        case "clear_auth":
+          await meterConfigAPI.resetAuthNumbers(drn);
+          setSnackbar({ open: true, message: "Clear Authorized Numbers command sent", severity: "success" });
+          break;
+        case "restart_meter":
+          await meterConfigAPI.resetMeter(drn);
+          setSnackbar({ open: true, message: "Restart Meter command sent", severity: "success" });
+          break;
+        case "mains_on":
+          await meterConfigAPI.setMainsControl(drn, 1);
+          setSnackbar({ open: true, message: "Mains relay ON command sent", severity: "success" });
+          break;
+        case "mains_off":
+          await meterConfigAPI.setMainsControl(drn, 0);
+          setSnackbar({ open: true, message: "Mains relay OFF command sent", severity: "warning" });
+          break;
+        case "geyser_on":
+          await meterConfigAPI.setHeaterControl(drn, 1);
+          setSnackbar({ open: true, message: "Geyser relay ON command sent", severity: "success" });
+          break;
+        case "geyser_off":
+          await meterConfigAPI.setHeaterControl(drn, 0);
+          setSnackbar({ open: true, message: "Geyser relay OFF command sent", severity: "warning" });
+          break;
+        case "send_token":
+          if (!payload?.tokenId) break;
+          await meterConfigAPI.sendToken(drn, payload.tokenId);
+          setConfigTokenId("");
+          setSnackbar({ open: true, message: "Token sent to meter", severity: "success" });
+          break;
+        case "add_auth_number":
+          if (!payload?.number) break;
+          await meterConfigAPI.addAuthNumber(drn, payload.number);
+          setConfigAuthNumber("");
+          setSnackbar({ open: true, message: "Authorized number command sent", severity: "success" });
+          break;
+        case "set_sms":
+          await meterConfigAPI.setSMSResponse(drn, payload?.number || "", payload?.enabled ?? true);
+          setSnackbar({ open: true, message: "SMS configuration updated", severity: "success" });
+          break;
+        case "sleep_on":
+          await meterConfigAPI.setSleepMode(drn, true);
+          setSnackbar({ open: true, message: "Sleep mode enabled", severity: "warning" });
+          break;
+        case "sleep_off":
+          await meterConfigAPI.setSleepMode(drn, false);
+          setSnackbar({ open: true, message: "Sleep mode disabled (wake up)", severity: "success" });
+          break;
+        case "set_base_url":
+          if (!payload?.url) break;
+          await meterConfigAPI.setBaseUrl(drn, payload.url);
+          setConfigBaseUrl("");
+          setSnackbar({ open: true, message: "Base URL update command sent", severity: "success" });
+          break;
+        default:
+          break;
       }
+      // Refresh config status
+      try {
+        const statusRes = await meterConfigAPI.getStatus(drn);
+        setConfigStatus(statusRes?.data || null);
+      } catch (_) {}
     } catch (err) {
       setSnackbar({ open: true, message: `Failed: ${err.message}`, severity: "error" });
     } finally {
       setCommandLoading(false);
     }
   };
+
+  // Load config status when switching to config tab
+  useEffect(() => {
+    if (tab === 4 && drn) {
+      meterConfigAPI.getStatus(drn).then(r => setConfigStatus(r?.data || null)).catch(() => {});
+    }
+  }, [tab, drn]);
 
   /* ---------- vend helpers ---------- */
   const handleVend = () => {
@@ -2137,114 +2217,194 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 4: Configuration                                             */}
       {/* ================================================================ */}
-      {tab === 4 && (
+      {tab === 4 && (() => {
+        const cfgCard = { backgroundColor: colors.primary[400], p: "16px", borderRadius: "8px", overflow: "auto" };
+        const cfgTitle = (text) => (
+          <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1.5} sx={{ borderBottom: `2px solid ${colors.greenAccent[600]}`, pb: 0.5 }}>
+            {text}
+          </Typography>
+        );
+        const cfgBtn = (label, icon, color, onClick, variant = "outlined") => (
+          <Button variant={variant} size="small" startIcon={icon} disabled={commandLoading}
+            onClick={onClick}
+            sx={{ textTransform: "none", justifyContent: "flex-start", color, borderColor: color, "&:hover": { borderColor: color, backgroundColor: `${color}18` }, mb: 0.5 }}>
+            {label}
+          </Button>
+        );
+        return (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge live />
         </Box>
-        <Box
-          display="grid"
-          gridTemplateColumns="repeat(12, 1fr)"
-          gridAutoRows="140px"
-          gap="5px"
-        >
-          <Box
-            gridColumn="span 6"
-            gridRow="span 2"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={1}
-            >
-              Meter Configuration
-            </Typography>
+        <Box display="grid" gridTemplateColumns="repeat(12, 1fr)" gap="12px">
+
+          {/* ── Meter Info ── */}
+          <Box gridColumn="span 6" sx={cfgCard}>
+            {cfgTitle("Meter Information")}
             <InfoRow label="DRN" value={drn} mono />
             <InfoRow label="Meter No" value={meterNo} mono />
             <InfoRow label="Transformer" value={transformer} mono />
             <InfoRow label="Area" value={meterArea} />
             <InfoRow label="Suburb" value={meterSuburb} />
-            <InfoRow
-              label="Street"
-              value={profile?.StreetName || mockMeter?.street || "-"}
-            />
+            <InfoRow label="Street" value={profile?.StreetName || mockMeter?.street || "-"} />
             <InfoRow label="Tariff Type" value={tariffType} />
           </Box>
 
-          <Box
-            gridColumn="span 6"
-            gridRow="span 2"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-          >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={2}
-            >
-              Configuration Actions
+          {/* ── Relay Control (mc/gc) ── */}
+          <Box gridColumn="span 6" sx={cfgCard}>
+            {cfgTitle("Relay Control")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Control mains and geyser relays remotely. Commands are delivered on next meter poll.
             </Typography>
-            <Box display="flex" flexDirection="column" gap={1.5}>
-              <Button
-                variant="outlined"
-                startIcon={<BluetoothDisabled />}
-                disabled={commandLoading}
-                onClick={() => {
-                  setConfirmDialog({ open: true, type: "config_reset_ble", action: "reset_ble" });
-                }}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#00b4d8",
-                  borderColor: "#00b4d8",
-                }}
-              >
-                Reset BLE PIN to Default
+            <Box display="flex" gap={1} mb={1.5}>
+              <Box flex={1}>
+                <Typography variant="caption" color={colors.grey[300]} mb={0.5} display="block">Mains Relay (mc)</Typography>
+                <Box display="flex" gap={1}>
+                  {cfgBtn("ON", <PowerSettingsNewOutlined />, "#4caf50", () => handleConfigAction("mains_on"))}
+                  {cfgBtn("OFF", <CancelOutlined />, "#f44336", () => handleConfigAction("mains_off"))}
+                </Box>
+                {configStatus?.mainsControl && (
+                  <Typography variant="caption" color={colors.grey[400]} mt={0.5} display="block">
+                    Last: {configStatus.mainsControl.state === 1 || configStatus.mainsControl.state === "1" ? "ON" : "OFF"} {configStatus.mainsControl.processed === 1 || configStatus.mainsControl.processed === "1" ? "(processed)" : "(pending)"}
+                  </Typography>
+                )}
+              </Box>
+              <Box flex={1}>
+                <Typography variant="caption" color={colors.grey[300]} mb={0.5} display="block">Geyser Relay (gc)</Typography>
+                <Box display="flex" gap={1}>
+                  {cfgBtn("ON", <HotTub />, "#4caf50", () => handleConfigAction("geyser_on"))}
+                  {cfgBtn("OFF", <CancelOutlined />, "#f44336", () => handleConfigAction("geyser_off"))}
+                </Box>
+                {configStatus?.heaterControl && (
+                  <Typography variant="caption" color={colors.grey[400]} mt={0.5} display="block">
+                    Last: {configStatus.heaterControl.state === 1 || configStatus.heaterControl.state === "1" ? "ON" : "OFF"} {configStatus.heaterControl.processed === 1 || configStatus.heaterControl.processed === "1" ? "(processed)" : "(pending)"}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+
+          {/* ── Device Actions ── */}
+          <Box gridColumn="span 4" sx={cfgCard}>
+            {cfgTitle("Device Actions")}
+            <Box display="flex" flexDirection="column" gap={0.5}>
+              {cfgBtn("Reset BLE PIN", <BluetoothDisabled />, "#00b4d8", () => setConfirmDialog({ open: true, type: "config_reset_ble", action: "reset_ble" }))}
+              {cfgBtn("Clear Auth Numbers", <PersonRemoveOutlined />, "#f2b705", () => setConfirmDialog({ open: true, type: "config_clear_auth", action: "clear_auth" }))}
+              {cfgBtn("Restart Meter", <RestartAltOutlined />, "#db4f4a", () => setConfirmDialog({ open: true, type: "config_restart", action: "restart_meter" }))}
+            </Box>
+          </Box>
+
+          {/* ── Sleep Mode (sd) ── */}
+          <Box gridColumn="span 4" sx={cfgCard}>
+            {cfgTitle("Sleep Mode (sd)")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Put meter into deep sleep or wake it up.
+            </Typography>
+            <Box display="flex" gap={1}>
+              {cfgBtn("Sleep", <BedtimeOutlined />, "#9c27b0", () => setConfirmDialog({ open: true, type: "config_sleep", action: "sleep_on" }))}
+              {cfgBtn("Wake Up", <WbSunnyOutlined />, "#ff9800", () => handleConfigAction("sleep_off"))}
+            </Box>
+            {configStatus?.sleepMode && (
+              <Typography variant="caption" color={colors.grey[400]} mt={1} display="block">
+                Last: {configStatus.sleepMode.sleep_mode_enabled ? "Sleep" : "Awake"} {configStatus.sleepMode.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Send STS Token (tk) ── */}
+          <Box gridColumn="span 4" sx={cfgCard}>
+            {cfgTitle("Send Token (tk)")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Send an STS token to the meter remotely.
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center">
+              <TextField size="small" placeholder="Token ID" value={configTokenId}
+                onChange={(e) => setConfigTokenId(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <Button variant="contained" size="small" disabled={commandLoading || !configTokenId}
+                startIcon={<SendOutlined />}
+                onClick={() => handleConfigAction("send_token", { tokenId: configTokenId })}
+                sx={{ backgroundColor: colors.greenAccent[600], textTransform: "none" }}>
+                Send
               </Button>
-              <Button
-                variant="outlined"
-                startIcon={<PersonRemoveOutlined />}
-                disabled={commandLoading}
-                onClick={() => {
-                  setConfirmDialog({ open: true, type: "config_clear_auth", action: "clear_auth" });
-                }}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#f2b705",
-                  borderColor: "#f2b705",
-                }}
-              >
-                Clear All Authorized Numbers
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<RestartAltOutlined />}
-                disabled={commandLoading}
-                onClick={() => {
-                  setConfirmDialog({ open: true, type: "config_restart", action: "restart_meter" });
-                }}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#db4f4a",
-                  borderColor: "#db4f4a",
-                }}
-              >
-                Restart Meter
+            </Box>
+            {configStatus?.pendingToken && (
+              <Typography variant="caption" color={colors.grey[400]} mt={1} display="block">
+                Last token: {configStatus.pendingToken.token_ID} {configStatus.pendingToken.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Add Authorized Number (an) ── */}
+          <Box gridColumn="span 6" sx={cfgCard}>
+            {cfgTitle("Authorized Number (an)")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Add an authorized phone number to the meter.
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center">
+              <TextField size="small" placeholder="+264 81 123 4567" value={configAuthNumber}
+                onChange={(e) => setConfigAuthNumber(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <Button variant="contained" size="small" disabled={commandLoading || !configAuthNumber}
+                startIcon={<PersonAddOutlined />}
+                onClick={() => handleConfigAction("add_auth_number", { number: configAuthNumber })}
+                sx={{ backgroundColor: "#00b4d8", textTransform: "none" }}>
+                Add Number
               </Button>
             </Box>
           </Box>
+
+          {/* ── SMS Response Config (as/ase/sm) ── */}
+          <Box gridColumn="span 6" sx={cfgCard}>
+            {cfgTitle("SMS Response (as/ase/sm)")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Configure SMS response number and enable/disable SMS notifications.
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center" mb={1}>
+              <TextField size="small" placeholder="SMS Response Number" value={configSmsNumber}
+                onChange={(e) => setConfigSmsNumber(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <FormControlLabel
+                control={<Switch checked={configSmsEnabled} onChange={(e) => setConfigSmsEnabled(e.target.checked)} color="success" />}
+                label={<Typography variant="caption" color={colors.grey[300]}>Enabled</Typography>}
+              />
+              <Button variant="contained" size="small" disabled={commandLoading || !configSmsNumber}
+                startIcon={<SmsOutlined />}
+                onClick={() => handleConfigAction("set_sms", { number: configSmsNumber, enabled: configSmsEnabled })}
+                sx={{ backgroundColor: "#7b1fa2", textTransform: "none" }}>
+                Set SMS
+              </Button>
+            </Box>
+            {configStatus?.smsResponse && (
+              <Typography variant="caption" color={colors.grey[400]} display="block">
+                Current: {configStatus.smsResponse.sms_response_number || "none"} | {configStatus.smsResponse.sms_response_enabled ? "Enabled" : "Disabled"} {configStatus.smsResponse.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Base URL Update (bl) ── */}
+          <Box gridColumn="span 12" sx={cfgCard}>
+            {cfgTitle("Base URL Update (bl)")}
+            <Typography variant="body2" color={colors.grey[300]} mb={1}>
+              Update the API base URL on the meter. Use with caution - incorrect URL will prevent meter communication.
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center">
+              <TextField size="small" placeholder="https://tech.gridx-meters.com" value={configBaseUrl}
+                onChange={(e) => setConfigBaseUrl(e.target.value)} fullWidth
+                sx={{ "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <Button variant="contained" size="small" disabled={commandLoading || !configBaseUrl}
+                startIcon={<LinkOutlined />}
+                onClick={() => setConfirmDialog({ open: true, type: "config_base_url", action: "set_base_url" })}
+                sx={{ backgroundColor: "#e65100", textTransform: "none", minWidth: "140px" }}>
+                Update URL
+              </Button>
+            </Box>
+          </Box>
+
         </Box>
         </Box>
-      )}
+        );
+      })()}
 
       {/* ================================================================ */}
       {/* TAB 5: Energy Charts                                             */}
@@ -4042,13 +4202,30 @@ export default function MeterProfile() {
               <>
                 Are you sure you want to{" "}
                 <strong>
-                  {confirmDialog.action === "reset_ble" ? "reset the BLE PIN to default" : confirmDialog.action === "clear_auth" ? "clear all authorized numbers" : "restart the meter"}
+                  {confirmDialog.action === "reset_ble" ? "reset the BLE PIN to default"
+                    : confirmDialog.action === "clear_auth" ? "clear all authorized numbers"
+                    : confirmDialog.action === "restart_meter" ? "restart the meter"
+                    : confirmDialog.action === "sleep_on" ? "put the meter into deep sleep mode"
+                    : confirmDialog.action === "set_base_url" ? `update the base URL to "${configBaseUrl}"`
+                    : confirmDialog.action}
                 </strong>{" "}
                 for meter <strong>{drn}</strong>?
                 {confirmDialog.action === "restart_meter" && (
                   <>
                     <br /><br />
                     This will cause the meter to reboot. It may be temporarily offline.
+                  </>
+                )}
+                {confirmDialog.action === "sleep_on" && (
+                  <>
+                    <br /><br />
+                    The meter will enter deep sleep mode. It will stop responding until a wake-up command is sent.
+                  </>
+                )}
+                {confirmDialog.action === "set_base_url" && (
+                  <>
+                    <br /><br />
+                    WARNING: Setting an incorrect URL will prevent the meter from communicating with the server.
                   </>
                 )}
               </>
@@ -4085,8 +4262,13 @@ export default function MeterProfile() {
           <Button
             onClick={() => {
               if (confirmDialog.type?.startsWith("config_")) {
+                const action = confirmDialog.action;
                 setConfirmDialog({ open: false, type: "", action: "" });
-                handleConfigAction(confirmDialog.action);
+                if (action === "set_base_url") {
+                  handleConfigAction(action, { url: configBaseUrl });
+                } else {
+                  handleConfigAction(action);
+                }
               } else {
                 handleConfirmLoadControl();
               }

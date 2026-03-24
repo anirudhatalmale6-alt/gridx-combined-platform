@@ -151,6 +151,20 @@ apiRouter.use('/', groupControlRoutes);
 apiRouter.use('/vending', vendingRoutes);
 apiRouter.use('/', tamperRoutes);
 apiRouter.use('/', vsmRoutes);
+// Meter config commands (auth number, sleep mode, base URL, status)
+const meterConfigRoutes = require('./meterProfile/meterConfigRoutes');
+apiRouter.use('/meter-config', meterConfigRoutes);
+
+// Also mount hardware command routes under /cb for frontend access
+apiRouter.use('/meterMainsControl', hwMeterMainsControlRoutes);
+apiRouter.use('/meterHeaterControl', hwMeterHeaterControlRoutes);
+apiRouter.use('/meterMainsState', hwMeterMainsStateRoutes);
+apiRouter.use('/meterHeaterState', hwMeterHeaterstateRoutes);
+apiRouter.use('/meterSendSTSToken', hwMeterSendSTSTokenRoutes);
+apiRouter.use('/meterReset', hwMeterResetRoutes);
+apiRouter.use('/meterResetBLE', hwMeterResetBLERoutes);
+apiRouter.use('/meterResetAuthNumber', hwMeterResetAuthNumbersRoutes);
+apiRouter.use('/smsResponse', hwMeterResponseNumberRoutes);
 
 // Fast meters-list endpoint (avoids slow JOINs in meterService)
 const db = require('./config/db');
