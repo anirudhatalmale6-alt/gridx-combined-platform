@@ -442,4 +442,14 @@ export default {
   vending: vendingAPI,
   integration: integrationAPI,
   nonGridx: nonGridxAPI,
+  emergency: emergencyAPI,
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EMERGENCY NOTIFICATIONS API
+   ═══════════════════════════════════════════════════════════════════════════ */
+export const emergencyAPI = {
+  getNotifications: () => get('/emergencyNotifications'),
+  respond: (notificationId, userId, summary) =>
+    post(`/respond/${notificationId}`, { summary, userId }),
 };

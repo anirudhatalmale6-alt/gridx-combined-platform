@@ -17,6 +17,7 @@ import Admin from "./pages/Admin";
 import Map from "./pages/Map";
 import MeterProfile from "./pages/MeterProfile";
 import MeterSummary from "./pages/MeterSummary";
+import EmergencyNotifications from "./pages/EmergencyNotifications";
 import Topology from "./pages/Topology";
 import Analysis from "./pages/Analysis";
 import Billing from "./pages/Billing";
@@ -52,7 +53,7 @@ function App() {
               <Route path="admin" element={<Admin />} />
               <Route path="map" element={<Map />} />
               <Route path="meter/:drn" element={<MeterProfile />} />
-              <Route path="meter-summary" element={<MeterSummary />} />
+              <Route path="emergency-notifications" element={<EmergencyNotifications />} />
               <Route path="topology" element={<Topology />} />
               <Route path="analysis" element={<Analysis />} />
               <Route path="billing" element={<Billing />} />
