@@ -65,6 +65,7 @@ const customerAuthRoutes = require('./routes/customerAuthRoutes');
 const tamperRoutes = require('./routes/tamperRoutes');
 const vsmRoutes = require('./routes/vsmRoutes');
 const meterValidationRoutes = require('./routes/meterValidationRoutes');
+const authorizedNumbersRoutes = require('./meter/authorizedNumbersRoutes');
 const { confirmValidation } = require('./customer/meterValidationController');
 
 // ─── Hardware routes (merged from GridX_express_generator2) ───
@@ -131,6 +132,7 @@ apiRouter.use('/api/v1/meter-health', meterHealthRoutes);
 // Customer auth routes (public — before admin auth middleware)
 apiRouter.use('/customer', customerAuthRoutes);
 apiRouter.use('/customer', meterValidationRoutes);
+apiRouter.use('/meterAuthorizedNumbers', authorizedNumbersRoutes);
 
 // Authenticated routes
 apiRouter.use('/', getRoutes);

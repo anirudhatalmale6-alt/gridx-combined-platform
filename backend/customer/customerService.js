@@ -2,6 +2,7 @@ var connection = require('../config/db');
 var bcrypt = require('bcryptjs');
 var jwt = require('jsonwebtoken');
 var geoip = require('geoip-lite');
+var authorizedNumbersService = require('../meter/authorizedNumbersService');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTO-MIGRATE: Add security columns to SystemUsers if they don't exist
@@ -72,7 +73,7 @@ function getGeoString(ip) {
 // CUSTOMER SIGNUP
 // ═══════════════════════════════════════════════════════════════════════════
 
-exports.signup = async function(Email, Password, FirstName, LastName, DRN) {
+exports.signup = async function(Email, Password, FirstName, LastName, DRN, Phone) {
   if (!Email || !Password || !DRN) {
     throw new Error('Email, Password, and Meter Number (DRN) are required');
   }
@@ -88,6 +89,16 @@ exports.signup = async function(Email, Password, FirstName, LastName, DRN) {
     var meterErr = new Error('Meter number not found. Please check your meter number and try again.');
     meterErr.status = 404;
     throw meterErr;
+  }
+
+  // Validate phone number against authorized numbers (if phone provided)
+  if (Phone) {
+    var isAuthorized = await authorizedNumbersService.isPhoneAuthorized(DRN, Phone);
+    if (!isAuthorized) {
+      var phoneErr = new Error('Phone number is not authorized for this meter. Please contact your administrator to add your number.');
+      phoneErr.status = 403;
+      throw phoneErr;
+    }
   }
 
   // Check if email already registered

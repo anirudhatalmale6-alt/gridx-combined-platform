@@ -61,6 +61,7 @@ exports.signup = async function(req, res) {
     var FirstName = body.FirstName;
     var LastName = body.LastName;
     var DRN = body.DRN;
+    var Phone = body.Phone;
 
     var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!Email || !emailRegex.test(Email)) {
@@ -73,7 +74,7 @@ exports.signup = async function(req, res) {
       return res.status(400).json({ error: 'Meter number (DRN) is required' });
     }
 
-    var result = await customerService.signup(Email, Password, FirstName, LastName, DRN);
+    var result = await customerService.signup(Email, Password, FirstName, LastName, DRN, Phone);
 
     var ipAddress = resolveClientIp(req);
     var geoStr = customerService.getGeoString(ipAddress);
