@@ -227,13 +227,14 @@ export default function MeterProfiles() {
       },
     },
     {
-      field: "registrationStatus",
+      field: "selfRegistered",
       headerName: "Self-Registered",
       flex: 0.09,
       minWidth: 110,
-      renderCell: ({ value }) => {
-        const isActive = value === "ACTIVE";
-        const isPending = value === "PENDING";
+      renderCell: ({ row }) => {
+        const status = (row.registrationStatus || "unregistered").toLowerCase();
+        const isActive = status === "active";
+        const isPending = status === "pending";
         const isRegistered = isActive || isPending;
         const label = isActive ? "Active" : isPending ? "Pending" : "No";
         return (
