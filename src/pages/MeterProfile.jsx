@@ -2300,20 +2300,9 @@ export default function MeterProfile() {
             borderRadius="4px"
             overflow="auto"
           >
-            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
               Authorized Numbers
             </Typography>
-            <Box display="flex" gap={1} alignItems="center" mb={2}>
-              <TextField size="small" placeholder="+264 81 123 4567" value={configAuthNumber}
-                onChange={(e) => setConfigAuthNumber(e.target.value)}
-                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
-              <Button variant="contained" size="small" disabled={commandLoading || !configAuthNumber}
-                startIcon={<PersonAddOutlined />}
-                onClick={() => handleConfigAction("add_auth_number", { number: configAuthNumber })}
-                sx={{ backgroundColor: "#00b4d8", textTransform: "none" }}>
-                Add Number
-              </Button>
-            </Box>
             <TableContainer>
               <Table size="small">
                 <TableHead>
