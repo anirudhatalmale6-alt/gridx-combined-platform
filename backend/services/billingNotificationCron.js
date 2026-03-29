@@ -22,13 +22,14 @@ const logger = winston.createLogger({
 });
 
 // Email transporter configuration
+// Uses env vars if set, otherwise defaults to GoDaddy SMTP for gridx-meters.com
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_PORT || 587,
-  secure: process.env.EMAIL_SECURE === 'true',
+  host: process.env.EMAIL_HOST || 'smtpout.secureserver.net',
+  port: process.env.EMAIL_PORT || 465,
+  secure: true,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
+    user: process.env.EMAIL_USER || process.env.EMAIL || 'info@gridx-meters.com',
+    pass: process.env.EMAIL_PASSWORD || process.env.EMAIL_KEY || 'W9h8B_Ykd!UgWgM',
   },
 });
 

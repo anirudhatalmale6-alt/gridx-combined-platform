@@ -22,17 +22,17 @@ const logger = winston.createLogger({
 });
 
 // Create email transporter
+// Uses env vars if set, otherwise defaults to GoDaddy SMTP for gridx-meters.com
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.zoho.eu',
-  port: parseInt(process.env.EMAIL_PORT) || 587,
-  secure: parseInt(process.env.EMAIL_PORT) === 465,  // true only for port 465
+  host: process.env.EMAIL_HOST || 'smtpout.secureserver.net',
+  port: parseInt(process.env.EMAIL_PORT) || 465,
+  secure: true,
   auth: {
-    user: process.env.EMAIL,
-    pass: process.env.EMAIL_KEY,
+    user: process.env.EMAIL || 'info@gridx-meters.com',
+    pass: process.env.EMAIL_KEY || 'W9h8B_Ykd!UgWgM',
   },
   tls: {
     rejectUnauthorized: false,
-    ciphers: 'SSLv3'
   },
   connectionTimeout: 15000,
   greetingTimeout: 10000,

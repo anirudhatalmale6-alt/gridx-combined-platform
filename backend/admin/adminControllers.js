@@ -11,27 +11,22 @@ var environment = process.env;
 var pinStore = {};
 
 // Configure nodemailer transporter
-// If SMTP credentials are set, use external SMTP; otherwise use local sendmail
-var transporter;
-if (process.env.EMAIL && process.env.EMAIL_KEY) {
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.zoho.com',
-    port: process.env.EMAIL_PORT || 587,
-    secure: process.env.EMAIL_SECURE === 'true',
-    auth: {
-      user: process.env.EMAIL,
-      pass: process.env.EMAIL_KEY,
-    },
-  });
-  console.log('[Email] Using SMTP transport:', process.env.EMAIL_HOST || 'smtp.zoho.com');
-} else {
-  transporter = nodemailer.createTransport({
-    sendmail: true,
-    newline: 'unix',
-    path: '/usr/sbin/sendmail',
-  });
-  console.log('[Email] Using local sendmail transport (no SMTP credentials configured)');
-}
+// Uses env vars if set, otherwise defaults to GoDaddy SMTP for gridx-meters.com
+var SMTP_EMAIL = process.env.EMAIL || 'info@gridx-meters.com';
+var SMTP_KEY = process.env.EMAIL_KEY || 'W9h8B_Ykd!UgWgM';
+var SMTP_HOST = process.env.EMAIL_HOST || 'smtpout.secureserver.net';
+var SMTP_PORT = process.env.EMAIL_PORT || 465;
+
+var transporter = nodemailer.createTransport({
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: true,
+  auth: {
+    user: SMTP_EMAIL,
+    pass: SMTP_KEY,
+  },
+});
+console.log('[Email] Using SMTP transport:', SMTP_HOST, 'as', SMTP_EMAIL);
 
 var EMAIL_FROM = process.env.EMAIL || 'noreply@gridx-meters.com';
 
