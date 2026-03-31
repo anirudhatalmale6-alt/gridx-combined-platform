@@ -124,6 +124,17 @@ function sendMqttCommand(drn, command) {
   }
 }
 
+// Also send short-code format for legacy HTTP polling compatibility
+function sendMqttShortCode(drn, shortCodes) {
+  try {
+    mqttHandler.publishCommand(drn, shortCodes);
+    return true;
+  } catch (err) {
+    console.error(`[GeyserControl] MQTT short-code publish error for ${drn}:`, err.message);
+    return false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Sync all active schedules to ESP32
 // ═══════════════════════════════════════════════════════════════════════════
@@ -180,10 +191,11 @@ router.post('/geyser/control/:drn', authenticateToken, async (req, res) => {
       [drn, state, `API manual ${action}`]
     );
 
-    // Send MQTT command to ESP32
+    // Send MQTT command to ESP32 (structured format)
     const mqttSent = sendMqttCommand(drn, {
       type: 'geyser_control',
       action: action,
+      gc: state,
     });
 
     res.json({

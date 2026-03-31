@@ -26,6 +26,7 @@ const TOPICS = [
   'gx/+/cellular',
   'gx/+/load',
   'gx/+/token',
+  'gx/+/ack',
 ];
 
 // ==================== Binary Parser Helpers ====================
@@ -147,6 +148,26 @@ function handleMessage(topic, buf) {
 
   const drn = parts[1];
   const type = parts[2];
+
+  // Handle command acknowledgments from ESP32
+  if (type === 'ack') {
+    try {
+      const ackData = JSON.parse(buf.toString());
+      console.log(`[MQTT] ACK from ${drn}: type=${ackData.type}, status=${ackData.status}`);
+      // Mark command as processed in heater control table if applicable
+      if (ackData.type === 'geyser_control' || ackData.type === 'geyser_timer') {
+        db.query(
+          'UPDATE MeterHeaterControlTable SET processed = 1 WHERE DRN = ? AND processed = 0',
+          [drn],
+          (err) => { if (err) console.error('[MQTT] ACK update error:', err.message); }
+        );
+      }
+    } catch (e) {
+      console.log(`[MQTT] ACK from ${drn}: ${buf.toString()}`);
+    }
+    return;
+  }
+
   const firstByte = buf[0];
 
   // Binary payloads start with type byte 0x01-0x05
@@ -316,9 +337,9 @@ function publishCommand(drn, command) {
   }
   const topic = `gx/${drn}/cmd`;
   const payload = JSON.stringify(command);
-  mqttClient.publish(topic, payload, { qos: 0 }, (err) => {
+  mqttClient.publish(topic, payload, { qos: 1, retain: false }, (err) => {
     if (err) console.error(`[MQTT] Publish error to ${topic}:`, err.message);
-    else console.log(`[MQTT] Command sent to ${drn}:`, payload);
+    else console.log(`[MQTT] Command sent to ${drn} (QoS 1):`, payload);
   });
 }
 
