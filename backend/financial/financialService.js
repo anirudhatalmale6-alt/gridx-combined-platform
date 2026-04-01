@@ -250,16 +250,9 @@ exports.getEnergyOverview = () => {
   return new Promise((resolve, reject) => {
     // Get total energy consumed (sum of last active energy value per meter) - converted to kWh
     const totalEnergyQuery = `
-      SELECT COALESCE(SUM(CAST(active_energy AS DECIMAL(10,2)) / 1000), 0) as total_energy_consumed
-      FROM (
-        SELECT 
-          DRN,
-          active_energy,
-          ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
-        FROM MeterCumulativeEnergyUsage
-        WHERE active_energy IS NOT NULL
-      ) latest_energy_readings
-      WHERE rn = 1
+      SELECT COALESCE(SUM(CAST(e.active_energy AS DECIMAL(10,2)) / 1000), 0) as total_energy_consumed
+      FROM MeterCumulativeEnergyUsage e
+      INNER JOIN (SELECT DRN, MAX(id) as max_id FROM MeterCumulativeEnergyUsage GROUP BY DRN) latest ON e.id = latest.max_id
     `;
 
     // Get total units purchased from tokens
@@ -280,16 +273,9 @@ exports.getEnergyOverview = () => {
 
     // Get total units remaining (last reading per meter)
     const unitsRemainingQuery = `
-      SELECT COALESCE(SUM(CAST(units AS DECIMAL(10,2))), 0) as total_units_remaining
-      FROM (
-        SELECT 
-          DRN,
-          units,
-          ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
-        FROM MeterCumulativeEnergyUsage
-        WHERE units IS NOT NULL
-      ) latest_readings
-      WHERE rn = 1
+      SELECT COALESCE(SUM(CAST(e.units AS DECIMAL(10,2))), 0) as total_units_remaining
+      FROM MeterCumulativeEnergyUsage e
+      INNER JOIN (SELECT DRN, MAX(id) as max_id FROM MeterCumulativeEnergyUsage GROUP BY DRN) latest ON e.id = latest.max_id
     `;
 
     // Execute all queries

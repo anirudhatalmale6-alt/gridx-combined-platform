@@ -38,13 +38,11 @@ exports.getTotalTransformers = () =>{
 exports.getAllActiveAndInactiveMeters = function(callback) {
   const getTotal = `SELECT COUNT(DISTINCT DRN) as totalMeters FROM MeterProfileReal`;
   const getAllActiveAndInactiveMeters = `
-      SELECT DRN, mains_state
-      FROM (
-          SELECT DRN, mains_state, ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
-          FROM MeterLoadControl
-          WHERE DATE(date_time) = CURDATE()
-      ) t
-      WHERE t.rn = 1`;
+      SELECT lc.DRN, lc.mains_state
+      FROM MeterLoadControl lc
+      INNER JOIN (
+        SELECT DRN, MAX(id) as max_id FROM MeterLoadControl WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY GROUP BY DRN
+      ) latest ON lc.id = latest.max_id`;
 
   db.query(getAllActiveAndInactiveMeters, (err, results) => {
       if (err) {
@@ -129,7 +127,7 @@ exports.getCurrentData = () => {
   const currentDate = getCurrentDate();
   
   
-  const getCurrentData = "SELECT apparent_power, DATE(date_time) as date_time FROM MeteringPower WHERE DATE(date_time) = CURDATE()";
+  const getCurrentData = "SELECT apparent_power, DATE(date_time) as date_time FROM MeteringPower WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY";
   return new Promise((resolve, reject) => {
     db.query(getCurrentData, [currentDate],(err, currentData) => {
       if (err) reject(err);
@@ -279,7 +277,7 @@ exports.CalculateSystemData = (allData) => {
 
 
 exports.getSystemVoltageAndCurrent = () => {
-  const getVoltageAndCurrentQuery = "SELECT voltage, current, DATE(date_time) as date_time FROM MeteringPower WHERE DATE(date_time) = CURDATE()";
+  const getVoltageAndCurrentQuery = "SELECT voltage, current, DATE(date_time) as date_time FROM MeteringPower WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY";
   // console.log(CURDATE());
   return new Promise((resolve, reject) => {
     db.query(getVoltageAndCurrentQuery, (err, current , voltage) => {
@@ -355,8 +353,7 @@ FROM (
   FROM 
   MeterCumulativeEnergyUsage
   WHERE 
-    DATE(date_time) = CURDATE() AND 
-    HOUR(date_time) = HOUR(NOW())
+    date_time >= DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00') AND date_time < DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00') + INTERVAL 1 HOUR
   GROUP BY 
     DRN, 
     HOUR(date_time)
@@ -714,7 +711,7 @@ exports.CalculateDrnData = (allData) => {
 
 
 exports.getDRNVoltageAndCurrent = (DRN) => {
-  const getVoltageAndCurrentQuery = "SELECT voltage, current, DATE(date_time) as date_time FROM MeteringPower WHERE DATE(date_time) = CURDATE() AND DRN = ?";
+  const getVoltageAndCurrentQuery = "SELECT voltage, current, DATE(date_time) as date_time FROM MeteringPower WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY AND DRN = ?";
   // console.log(CURDATE());
   return new Promise((resolve, reject) => {
     db.query(getVoltageAndCurrentQuery, [DRN],(err, current , voltage) => {
@@ -844,7 +841,7 @@ exports.insertIntoTransformerRealInfo = (TransformerData) => {
 exports.getGridTopologyActivePower = (meterDRN) => {
   // console.log(meterDRN);
   return new Promise((resolve, reject) => {
-    const getActiveEnergy = `SELECT apparent_power FROM MeteringPower WHERE DATE(date_time) = CURDATE() AND DRN = ? ORDER BY date_time DESC LIMIT 1
+    const getActiveEnergy = `SELECT apparent_power FROM MeteringPower WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY AND DRN = ? ORDER BY date_time DESC LIMIT 1
   `;
 
     db.query(getActiveEnergy, [meterDRN], (err, results) => {
@@ -1163,24 +1160,10 @@ exports.getApparentPowerSum = function(callback) {
   // For each DRN-hour today, compute consumption. If only 1 reading in the hour,
   // use (current_reading - last prior reading for that DRN). Otherwise, use (max - min).
   const query = `
-      WITH last_before_today AS (
-      SELECT DRN, MAX(date_time) AS prev_ts
-      FROM MeterCumulativeEnergyUsage
-      WHERE date_time < CURDATE()
-      GROUP BY DRN
-    ),
-    seed AS (
-      -- 1) bring in the last reading before today (per DRN)
-      SELECT m.DRN, m.date_time, CAST(m.active_energy AS DECIMAL(13,3)) AS energy
-      FROM MeterCumulativeEnergyUsage m
-      JOIN last_before_today lb
-        ON lb.DRN = m.DRN AND m.date_time = lb.prev_ts
-      UNION ALL
-      -- 2) plus all of today's readings
+      WITH seed AS (
       SELECT DRN, date_time, CAST(active_energy AS DECIMAL(13,3)) AS energy
       FROM MeterCumulativeEnergyUsage
-      WHERE date_time >= CURDATE()
-        AND date_time <  CURDATE() + INTERVAL 1 DAY
+      WHERE date_time >= CURDATE() - INTERVAL 1 DAY
     ),
     diffs AS (
       SELECT
@@ -1192,11 +1175,10 @@ exports.getApparentPowerSum = function(callback) {
     )
     SELECT
       HOUR(date_time) AS hr,
-      -- If active_energy is Wh keep /1000; if it's already kWh, remove /1000
       SUM(GREATEST(energy - prev_energy, 0)) / 1000 AS kwh
     FROM diffs
-    WHERE prev_energy IS NOT NULL          -- skip the seeded first row per DRN
-      AND date_time >= CURDATE()          -- only diffs that end today
+    WHERE prev_energy IS NOT NULL
+      AND date_time >= CURDATE()
       AND date_time <  CURDATE() + INTERVAL 1 DAY
     GROUP BY hr
     ORDER BY hr;
@@ -1229,7 +1211,7 @@ exports.getAverageCurrentAndVoltage = function(callback) {
       FROM (
           SELECT DRN, current, voltage, date_time, ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
           FROM MeteringPower
-          WHERE DATE(date_time) = CURDATE() AND HOUR(date_time) = HOUR(NOW())
+          WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY AND HOUR(date_time) = HOUR(NOW())
       ) t
       WHERE t.rn = 1
   `;
@@ -1259,7 +1241,7 @@ exports.getSumApparentPower = function(callback) {
       FROM (
           SELECT DRN, apparent_power, date_time, ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
           FROM MeteringPower
-          WHERE DATE(date_time) = CURDATE() AND HOUR(date_time) = HOUR(NOW())
+          WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY AND HOUR(date_time) = HOUR(NOW())
       ) t
       WHERE t.rn = 1
   `;
@@ -1908,7 +1890,7 @@ exports.getTodayAverageAndPeakPower = () => {
     HOUR(date_time) AS hr,
     AVG(CAST(apparent_power AS DECIMAL(10,2))) AS drn_hourly_avg
   FROM MeteringPower
-  WHERE DATE(date_time) = CURDATE()
+  WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY
   GROUP BY DRN, HOUR(date_time)
 ),
 daily_avg_per_drn AS (
@@ -1924,7 +1906,7 @@ hourly_max_per_drn AS (
     HOUR(date_time) AS hr,
     MAX(CAST(apparent_power AS DECIMAL(10,2))) AS drn_peak_power
   FROM MeteringPower
-  WHERE DATE(date_time) = CURDATE()
+  WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY
   GROUP BY DRN, HOUR(date_time)
 ),
 hourly_system_peak AS (
@@ -2173,7 +2155,7 @@ exports.getComprehensiveMeterDashboard = function() {
     const getNewMetersToday = `
       SELECT COUNT(*) AS newMetersToday
       FROM MeterProfileReal
-      WHERE DATE(date_time) = CURDATE()
+      WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY
     `;
     const getNewMetersYesterday = `
       SELECT COUNT(*) AS newMetersYesterday
@@ -2188,7 +2170,7 @@ exports.getComprehensiveMeterDashboard = function() {
       FROM (
         SELECT DRN, mains_state, ROW_NUMBER() OVER (PARTITION BY DRN ORDER BY date_time DESC) as rn
         FROM MeterLoadControl
-        WHERE DATE(date_time) = CURDATE()
+        WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY
       ) t
       WHERE t.rn = 1
     `;
@@ -2224,7 +2206,7 @@ exports.getComprehensiveMeterDashboard = function() {
             MAX(CAST(active_energy AS DECIMAL(10,2))) as max_energy,
             COUNT(*) as reading_count
           FROM MeterCumulativeEnergyUsage
-          WHERE DATE(date_time) = CURDATE()
+          WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY
             AND HOUR(date_time) = HOUR(NOW())
           GROUP BY DRN
         ) current_hour
@@ -2236,7 +2218,7 @@ exports.getComprehensiveMeterDashboard = function() {
           WHERE date_time < (
             SELECT MIN(date_time) 
             FROM MeterCumulativeEnergyUsage 
-            WHERE DATE(date_time) = CURDATE() 
+            WHERE date_time >= CURDATE() AND date_time < CURDATE() + INTERVAL 1 DAY 
             AND HOUR(date_time) = HOUR(NOW())
           )
           GROUP BY DRN
@@ -2397,6 +2379,27 @@ exports.getComprehensiveMeterDashboard = function() {
     .catch(err => {
       console.error('Error in comprehensive meter dashboard query:', err);
       reject(err);
+    });
+  });
+};
+// Get all token entries from STSTokesInfo (all statuses, for dashboard)
+exports.getAllTokenEntries = () => {
+  const query = "SELECT id, DRN, token_id, token_cls, submission_Method, display_msg, display_auth_result, display_token_result, display_validation_result, token_time, token_amount, date_time FROM STSTokesInfo WHERE token_id IS NOT NULL ORDER BY id DESC LIMIT 100";
+  return new Promise((resolve, reject) => {
+    db.query(query, (err, results) => {
+      if (err) reject(err);
+      else resolve(results);
+    });
+  });
+};
+
+// Get hourly token counts for today (cumulative) from STSTokesInfo
+exports.getHourlyTokenCountsToday = () => {
+  const query = `SELECT HOUR(date_time) AS hour, COUNT(*) AS count, SUM(CAST(token_amount AS DECIMAL(10,2))) AS total_amount FROM STSTokesInfo WHERE token_id IS NOT NULL AND DATE(date_time) = CURDATE() GROUP BY HOUR(date_time) ORDER BY hour`;
+  return new Promise((resolve, reject) => {
+    db.query(query, (err, results) => {
+      if (err) reject(err);
+      else resolve(results);
     });
   });
 };

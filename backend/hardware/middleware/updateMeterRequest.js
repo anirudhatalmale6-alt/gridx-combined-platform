@@ -75,6 +75,9 @@ updateRecord.checkUpdates = async (DRN, callback) => {
     const tariffUpdates = await checkAndUpdateTariffUpdates(DRN);
     // updateCmds = {updateCmds, ...tariffUpdates };
     updateCmds = Object.assign(updateCmds, { ...tariffUpdates });
+    // Geyser pending commands (timer, schedule, mode)
+    const geyserCmd = await checkAndUpdateGeyserCommand(DRN);
+    updateCmds = Object.assign(updateCmds, { ...geyserCmd });
 
     // Return the updateCmds object
     callback(null, updateCmds);
@@ -577,4 +580,28 @@ async function checkAndUpdateTariffUpdates(DRN) {
   });
 }
 
+
+// ==================== Geyser Pending Command Delivery ====================
+// Picks up the oldest unprocessed geyser command for this meter and delivers
+// it via the HTTP response as a "gcmd" field (JSON string).
+// The ESP32 firmware parses "gcmd" and routes it through handleMqttCommand().
+async function checkAndUpdateGeyserCommand(DRN) {
+  return new Promise((resolve) => {
+    const db = require('../../config/db');
+    db.query(
+      'SELECT id, command_json FROM GeyserPendingCommands WHERE DRN = ? AND processed = 0 ORDER BY id ASC LIMIT 1',
+      [DRN],
+      (err, rows) => {
+        if (err || !rows || rows.length === 0) {
+          return resolve({});
+        }
+        const row = rows[0];
+        // Mark as processed
+        db.query('UPDATE GeyserPendingCommands SET processed = 1 WHERE id = ?', [row.id]);
+        // Return the command JSON string as "gcmd" field
+        resolve({ gcmd: row.command_json });
+      }
+    );
+  });
+}
 module.exports = updateRecord;

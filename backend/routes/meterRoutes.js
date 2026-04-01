@@ -82,6 +82,8 @@ router.post('/search-by-weekly-power', authenticateToken, energyController.getWe
 router.post('/search-by-monthly-power',  authenticateToken,energyController.getYearlyApparentPowerBySuburb);
 //Get System processed tokens
 router.get('/get-system-processed-tokens' , authenticateToken,energyController.getAllSystemProcessedTokensController);
+router.get("/get-all-token-entries", authenticateToken, energyController.getAllTokenEntriesController);
+router.get("/hourly-token-counts", authenticateToken, energyController.getHourlyTokenCountsTodayController);
 //Total Tranformers
 router.get('/total-tranformers', authenticateToken,energyController.getTotalTransformers);
 

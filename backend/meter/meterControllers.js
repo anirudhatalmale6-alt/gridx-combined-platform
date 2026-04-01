@@ -702,3 +702,41 @@ exports.getComprehensiveMeterDashboard = (req, res) => {
       });
     });
 };
+// Get all token entries for dashboard (all statuses)
+exports.getAllTokenEntriesController = (req, res) => {
+  energyService.getAllTokenEntries()
+    .then((tokens) => {
+      if (!tokens || !Array.isArray(tokens)) {
+        return res.status(404).json({ error: 'No token entries found' });
+      }
+      res.json(tokens);
+    })
+    .catch((err) => {
+      console.log('Error querying token entries:', err.message);
+      res.status(500).json({ error: 'Database query failed', details: err.message });
+    });
+};
+
+// Get hourly token counts for today (cumulative for chart)
+exports.getHourlyTokenCountsTodayController = (req, res) => {
+  energyService.getHourlyTokenCountsToday()
+    .then((rows) => {
+      // Build 24-hour array with cumulative totals
+      const hourly = [];
+      let cumCount = 0;
+      let cumAmount = 0;
+      for (let h = 0; h < 24; h++) {
+        const row = rows.find(r => r.hour === h);
+        if (row) {
+          cumCount += row.count;
+          cumAmount += parseFloat(row.total_amount || 0);
+        }
+        hourly.push({ hour: h, label: h.toString().padStart(2, '0') + ':00', tokens: cumCount, amount: parseFloat(cumAmount.toFixed(2)) });
+      }
+      res.json(hourly);
+    })
+    .catch((err) => {
+      console.log('Error querying hourly tokens:', err.message);
+      res.status(500).json({ error: 'Database query failed', details: err.message });
+    });
+};

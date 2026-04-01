@@ -58,6 +58,7 @@ exports.signup = async function(req, res) {
     var FirstName = body.FirstName;
     var LastName = body.LastName;
     var DRN = body.DRN;
+    var Phone = body.Phone;
 
     var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!Email || !emailRegex.test(Email)) {
@@ -70,7 +71,7 @@ exports.signup = async function(req, res) {
       return res.status(400).json({ error: 'Meter number (DRN) is required' });
     }
 
-    var result = await customerService.signup(Email, Password, FirstName, LastName, DRN);
+    var result = await customerService.signup(Email, Password, FirstName, LastName, DRN, Phone);
 
     var ipAddress = resolveClientIp(req);
     var geoStr = customerService.getGeoString(ipAddress);
@@ -139,7 +140,8 @@ exports.forgotPassword = async function(req, res) {
     customerPinStore[Email] = { pin: pin, expires: Date.now() + 10 * 60 * 1000 };
 
     // Send email
-    await transporter.sendMail({
+    console.log('[CustomerAuth] Sending forgot-password PIN to:', Email);
+    var mailResult = await transporter.sendMail({
       from: '"Pulsar GRIDx meter" <' + EMAIL_FROM + '>',
       to: Email,
       subject: 'Pulsar GRIDx meter - Password Reset Code',
@@ -152,13 +154,15 @@ exports.forgotPassword = async function(req, res) {
         '</div>'
     });
 
+    console.log('[CustomerAuth] Email sent successfully to:', Email, 'messageId:', mailResult.messageId);
+
     var ipAddress = resolveClientIp(req);
     var geoStr = customerService.getGeoString(ipAddress);
     customerService.logPlatformAudit('Customer password reset requested: ' + Email, 'PASSWORD_RESET', 'PIN sent', Email, user.UserID, ipAddress, geoStr, req.headers['user-agent']);
 
     res.json({ message: 'Verification code sent to your email' });
   } catch (err) {
-    console.error('Customer forgot-password error:', err);
+    console.error('[CustomerAuth] forgot-password error for', Email, ':', err.message, err.code || '');
     res.status(500).json({ error: 'Failed to send verification email', details: err.message });
   }
 };

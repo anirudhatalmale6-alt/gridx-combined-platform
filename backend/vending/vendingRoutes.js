@@ -399,6 +399,44 @@ router.get('/customers/areas/list', authenticateToken, function(req, res) {
   });
 });
 
+// Search customers across VendingCustomers and MeterProfileReal
+router.get('/customers/search/lookup', authenticateToken, function(req, res) {
+  var q = req.query.q;
+  if (!q || q.trim().length < 2) return res.json({ success: true, data: [] });
+  q = q.trim();
+  var pattern = '%' + q + '%';
+
+  // Search VendingCustomers first
+  db.query(
+    'SELECT *, "vending" as source FROM VendingCustomers WHERE meterNo LIKE ? OR name LIKE ? OR accountNo LIKE ? LIMIT 10',
+    [pattern, pattern, pattern],
+    function(err, vendingResults) {
+      if (err) return res.status(500).json({ error: err.message });
+
+      // Also search MeterProfileReal
+      db.query(
+        "SELECT DRN as meterNo, CONCAT(Name, ' ', Surname) as name, City as area, Region as suburb, StreetName as address, tariff_type as tariffGroup, 'Active' as status, 0 as arrears, 'gridx' as source FROM MeterProfileReal WHERE DRN LIKE ? OR Name LIKE ? OR Surname LIKE ? LIMIT 10",
+        [pattern, pattern, pattern],
+        function(err2, profileResults) {
+          if (err2) return res.status(500).json({ error: err2.message });
+
+          // Merge results, VendingCustomers first, deduplicate by meterNo
+          var seen = {};
+          var merged = [];
+          (vendingResults || []).forEach(function(r) {
+            if (!seen[r.meterNo]) { seen[r.meterNo] = true; merged.push(r); }
+          });
+          (profileResults || []).forEach(function(r) {
+            if (!seen[r.meterNo]) { seen[r.meterNo] = true; merged.push(r); }
+          });
+
+          res.json({ success: true, data: merged });
+        }
+      );
+    }
+  );
+});
+
 router.get('/customers/:meterNo', authenticateToken, function(req, res) {
   db.query('SELECT * FROM VendingCustomers WHERE meterNo = ?', [req.params.meterNo], function(err, results) {
     if (err) return res.status(500).json({ error: err.message });

@@ -4,15 +4,29 @@ const connection = require("../service/hwDatabase.js");
 
 const STSTokenModel = function (meterDrn, STSToken) {
   this.DRN = meterDrn;
-  this.token_id = STSToken[0];
-  this.token_cls = STSToken[1];
-  this.submission_Method = STSToken[2];
-  this.display_msg = STSToken[3];
-  this.display_auth_result = STSToken[4];
-  this.display_token_result = STSToken[5];
-  this.display_validation_result = STSToken[6];
-  this.token_time = STSToken[7];
-  this.token_amount = STSToken[8];
+
+  // Support both array format (legacy) and object format (ESP32 JSON)
+  if (Array.isArray(STSToken)) {
+    this.token_id = STSToken[0];
+    this.token_cls = STSToken[1];
+    this.submission_Method = STSToken[2];
+    this.display_msg = STSToken[3];
+    this.display_auth_result = STSToken[4];
+    this.display_token_result = STSToken[5];
+    this.display_validation_result = STSToken[6];
+    this.token_time = STSToken[7];
+    this.token_amount = STSToken[8];
+  } else {
+    this.token_id = STSToken.token_id;
+    this.token_cls = STSToken.token_cls;
+    this.submission_Method = STSToken.submission_method !== undefined ? STSToken.submission_method : STSToken.submission_Method;
+    this.display_msg = STSToken.display_msg;
+    this.display_auth_result = STSToken.display_auth_result;
+    this.display_token_result = STSToken.display_token_result;
+    this.display_validation_result = STSToken.display_validation_result;
+    this.token_time = STSToken.time !== undefined ? STSToken.time : STSToken.token_time;
+    this.token_amount = STSToken.token_amount;
+  }
 };
 
 STSTokenModel.create = (STSTokenData, result) => {
