@@ -366,6 +366,40 @@ router.get('/mqtt/credit-transfer/:drn/status/:id', authenticateToken, (req, res
   );
 });
 
+/**
+ * GET /mqtt/credit-transfers
+ * List all credit transfers (admin view) with optional filters
+ * Query params: status, source_drn, target_drn, from, to, limit, offset
+ */
+router.get('/mqtt/credit-transfers', authenticateToken, (req, res) => {
+  const { status, source_drn, target_drn, from, to, limit = 100, offset = 0 } = req.query;
+  let sql = 'SELECT * FROM CreditTransfers WHERE 1=1';
+  const params = [];
+
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (source_drn) { sql += ' AND source_drn = ?'; params.push(source_drn); }
+  if (target_drn) { sql += ' AND target_drn = ?'; params.push(target_drn); }
+  if (from) { sql += ' AND created_at >= ?'; params.push(from); }
+  if (to) { sql += ' AND created_at <= ?'; params.push(to + ' 23:59:59'); }
+
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(parseInt(limit), parseInt(offset));
+
+  db.query(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // Also get summary counts
+    db.query(
+      `SELECT status, COUNT(*) as count FROM CreditTransfers GROUP BY status`,
+      (err2, counts) => {
+        const summary = {};
+        if (!err2 && counts) counts.forEach(r => { summary[r.status] = r.count; });
+        res.json({ transfers: rows || [], summary });
+      }
+    );
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════
 // STATUS & TEST
 // ═══════════════════════════════════════════════════════════════════════

@@ -345,6 +345,10 @@ export const mqttAPI = {
   transferCredit: (drn, target_meter, watt_hours) =>
     post(`/mqtt/credit-transfer/${drn}`, { target_meter, watt_hours }),
   getTransferStatus: (drn, id) => get(`/mqtt/credit-transfer/${drn}/status/${id}`),
+  listTransfers: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return get(`/mqtt/credit-transfers${qs ? '?' + qs : ''}`);
+  },
 };
 
 // ===== GEYSER CONTROL =====
