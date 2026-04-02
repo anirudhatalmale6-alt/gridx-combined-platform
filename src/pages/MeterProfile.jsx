@@ -319,6 +319,7 @@ export default function MeterProfile() {
   const [relayRowsPerPage, setRelayRowsPerPage] = useState(25);
   const [relayFilter, setRelayFilter] = useState("");
   const [relayTypeFilter, setRelayTypeFilter] = useState("");
+  const [tokenHistory, setTokenHistory] = useState([]);
 
   /* ---------- Load Control UI state ---------- */
   const [mainsReason, setMainsReason] = useState("Irregular performance");
@@ -353,6 +354,7 @@ export default function MeterProfile() {
         commissionReportAPI.getByDRN(drn),
         homeClassificationAPI.getByDRN(drn),
         meterAPI.getLocation(drn),
+        meterAPI.getStsTokens(drn),
       ]);
 
       if (results[0].status === "fulfilled") setProfile(results[0].value);
@@ -373,6 +375,8 @@ export default function MeterProfile() {
       if (results[11].status === "fulfilled" && Array.isArray(results[11].value))
         setHomeClassifications(results[11].value);
       if (results[12].status === "fulfilled") setMeterLocation(results[12].value);
+      if (results[13].status === "fulfilled" && Array.isArray(results[13].value))
+        setTokenHistory(results[13].value.filter(t => t.token_id));
 
       setLoading(false);
     };
@@ -381,7 +385,7 @@ export default function MeterProfile() {
 
   /* ---------- Fetch health data when Health tab is selected ---------- */
   useEffect(() => {
-    if (tab !== 9) return;
+    if (tab !== 8) return;
     const fetchHealth = async () => {
       setHealthLoading(true);
       try {
@@ -399,7 +403,7 @@ export default function MeterProfile() {
 
   /* ---------- Fetch relay events when Relay tab is selected ---------- */
   useEffect(() => {
-    if (tab !== 10) return;
+    if (tab !== 9) return;
     const fetchRelays = async () => {
       setRelayLoading(true);
       try {
@@ -745,7 +749,6 @@ export default function MeterProfile() {
         const isDark = theme.palette.mode === "dark";
         const tabItems = [
           { icon: <SpeedOutlined sx={{ fontSize: 18 }} />, label: "Overview", accent: "#2E7D32" },
-          { icon: <ShoppingCartOutlined sx={{ fontSize: 18 }} />, label: "Vend Token", accent: "#f2b705" },
           { icon: <PowerSettingsNewOutlined sx={{ fontSize: 18 }} />, label: "Load Control", accent: "#e2726e" },
           { icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />, label: "Billing & Tariff", accent: "#D4A843" },
           { icon: <TuneOutlined sx={{ fontSize: 18 }} />, label: "Configuration", accent: "#868dfb" },
@@ -1195,261 +1198,7 @@ export default function MeterProfile() {
         </Box>
       )}
 
-      {/* ================================================================ */}
-      {/* TAB 1: Vend Token                                                */}
-      {/* ================================================================ */}
       {tab === 1 && (
-        <Box>
-        <Box display="flex" justifyContent="flex-end" mb={0.5}>
-          <DataBadge />
-        </Box>
-        <Box
-          display="grid"
-          gridTemplateColumns="repeat(12, 1fr)"
-          gridAutoRows="140px"
-          gap="5px"
-        >
-          {/* ---- Customer Info ---- */}
-          <Box
-            gridColumn="span 5"
-            gridRow="span 3"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={2}
-            >
-              Customer Information
-            </Typography>
-            <InfoRow label="Customer" value={meterName} />
-            <InfoRow label="Meter No" value={meterNo} mono />
-            <InfoRow
-              label="Account"
-              value={mockMeter?.accountNo || drn}
-              mono
-            />
-            <InfoRow label="Area" value={`${meterArea}, ${meterSuburb}`} />
-            <InfoRow label="Tariff" value={tariffType} />
-            <InfoRow
-              label="Current Balance"
-              value={`${parseFloat(units).toFixed(1)} kWh`}
-              color="#00b4d8"
-            />
-          </Box>
-
-          {/* ---- Vending Form ---- */}
-          <Box
-            gridColumn="span 7"
-            gridRow="span 3"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={2}
-            >
-              Vend Electricity Token
-            </Typography>
-
-            {/* Amount presets */}
-            <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
-              {presets.map((p) => (
-                <Button
-                  key={p}
-                  variant={
-                    vendAmount === String(p) ? "contained" : "outlined"
-                  }
-                  size="small"
-                  onClick={() => setVendAmount(String(p))}
-                  sx={{
-                    fontSize: "0.78rem",
-                    textTransform: "none",
-                    color:
-                      vendAmount === String(p)
-                        ? "#fff"
-                        : colors.greenAccent[500],
-                    borderColor: colors.greenAccent[500],
-                    backgroundColor:
-                      vendAmount === String(p)
-                        ? colors.greenAccent[700]
-                        : "transparent",
-                  }}
-                >
-                  N$ {p}
-                </Button>
-              ))}
-            </Box>
-
-            <TextField
-              size="small"
-              label="Amount (N$)"
-              type="number"
-              value={vendAmount}
-              onChange={(e) => setVendAmount(e.target.value)}
-              sx={{ mb: 2, width: "200px" }}
-              inputProps={{ min: 5 }}
-            />
-
-            {vendAmount && parseFloat(vendAmount) >= 5 && (
-              <Box mb={2}>
-                <Typography
-                  variant="body2"
-                  color={colors.grey[100]}
-                  fontWeight={600}
-                  mb={1}
-                >
-                  Breakdown
-                </Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableBody>
-                      {(() => {
-                        const amt = parseFloat(vendAmount);
-                        const vat = amt * (tariffConfig.vatRate / 100);
-                        const fixed = tariffConfig.fixedCharge;
-                        const rel = tariffConfig.relLevy;
-                        const arrearsDeduct =
-                          customer && customer.arrears > 0
-                            ? Math.min(
-                                customer.arrears,
-                                amt *
-                                  (tariffConfig.arrearsPercentage / 100)
-                              )
-                            : 0;
-                        const net = amt - vat - fixed - rel - arrearsDeduct;
-                        const kWh = tariff?.blocks?.[0]
-                          ? (net / tariff.blocks[0].rate).toFixed(2)
-                          : (net / 1.68).toFixed(2);
-                        const rows = [
-                          {
-                            label: "Purchase Amount",
-                            value: fmtCurrency(amt),
-                          },
-                          {
-                            label: `VAT (${tariffConfig.vatRate}%)`,
-                            value: `- ${fmtCurrency(vat)}`,
-                          },
-                          {
-                            label: "Fixed Charge",
-                            value: `- ${fmtCurrency(fixed)}`,
-                          },
-                          {
-                            label: "REL Levy",
-                            value: `- ${fmtCurrency(rel)}`,
-                          },
-                        ];
-                        if (arrearsDeduct > 0) {
-                          rows.push({
-                            label: "Arrears Deduction",
-                            value: `- ${fmtCurrency(arrearsDeduct)}`,
-                          });
-                        }
-                        rows.push({
-                          label: "Net Amount",
-                          value: fmtCurrency(net),
-                        });
-                        rows.push({
-                          label: "Estimated kWh",
-                          value: `${kWh} kWh`,
-                        });
-                        return rows.map((r) => (
-                          <TableRow key={r.label}>
-                            <TableCell
-                              sx={{
-                                color: colors.grey[100],
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.05)",
-                                fontSize: "0.8rem",
-                              }}
-                            >
-                              {r.label}
-                            </TableCell>
-                            <TableCell
-                              align="right"
-                              sx={{
-                                color: colors.greenAccent[500],
-                                fontWeight: 600,
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.05)",
-                                fontSize: "0.8rem",
-                              }}
-                            >
-                              {r.value}
-                            </TableCell>
-                          </TableRow>
-                        ));
-                      })()}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Box>
-            )}
-
-            <Button
-              variant="contained"
-              startIcon={<SendOutlined />}
-              onClick={handleVend}
-              disabled={vendLoading || !vendAmount || parseFloat(vendAmount) < 5}
-              sx={{
-                backgroundColor: colors.greenAccent[700],
-                "&:hover": { backgroundColor: colors.greenAccent[600] },
-                textTransform: "none",
-              }}
-            >
-              {vendLoading ? 'Generating...' : 'Generate Token'}
-            </Button>
-
-            {generatedToken && (
-              <Box
-                mt={2}
-                p={2}
-                backgroundColor="rgba(76,206,172,0.1)"
-                borderRadius="4px"
-                border={`1px solid ${colors.greenAccent[700]}`}
-              >
-                <Box display="flex" alignItems="center" gap={1}>
-                  <ConfirmationNumberOutlined
-                    sx={{ color: colors.greenAccent[500] }}
-                  />
-                  <Typography
-                    variant="body1"
-                    color={colors.greenAccent[500]}
-                    fontWeight={700}
-                    fontFamily="monospace"
-                    fontSize="0.9rem"
-                  >
-                    {generatedToken}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      navigator.clipboard.writeText(generatedToken)
-                    }
-                    sx={{ color: colors.greenAccent[500] }}
-                  >
-                    <ContentCopyOutlined sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-              </Box>
-            )}
-          </Box>
-        </Box>
-        </Box>
-      )}
-
-      {/* ================================================================ */}
-      {/* TAB 2: Load Control                                              */}
-      {/* ================================================================ */}
-      {tab === 2 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge live />
@@ -1788,7 +1537,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 3: Billing & Tariff                                          */}
       {/* ================================================================ */}
-      {tab === 3 && (
+      {tab === 2 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -2050,14 +1799,145 @@ export default function MeterProfile() {
               </Box>
             </Box>
           </Box>
+
+          {/* ---- Vend Electricity Token Form ---- */}
+          <Box
+            gridColumn="span 6"
+            gridRow="span 3"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+            overflow="auto"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
+              Vend Electricity Token
+            </Typography>
+            <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
+              {presets.map((p) => (
+                <Button
+                  key={p}
+                  variant={vendAmount === String(p) ? "contained" : "outlined"}
+                  size="small"
+                  onClick={() => setVendAmount(String(p))}
+                  sx={{
+                    fontSize: "0.78rem", textTransform: "none",
+                    color: vendAmount === String(p) ? "#fff" : colors.greenAccent[500],
+                    borderColor: colors.greenAccent[500],
+                    backgroundColor: vendAmount === String(p) ? colors.greenAccent[700] : "transparent",
+                  }}
+                >
+                  N$ {p}
+                </Button>
+              ))}
+            </Box>
+            <TextField
+              size="small" label="Amount (N$)" type="number"
+              value={vendAmount} onChange={(e) => setVendAmount(e.target.value)}
+              sx={{ mb: 2, width: "200px" }} inputProps={{ min: 5 }}
+            />
+            {vendAmount && parseFloat(vendAmount) >= 5 && (
+              <Box mb={2}>
+                <Typography variant="body2" color={colors.grey[100]} fontWeight={600} mb={1}>Breakdown</Typography>
+                <TableContainer>
+                  <Table size="small"><TableBody>
+                    {(() => {
+                      const amt = parseFloat(vendAmount);
+                      const vat = amt * (tariffConfig.vatRate / 100);
+                      const fixed = tariffConfig.fixedCharge;
+                      const rel = tariffConfig.relLevy;
+                      const arrearsDeduct = customer && customer.arrears > 0 ? Math.min(customer.arrears, amt * (tariffConfig.arrearsPercentage / 100)) : 0;
+                      const net = amt - vat - fixed - rel - arrearsDeduct;
+                      const kWh = tariff?.blocks?.[0] ? (net / tariff.blocks[0].rate).toFixed(2) : (net / 1.68).toFixed(2);
+                      const rows = [
+                        { label: "Purchase Amount", value: fmtCurrency(amt) },
+                        { label: `VAT (${tariffConfig.vatRate}%)`, value: `- ${fmtCurrency(vat)}` },
+                        { label: "Fixed Charge", value: `- ${fmtCurrency(fixed)}` },
+                        { label: "REL Levy", value: `- ${fmtCurrency(rel)}` },
+                      ];
+                      if (arrearsDeduct > 0) rows.push({ label: "Arrears Deduction", value: `- ${fmtCurrency(arrearsDeduct)}` });
+                      rows.push({ label: "Net Amount", value: fmtCurrency(net) });
+                      rows.push({ label: "Estimated kWh", value: `${kWh} kWh` });
+                      return rows.map((r) => (
+                        <TableRow key={r.label}>
+                          <TableCell sx={{ color: colors.grey[100], borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "0.8rem" }}>{r.label}</TableCell>
+                          <TableCell align="right" sx={{ color: colors.greenAccent[500], fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "0.8rem" }}>{r.value}</TableCell>
+                        </TableRow>
+                      ));
+                    })()}
+                  </TableBody></Table>
+                </TableContainer>
+              </Box>
+            )}
+            <Button variant="contained" startIcon={<SendOutlined />} onClick={handleVend}
+              disabled={vendLoading || !vendAmount || parseFloat(vendAmount) < 5}
+              sx={{ backgroundColor: colors.greenAccent[700], "&:hover": { backgroundColor: colors.greenAccent[600] }, textTransform: "none" }}>
+              {vendLoading ? 'Generating...' : 'Generate Token'}
+            </Button>
+            {generatedToken && (
+              <Box mt={2} p={2} backgroundColor="rgba(76,206,172,0.1)" borderRadius="4px" border={`1px solid ${colors.greenAccent[700]}`}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <ConfirmationNumberOutlined sx={{ color: colors.greenAccent[500] }} />
+                  <Typography variant="body1" color={colors.greenAccent[500]} fontWeight={700} fontFamily="monospace" fontSize="0.9rem">{generatedToken}</Typography>
+                  <IconButton size="small" onClick={() => navigator.clipboard.writeText(generatedToken)} sx={{ color: colors.greenAccent[500] }}>
+                    <ContentCopyOutlined sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+              </Box>
+            )}
+          </Box>
+
+          {/* ---- Recent Processed Tokens ---- */}
+          <Box
+            gridColumn="span 6"
+            gridRow="span 3"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+            overflow="auto"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
+              Recent Processed Tokens
+            </Typography>
+            {tokenHistory.length > 0 ? (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      {["Token ID", "Date/Time", "kWh", "Status"].map((col) => (
+                        <TableCell key={col} sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>{col}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {tokenHistory.slice(0, 10).map((t, i) => {
+                      const isAccepted = (t.display_msg || "").toLowerCase().includes("accept");
+                      return (
+                        <TableRow key={t.id || i}>
+                          <TableCell sx={{ color: colors.grey[100], fontFamily: "monospace", fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.token_id}</TableCell>
+                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.date_time ? new Date(t.date_time).toLocaleString() : "-"}</TableCell>
+                          <TableCell sx={{ color: colors.greenAccent[500], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{parseFloat(t.token_amount || 0).toFixed(1)}</TableCell>
+                          <TableCell sx={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <Chip label={isAccepted ? "Accepted" : (t.display_msg || "Unknown")} size="small"
+                              sx={{ bgcolor: isAccepted ? "rgba(76,206,172,0.15)" : "rgba(219,79,74,0.15)", color: isAccepted ? colors.greenAccent[500] : "#db4f4a", fontWeight: 600, fontSize: "0.68rem", height: 22 }} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography color="rgba(255,255,255,0.35)" sx={{ textAlign: "center", py: 4 }}>No tokens processed yet.</Typography>
+            )}
+          </Box>
         </Box>
         </Box>
       )}
 
       {/* ================================================================ */}
-      {/* TAB 4: Configuration                                             */}
+      {/* TAB 3: Configuration                                             */}
       {/* ================================================================ */}
-      {tab === 4 && (
+      {tab === 3 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge live />
@@ -2177,7 +2057,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 5: Energy Charts                                             */}
       {/* ================================================================ */}
-      {tab === 5 && (
+      {tab === 4 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -2321,7 +2201,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 6: Transaction History                                       */}
       {/* ================================================================ */}
-      {tab === 6 && (
+      {tab === 5 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -2340,148 +2220,43 @@ export default function MeterProfile() {
             borderRadius="4px"
             overflow="auto"
           >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={2}
-            >
-              Transaction History
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
+              Token Purchase History
             </Typography>
-            {meterTxns.length > 0 ? (
+            {tokenHistory.length > 0 ? (
               <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      {[
-                        "Ref",
-                        "Date/Time",
-                        "Amount",
-                        "kWh",
-                        "Token",
-                        "Status",
-                        "Operator",
-                      ].map((col) => (
-                        <TableCell
-                          key={col}
-                          sx={{
-                            color: colors.greenAccent[500],
-                            fontWeight: 600,
-                            fontSize: "0.75rem",
-                            borderBottom:
-                              "1px solid rgba(255,255,255,0.1)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {col}
-                        </TableCell>
+                      {["#", "Token ID", "Date/Time", "Amount (kWh)", "Channel", "Status", "Result"].map((col) => (
+                        <TableCell key={col} sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)", whiteSpace: "nowrap" }}>{col}</TableCell>
                       ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {meterTxns.map((t) => {
-                      const sc =
-                        t.status === "Completed"
-                          ? {
-                              bg: "rgba(76,206,172,0.15)",
-                              text: colors.greenAccent[500],
-                            }
-                          : t.status === "Failed"
-                          ? { bg: "rgba(219,79,74,0.15)", text: "#db4f4a" }
-                          : {
-                              bg: "rgba(242,183,5,0.15)",
-                              text: "#f2b705",
-                            };
+                    {tokenHistory.map((t, idx) => {
+                      const channels = ["Console", "Touch Screen", "SMS", "BLE", "Server"];
+                      const channel = channels[parseInt(t.submission_Method)] || t.submission_Method || "-";
+                      const msg = (t.display_msg || "").toLowerCase();
+                      const isAccepted = msg.includes("accept");
+                      const isRejected = msg.includes("reject") || msg.includes("not authentic") || msg.includes("error") || msg.includes("used") || msg.includes("invalid");
+                      const statusLabel = isAccepted ? "Accepted" : isRejected ? "Rejected" : (t.display_msg || "Unknown");
+                      const sc = isAccepted ? { bg: "rgba(76,206,172,0.15)", text: colors.greenAccent[500] }
+                        : isRejected ? { bg: "rgba(219,79,74,0.15)", text: "#db4f4a" }
+                        : { bg: "rgba(242,183,5,0.15)", text: "#f2b705" };
+                      const authResult = parseInt(t.display_auth_result);
+                      const resultLabel = authResult === 1 ? "Valid" : authResult === 0 ? "Not Authentic" : (t.display_msg || "-");
                       return (
-                        <TableRow
-                          key={t.id}
-                          sx={{
-                            "&:hover": {
-                              bgcolor: "rgba(0,180,216,0.05)",
-                            },
-                          }}
-                        >
-                          <TableCell
-                            sx={{
-                              color: colors.grey[100],
-                              fontSize: "0.78rem",
-                              fontFamily: "monospace",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {t.refNo}
+                        <TableRow key={t.id || idx} sx={{ "&:hover": { bgcolor: "rgba(0,180,216,0.05)" } }}>
+                          <TableCell sx={{ color: colors.grey[400], fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{idx + 1}</TableCell>
+                          <TableCell sx={{ color: colors.grey[100], fontFamily: "monospace", fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.token_id}</TableCell>
+                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.date_time ? new Date(t.date_time).toLocaleString() : "-"}</TableCell>
+                          <TableCell sx={{ color: colors.greenAccent[500], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{parseFloat(t.token_amount || 0).toFixed(1)}</TableCell>
+                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{channel}</TableCell>
+                          <TableCell sx={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <Chip label={statusLabel} size="small" sx={{ bgcolor: sc.bg, color: sc.text, fontWeight: 600, fontSize: "0.68rem", height: 22 }} />
                           </TableCell>
-                          <TableCell
-                            sx={{
-                              color: colors.grey[100],
-                              fontSize: "0.78rem",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {formatDateTime(t.dateTime)}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              color: colors.grey[100],
-                              fontWeight: 600,
-                              fontSize: "0.78rem",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {fmtCurrency(t.amount)}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              color: colors.greenAccent[500],
-                              fontSize: "0.78rem",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {Number(t.kWh).toFixed(2)}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              color: colors.grey[100],
-                              fontFamily: "monospace",
-                              fontSize: "0.72rem",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {t.token}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            <Chip
-                              label={t.status}
-                              size="small"
-                              sx={{
-                                bgcolor: sc.bg,
-                                color: sc.text,
-                                fontWeight: 600,
-                                fontSize: "0.68rem",
-                                height: 22,
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              color: colors.grey[100],
-                              fontSize: "0.78rem",
-                              borderBottom:
-                                "1px solid rgba(255,255,255,0.05)",
-                            }}
-                          >
-                            {t.operator}
-                          </TableCell>
+                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{resultLabel}</TableCell>
                         </TableRow>
                       );
                     })}
@@ -2489,11 +2264,8 @@ export default function MeterProfile() {
                 </Table>
               </TableContainer>
             ) : (
-              <Typography
-                color="rgba(255,255,255,0.35)"
-                sx={{ textAlign: "center", py: 4 }}
-              >
-                No transactions found for this meter.
+              <Typography color="rgba(255,255,255,0.35)" sx={{ textAlign: "center", py: 4 }}>
+                No token history found for this meter.
               </Typography>
             )}
           </Box>
@@ -2504,7 +2276,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 7: Commission Report                                       */}
       {/* ================================================================ */}
-      {tab === 7 && (
+      {tab === 6 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={0.5}>
             <DataBadge />
@@ -2882,7 +2654,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 8: Home Classification                                      */}
       {/* ================================================================ */}
-      {tab === 8 && (
+      {tab === 7 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={0.5}>
             <DataBadge />
@@ -3280,7 +3052,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 9: Meter Health                                              */}
       {/* ================================================================ */}
-      {tab === 9 && (
+      {tab === 8 && (
         <Box>
           {healthLoading && <LinearProgress sx={{ mb: 2 }} />}
           {healthData ? (() => {
@@ -3386,7 +3158,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 10: Relay Events                                             */}
       {/* ================================================================ */}
-      {tab === 10 && (() => {
+      {tab === 9 && (() => {
         const REASON_COLORS = ["#868dfb","#2E7D32","#f44336","#ff9800","#2196f3","#ab47bc","#78909c","#e91e63","#ff5722"];
         const REASON_LABELS = ["Unknown","Manual Control","Credit Expired","Power Limit","Scheduled","Remote Command","System Startup","Tamper Detected","Overcurrent"];
         const fmtTime = (ts) => ts ? new Date(ts).toLocaleString("en-ZA", { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-";
