@@ -21,6 +21,7 @@ import TuneIcon from "@mui/icons-material/Tune";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import SpeedIcon from "@mui/icons-material/Speed";
+import ElectricMeterOutlinedIcon from "@mui/icons-material/ElectricMeterOutlined";
 import HubIcon from "@mui/icons-material/Hub";
 import BuildIcon from "@mui/icons-material/Build";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -352,6 +353,13 @@ const Sidebar = () => {
           title="Grid Topology"
           to="/topology"
           icon={<AppsIcon />}
+          isCollapsed={isCollapsed}
+          accentColor={colors.greenAccent[500]}
+        />
+        <NavItem
+          title="Meter Profiles"
+          to="/meter-profiles"
+          icon={<ElectricMeterOutlinedIcon />}
           isCollapsed={isCollapsed}
           accentColor={colors.greenAccent[500]}
         />

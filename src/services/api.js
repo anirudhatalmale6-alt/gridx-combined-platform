@@ -186,6 +186,8 @@ export const tokenAPI = {
   getAmount: () => get('/tokenAmount'),
   getCount: () => get('/totalTokensBought'),
   getAllProcessed: () => get('/get-system-processed-tokens'),
+  getAllTokenEntries: () => get('/get-all-token-entries'),
+  getHourlyTokenCounts: () => get('/hourly-token-counts'),
 };
 
 // ===== NOTIFICATIONS =====
@@ -233,6 +235,8 @@ export const meterConfigAPI = {
   setBaseUrl: (drn, url) => post(`/meter-config/base-url/${drn}`, { base_url: url }),
   // Get current config status
   getStatus: (drn) => get(`/meter-config/status/${drn}`),
+  // Meter profiles
+  getMeterProfiles: () => get('/meter-config/meter-profiles'),
 };
 
 // ===== METER BILLING =====
