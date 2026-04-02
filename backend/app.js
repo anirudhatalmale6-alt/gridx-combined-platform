@@ -64,8 +64,6 @@ const integrationRoutes = require('./vending/integrationRoutes');
 const customerAuthRoutes = require('./routes/customerAuthRoutes');
 const tamperRoutes = require('./routes/tamperRoutes');
 const vsmRoutes = require('./routes/vsmRoutes');
-const dpoRoutes = require("./routes/dpoRoutes");
-const geyserControlRoutes = require("./routes/geyserControlRoutes");
 const meterValidationRoutes = require('./routes/meterValidationRoutes');
 const authorizedNumbersRoutes = require('./meter/authorizedNumbersRoutes');
 const { confirmValidation } = require('./customer/meterValidationController');
@@ -155,8 +153,6 @@ apiRouter.use('/', groupControlRoutes);
 apiRouter.use('/vending', vendingRoutes);
 apiRouter.use('/', tamperRoutes);
 apiRouter.use('/', vsmRoutes);
-apiRouter.use("/", dpoRoutes);
-apiRouter.use("/", geyserControlRoutes);
 // Meter config commands (auth number, sleep mode, base URL, status)
 const meterConfigRoutes = require('./meterProfile/meterConfigRoutes');
 apiRouter.use('/meter-config', meterConfigRoutes);

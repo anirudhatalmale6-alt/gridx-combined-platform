@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -37,6 +37,8 @@ import {
   Tooltip,
   Divider,
   Grid,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import {
   BoltOutlined,
@@ -70,6 +72,15 @@ import {
   ToggleOn,
   ToggleOff,
   HotTub,
+  BluetoothDisabled,
+  PersonRemoveOutlined,
+  PhoneAndroidOutlined,
+  SmsOutlined,
+  LinkOutlined,
+  BedtimeOutlined,
+  WbSunnyOutlined,
+  TokenOutlined,
+  PersonAddOutlined,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -93,7 +104,7 @@ import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
-import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, mqttAPI, vendingAPI } from "../services/api";
+import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, energyAPI, meterConfigAPI } from "../services/api";
 import {
   meters as mockMeters,
   transactions,
@@ -123,7 +134,7 @@ function formatDateTime(isoStr) {
 }
 
 function signalLabel(dbm) {
-  if (dbm >= -50) return { label: "Excellent", color: "#2E7D32" };
+  if (dbm >= -50) return { label: "Excellent", color: "#4cceac" };
   if (dbm >= -70) return { label: "Good", color: "#00b4d8" };
   if (dbm >= -85) return { label: "Fair", color: "#f2b705" };
   return { label: "Weak", color: "#db4f4a" };
@@ -282,8 +293,6 @@ export default function MeterProfile() {
   const [tab, setTab] = useState(0);
   const [vendAmount, setVendAmount] = useState("");
   const [generatedToken, setGeneratedToken] = useState("");
-  const [vendLoading, setVendLoading] = useState(false);
-  const [configActionLoading, setConfigActionLoading] = useState("");
 
   /* ---------- Google Maps loader (must match libraries used in Map.jsx) ---------- */
   const { isLoaded: mapsLoaded } = useJsApiLoader({
@@ -319,7 +328,6 @@ export default function MeterProfile() {
   const [relayRowsPerPage, setRelayRowsPerPage] = useState(25);
   const [relayFilter, setRelayFilter] = useState("");
   const [relayTypeFilter, setRelayTypeFilter] = useState("");
-  const [tokenHistory, setTokenHistory] = useState([]);
 
   /* ---------- Load Control UI state ---------- */
   const [mainsReason, setMainsReason] = useState("Irregular performance");
@@ -330,6 +338,13 @@ export default function MeterProfile() {
     action: "",
   });
   const [commandLoading, setCommandLoading] = useState(false);
+  /* ---------- Config tab input state ---------- */
+  const [configAuthNumber, setConfigAuthNumber] = useState("");
+  const [configSmsNumber, setConfigSmsNumber] = useState("");
+  const [configSmsEnabled, setConfigSmsEnabled] = useState(true);
+  const [configBaseUrl, setConfigBaseUrl] = useState("");
+  const [configTokenId, setConfigTokenId] = useState("");
+  const [configStatus, setConfigStatus] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -354,7 +369,6 @@ export default function MeterProfile() {
         commissionReportAPI.getByDRN(drn),
         homeClassificationAPI.getByDRN(drn),
         meterAPI.getLocation(drn),
-        meterAPI.getStsTokens(drn),
       ]);
 
       if (results[0].status === "fulfilled") setProfile(results[0].value);
@@ -375,8 +389,6 @@ export default function MeterProfile() {
       if (results[11].status === "fulfilled" && Array.isArray(results[11].value))
         setHomeClassifications(results[11].value);
       if (results[12].status === "fulfilled") setMeterLocation(results[12].value);
-      if (results[13].status === "fulfilled" && Array.isArray(results[13].value))
-        setTokenHistory(results[13].value.filter(t => t.token_id));
 
       setLoading(false);
     };
@@ -385,7 +397,7 @@ export default function MeterProfile() {
 
   /* ---------- Fetch health data when Health tab is selected ---------- */
   useEffect(() => {
-    if (tab !== 8) return;
+    if (tab !== 9) return;
     const fetchHealth = async () => {
       setHealthLoading(true);
       try {
@@ -403,7 +415,7 @@ export default function MeterProfile() {
 
   /* ---------- Fetch relay events when Relay tab is selected ---------- */
   useEffect(() => {
-    if (tab !== 9) return;
+    if (tab !== 10) return;
     const fetchRelays = async () => {
       setRelayLoading(true);
       try {
@@ -421,6 +433,32 @@ export default function MeterProfile() {
     };
     fetchRelays();
   }, [drn, tab, relayPage, relayRowsPerPage, relayFilter, relayTypeFilter]);
+
+  /* ---------- Fetch hourly energy data when Energy Charts tab is selected ---------- */
+  useEffect(() => {
+    if (tab !== 5) return;
+    const fetchHourly = async () => {
+      try {
+        const res = await energyAPI.getHourlyByDrn(drn);
+        if (res?.data && Array.isArray(res.data)) {
+          setHourlyData(res.data);
+        } else {
+          // Fallback: generate placeholder with zeros
+          setHourlyData(Array.from({ length: 24 }, (_, i) => ({
+            hour: `${String(i).padStart(2, "0")}:00`,
+            kWh: 0,
+          })));
+        }
+      } catch (e) {
+        console.warn("Failed to fetch hourly data:", e);
+        setHourlyData(Array.from({ length: 24 }, (_, i) => ({
+          hour: `${String(i).padStart(2, "0")}:00`,
+          kWh: 0,
+        })));
+      }
+    };
+    fetchHourly();
+  }, [drn, tab]);
 
   /* ---------- fallback mock meter ---------- */
   const mockMeter = mockMeters.find((m) => m.drn === drn);
@@ -496,7 +534,7 @@ export default function MeterProfile() {
   const tariff = tariffGroups.find(
     (t) => t.name === (mockMeter?.billing?.tariffGroup || "Residential")
   );
-  const hourlyData = useMemo(() => generateHourlyData(), []);
+  const [hourlyData, setHourlyData] = useState([]);
 
   /* ---------- Daily power: this week vs last week ---------- */
   const weeklyPowerChart = useMemo(() => {
@@ -551,24 +589,36 @@ export default function MeterProfile() {
 
   const handleConfirmLoadControl = async () => {
     const { type, action } = confirmDialog;
-    const state = action === "enable" ? 1 : 0;
-    const reason = type === "mains" ? mainsReason : heaterReason;
+    const isStateControl = type === "mains_state" || type === "heater_state";
+    const state = isStateControl ? (action === "on" ? 1 : 0) : (action === "enable" ? 1 : 0);
+    const baseType = type.replace("_state", "");
+    const reason = baseType === "mains" ? mainsReason : heaterReason;
     const userName = user?.Name || user?.name || "Admin";
 
     setCommandLoading(true);
     setConfirmDialog({ open: false, type: "", action: "" });
 
     try {
-      if (type === "mains") {
-        await loadControlAPI.setMains(drn, state, userName, reason);
+      if (isStateControl) {
+        if (baseType === "mains") {
+          await loadControlAPI.setMainsState(drn, state, userName, reason);
+        } else {
+          await loadControlAPI.setHeaterState(drn, state, userName, reason);
+        }
       } else {
-        await loadControlAPI.setHeater(drn, state, userName, reason);
+        if (type === "mains") {
+          await loadControlAPI.setMains(drn, state, userName, reason);
+        } else {
+          await loadControlAPI.setHeater(drn, state, userName, reason);
+        }
       }
+      const labelType = baseType === "mains" ? "Mains" : "Heater";
+      const labelAction = isStateControl
+        ? (action === "on" ? "Turn ON" : "Turn OFF")
+        : (action === "enable" ? "Enable" : "Disable");
       setSnackbar({
         open: true,
-        message: `${type === "mains" ? "Mains" : "Heater"} ${
-          action === "enable" ? "Enable" : "Disable"
-        } command sent successfully`,
+        message: `${labelType} ${labelAction} command sent successfully`,
         severity: "success",
       });
 
@@ -595,62 +645,102 @@ export default function MeterProfile() {
     }
   };
 
-  /* ---------- vend helpers ---------- */
-  const handleVend = async () => {
-    const amt = parseFloat(vendAmount);
-    if (!amt || amt < 5) return;
-    setVendLoading(true);
-    setGeneratedToken("");
+  /* ---------- config action handler ---------- */
+  const handleConfigAction = async (actionType, payload) => {
+    setCommandLoading(true);
     try {
-      const result = await vendingAPI.vendToken({
-        meterNo: meterNo,
-        amount: amt,
-        vendorId: user?.Admin_ID || user?.id || 'web-admin',
-      });
-      const token = result.token || result.data?.token || '';
-      const kWh = result.kWh || result.data?.kWh || '—';
-      setGeneratedToken(`Token: ${token} | Amount: ${fmtCurrency(amt)} | kWh: ${kWh}`);
-      // Deliver token to meter via MQTT
-      if (token) {
-        try {
-          await mqttAPI.sendToken(drn, token);
-        } catch (mqttErr) {
-          console.warn('MQTT token delivery failed:', mqttErr.message);
-        }
+      switch (actionType) {
+        case "reset_ble":
+          await meterConfigAPI.resetBLE(drn);
+          setSnackbar({ open: true, message: "Reset BLE PIN command sent", severity: "success" });
+          break;
+        case "clear_auth":
+          await meterConfigAPI.resetAuthNumbers(drn);
+          setSnackbar({ open: true, message: "Clear Authorized Numbers command sent", severity: "success" });
+          break;
+        case "restart_meter":
+          await meterConfigAPI.resetMeter(drn);
+          setSnackbar({ open: true, message: "Restart Meter command sent", severity: "success" });
+          break;
+        case "mains_on":
+          await meterConfigAPI.setMainsControl(drn, 1);
+          setSnackbar({ open: true, message: "Mains relay ON command sent", severity: "success" });
+          break;
+        case "mains_off":
+          await meterConfigAPI.setMainsControl(drn, 0);
+          setSnackbar({ open: true, message: "Mains relay OFF command sent", severity: "warning" });
+          break;
+        case "geyser_on":
+          await meterConfigAPI.setHeaterControl(drn, 1);
+          setSnackbar({ open: true, message: "Geyser relay ON command sent", severity: "success" });
+          break;
+        case "geyser_off":
+          await meterConfigAPI.setHeaterControl(drn, 0);
+          setSnackbar({ open: true, message: "Geyser relay OFF command sent", severity: "warning" });
+          break;
+        case "send_token":
+          if (!payload?.tokenId) break;
+          await meterConfigAPI.sendToken(drn, payload.tokenId);
+          setConfigTokenId("");
+          setSnackbar({ open: true, message: "Token sent to meter", severity: "success" });
+          break;
+        case "add_auth_number":
+          if (!payload?.number) break;
+          await meterConfigAPI.addAuthNumber(drn, payload.number);
+          setConfigAuthNumber("");
+          setSnackbar({ open: true, message: "Authorized number command sent", severity: "success" });
+          break;
+        case "set_sms":
+          await meterConfigAPI.setSMSResponse(drn, payload?.number || "", payload?.enabled ?? true);
+          setSnackbar({ open: true, message: "SMS configuration updated", severity: "success" });
+          break;
+        case "sleep_on":
+          await meterConfigAPI.setSleepMode(drn, true);
+          setSnackbar({ open: true, message: "Sleep mode enabled", severity: "warning" });
+          break;
+        case "sleep_off":
+          await meterConfigAPI.setSleepMode(drn, false);
+          setSnackbar({ open: true, message: "Sleep mode disabled (wake up)", severity: "success" });
+          break;
+        case "set_base_url":
+          if (!payload?.url) break;
+          await meterConfigAPI.setBaseUrl(drn, payload.url);
+          setConfigBaseUrl("");
+          setSnackbar({ open: true, message: "Base URL update command sent", severity: "success" });
+          break;
+        default:
+          break;
       }
-      setSnackbar({ open: true, message: 'Token generated and sent to meter', severity: 'success' });
+      // Refresh config status
+      try {
+        const statusRes = await meterConfigAPI.getStatus(drn);
+        setConfigStatus(statusRes?.data || null);
+      } catch (_) {}
     } catch (err) {
-      setSnackbar({ open: true, message: `Vending failed: ${err.message}`, severity: 'error' });
+      setSnackbar({ open: true, message: `Failed: ${err.message}`, severity: "error" });
     } finally {
-      setVendLoading(false);
+      setCommandLoading(false);
     }
   };
 
-  /* ---------- configuration action handlers ---------- */
-  const handleConfigAction = async (actionType) => {
-    setConfigActionLoading(actionType);
-    try {
-      const cmdMap = {
-        restart: { type: 'restart' },
-        reset_sts: { type: 'reset_sts_keys' },
-        update_config: { type: 'request_config' },
-        ping: { type: 'ping' },
-      };
-      await mqttAPI.sendCommand(drn, cmdMap[actionType]);
-      setSnackbar({
-        open: true,
-        message: `${actionType.replace(/_/g, ' ')} command sent to meter`,
-        severity: 'success',
-      });
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: `Failed: ${err.message}`,
-        severity: 'error',
-      });
-    } finally {
-      setConfigActionLoading("");
+  // Load config status when switching to config tab
+  useEffect(() => {
+    if (tab === 4 && drn) {
+      meterConfigAPI.getStatus(drn).then(r => setConfigStatus(r?.data || null)).catch(() => {});
     }
+  }, [tab, drn]);
+
+  /* ---------- vend helpers ---------- */
+  const handleVend = () => {
+    const amt = parseFloat(vendAmount);
+    if (!amt || amt < 5) return;
+    const kWh = (amt / 1.68).toFixed(2);
+    const token = Array.from({ length: 20 }, () =>
+      Math.floor(Math.random() * 10)
+    ).join("");
+    setGeneratedToken(
+      `Token: ${token} | Amount: ${fmtCurrency(amt)} | kWh: ${kWh}`
+    );
   };
 
   const presets = [50, 100, 200, 500, 1000, 2000];
@@ -748,9 +838,10 @@ export default function MeterProfile() {
       {(() => {
         const isDark = theme.palette.mode === "dark";
         const tabItems = [
-          { icon: <SpeedOutlined sx={{ fontSize: 18 }} />, label: "Overview", accent: "#2E7D32" },
+          { icon: <SpeedOutlined sx={{ fontSize: 18 }} />, label: "Overview", accent: "#4cceac" },
+          { icon: <ShoppingCartOutlined sx={{ fontSize: 18 }} />, label: "Vend Token", accent: "#f2b705" },
           { icon: <PowerSettingsNewOutlined sx={{ fontSize: 18 }} />, label: "Load Control", accent: "#e2726e" },
-          { icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />, label: "Billing & Tariff", accent: "#D4A843" },
+          { icon: <AccountBalanceWalletOutlined sx={{ fontSize: 18 }} />, label: "Billing & Tariff", accent: "#6870fa" },
           { icon: <TuneOutlined sx={{ fontSize: 18 }} />, label: "Configuration", accent: "#868dfb" },
           { icon: <BarChartOutlined sx={{ fontSize: 18 }} />, label: "Energy Charts", accent: "#00bcd4" },
           { icon: <HistoryOutlined sx={{ fontSize: 18 }} />, label: "History", accent: "#a3a3a3" },
@@ -920,7 +1011,7 @@ export default function MeterProfile() {
                   label="Frequency"
                   value={parseFloat(frequency).toFixed(2)}
                   unit="Hz"
-                  color="#D4A843"
+                  color="#6870fa"
                 />
                 <MetricBox
                   label="Signal"
@@ -1058,7 +1149,7 @@ export default function MeterProfile() {
               <InfoRow
                 label="Frequency"
                 value={`${parseFloat(frequency).toFixed(2)} Hz`}
-                color="#D4A843"
+                color="#6870fa"
               />
               <InfoRow
                 label="Power Factor"
@@ -1198,7 +1289,261 @@ export default function MeterProfile() {
         </Box>
       )}
 
+      {/* ================================================================ */}
+      {/* TAB 1: Vend Token                                                */}
+      {/* ================================================================ */}
       {tab === 1 && (
+        <Box>
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <DataBadge />
+        </Box>
+        <Box
+          display="grid"
+          gridTemplateColumns="repeat(12, 1fr)"
+          gridAutoRows="140px"
+          gap="5px"
+        >
+          {/* ---- Customer Info ---- */}
+          <Box
+            gridColumn="span 5"
+            gridRow="span 3"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+            overflow="auto"
+          >
+            <Typography
+              variant="h6"
+              color={colors.grey[100]}
+              fontWeight="bold"
+              mb={2}
+            >
+              Customer Information
+            </Typography>
+            <InfoRow label="Customer" value={meterName} />
+            <InfoRow label="Meter No" value={meterNo} mono />
+            <InfoRow
+              label="Account"
+              value={mockMeter?.accountNo || drn}
+              mono
+            />
+            <InfoRow label="Area" value={`${meterArea}, ${meterSuburb}`} />
+            <InfoRow label="Tariff" value={tariffType} />
+            <InfoRow
+              label="Current Balance"
+              value={`${parseFloat(units).toFixed(1)} kWh`}
+              color="#00b4d8"
+            />
+          </Box>
+
+          {/* ---- Vending Form ---- */}
+          <Box
+            gridColumn="span 7"
+            gridRow="span 3"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+            overflow="auto"
+          >
+            <Typography
+              variant="h6"
+              color={colors.grey[100]}
+              fontWeight="bold"
+              mb={2}
+            >
+              Vend Electricity Token
+            </Typography>
+
+            {/* Amount presets */}
+            <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
+              {presets.map((p) => (
+                <Button
+                  key={p}
+                  variant={
+                    vendAmount === String(p) ? "contained" : "outlined"
+                  }
+                  size="small"
+                  onClick={() => setVendAmount(String(p))}
+                  sx={{
+                    fontSize: "0.78rem",
+                    textTransform: "none",
+                    color:
+                      vendAmount === String(p)
+                        ? "#fff"
+                        : colors.greenAccent[500],
+                    borderColor: colors.greenAccent[500],
+                    backgroundColor:
+                      vendAmount === String(p)
+                        ? colors.greenAccent[700]
+                        : "transparent",
+                  }}
+                >
+                  N$ {p}
+                </Button>
+              ))}
+            </Box>
+
+            <TextField
+              size="small"
+              label="Amount (N$)"
+              type="number"
+              value={vendAmount}
+              onChange={(e) => setVendAmount(e.target.value)}
+              sx={{ mb: 2, width: "200px" }}
+              inputProps={{ min: 5 }}
+            />
+
+            {vendAmount && parseFloat(vendAmount) >= 5 && (
+              <Box mb={2}>
+                <Typography
+                  variant="body2"
+                  color={colors.grey[100]}
+                  fontWeight={600}
+                  mb={1}
+                >
+                  Breakdown
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableBody>
+                      {(() => {
+                        const amt = parseFloat(vendAmount);
+                        const vat = amt * (tariffConfig.vatRate / 100);
+                        const fixed = tariffConfig.fixedCharge;
+                        const rel = tariffConfig.relLevy;
+                        const arrearsDeduct =
+                          customer && customer.arrears > 0
+                            ? Math.min(
+                                customer.arrears,
+                                amt *
+                                  (tariffConfig.arrearsPercentage / 100)
+                              )
+                            : 0;
+                        const net = amt - vat - fixed - rel - arrearsDeduct;
+                        const kWh = tariff?.blocks?.[0]
+                          ? (net / tariff.blocks[0].rate).toFixed(2)
+                          : (net / 1.68).toFixed(2);
+                        const rows = [
+                          {
+                            label: "Purchase Amount",
+                            value: fmtCurrency(amt),
+                          },
+                          {
+                            label: `VAT (${tariffConfig.vatRate}%)`,
+                            value: `- ${fmtCurrency(vat)}`,
+                          },
+                          {
+                            label: "Fixed Charge",
+                            value: `- ${fmtCurrency(fixed)}`,
+                          },
+                          {
+                            label: "REL Levy",
+                            value: `- ${fmtCurrency(rel)}`,
+                          },
+                        ];
+                        if (arrearsDeduct > 0) {
+                          rows.push({
+                            label: "Arrears Deduction",
+                            value: `- ${fmtCurrency(arrearsDeduct)}`,
+                          });
+                        }
+                        rows.push({
+                          label: "Net Amount",
+                          value: fmtCurrency(net),
+                        });
+                        rows.push({
+                          label: "Estimated kWh",
+                          value: `${kWh} kWh`,
+                        });
+                        return rows.map((r) => (
+                          <TableRow key={r.label}>
+                            <TableCell
+                              sx={{
+                                color: colors.grey[100],
+                                borderBottom:
+                                  "1px solid rgba(255,255,255,0.05)",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {r.label}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              sx={{
+                                color: colors.greenAccent[500],
+                                fontWeight: 600,
+                                borderBottom:
+                                  "1px solid rgba(255,255,255,0.05)",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {r.value}
+                            </TableCell>
+                          </TableRow>
+                        ));
+                      })()}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            <Button
+              variant="contained"
+              startIcon={<SendOutlined />}
+              onClick={handleVend}
+              disabled={!vendAmount || parseFloat(vendAmount) < 5}
+              sx={{
+                backgroundColor: colors.greenAccent[700],
+                "&:hover": { backgroundColor: colors.greenAccent[600] },
+                textTransform: "none",
+              }}
+            >
+              Generate Token
+            </Button>
+
+            {generatedToken && (
+              <Box
+                mt={2}
+                p={2}
+                backgroundColor="rgba(76,206,172,0.1)"
+                borderRadius="4px"
+                border={`1px solid ${colors.greenAccent[700]}`}
+              >
+                <Box display="flex" alignItems="center" gap={1}>
+                  <ConfirmationNumberOutlined
+                    sx={{ color: colors.greenAccent[500] }}
+                  />
+                  <Typography
+                    variant="body1"
+                    color={colors.greenAccent[500]}
+                    fontWeight={700}
+                    fontFamily="monospace"
+                    fontSize="0.9rem"
+                  >
+                    {generatedToken}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      navigator.clipboard.writeText(generatedToken)
+                    }
+                    sx={{ color: colors.greenAccent[500] }}
+                  >
+                    <ContentCopyOutlined sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </Box>
+        </Box>
+      )}
+
+      {/* ================================================================ */}
+      {/* TAB 2: Load Control                                              */}
+      {/* ================================================================ */}
+      {tab === 2 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge live />
@@ -1289,6 +1634,7 @@ export default function MeterProfile() {
               </Select>
             </FormControl>
 
+            <Typography variant="caption" color={colors.grey[400]} mt={1} mb={0.5}>Control Mode (Enable/Disable Relay Control)</Typography>
             <Box display="flex" gap={1}>
               <Button
                 variant="contained"
@@ -1317,6 +1663,38 @@ export default function MeterProfile() {
                 }}
               >
                 Disable
+              </Button>
+            </Box>
+
+            <Typography variant="caption" color={colors.grey[400]} mt={1.5} mb={0.5}>Relay State (Turn Relay ON/OFF)</Typography>
+            <Box display="flex" gap={1}>
+              <Button
+                variant="contained"
+                startIcon={<PowerSettingsNewOutlined />}
+                onClick={() => handleLoadControlClick("mains_state", "on")}
+                disabled={commandLoading}
+                sx={{
+                  backgroundColor: "#1b5e20",
+                  "&:hover": { backgroundColor: "#2e7d32" },
+                  textTransform: "none",
+                  flex: 1,
+                }}
+              >
+                Turn ON
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<PowerSettingsNewOutlined />}
+                onClick={() => handleLoadControlClick("mains_state", "off")}
+                disabled={commandLoading}
+                sx={{
+                  backgroundColor: "#b71c1c",
+                  "&:hover": { backgroundColor: "#c62828" },
+                  textTransform: "none",
+                  flex: 1,
+                }}
+              >
+                Turn OFF
               </Button>
             </Box>
           </Box>
@@ -1401,6 +1779,7 @@ export default function MeterProfile() {
               </Select>
             </FormControl>
 
+            <Typography variant="caption" color={colors.grey[400]} mt={1} mb={0.5}>Control Mode (Enable/Disable Relay Control)</Typography>
             <Box display="flex" gap={1}>
               <Button
                 variant="contained"
@@ -1429,6 +1808,38 @@ export default function MeterProfile() {
                 }}
               >
                 Disable
+              </Button>
+            </Box>
+
+            <Typography variant="caption" color={colors.grey[400]} mt={1.5} mb={0.5}>Relay State (Turn Relay ON/OFF)</Typography>
+            <Box display="flex" gap={1}>
+              <Button
+                variant="contained"
+                startIcon={<PowerSettingsNewOutlined />}
+                onClick={() => handleLoadControlClick("heater_state", "on")}
+                disabled={commandLoading}
+                sx={{
+                  backgroundColor: "#1b5e20",
+                  "&:hover": { backgroundColor: "#2e7d32" },
+                  textTransform: "none",
+                  flex: 1,
+                }}
+              >
+                Turn ON
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<PowerSettingsNewOutlined />}
+                onClick={() => handleLoadControlClick("heater_state", "off")}
+                disabled={commandLoading}
+                sx={{
+                  backgroundColor: "#b71c1c",
+                  "&:hover": { backgroundColor: "#c62828" },
+                  textTransform: "none",
+                  flex: 1,
+                }}
+              >
+                Turn OFF
               </Button>
             </Box>
           </Box>
@@ -1537,7 +1948,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 3: Billing & Tariff                                          */}
       {/* ================================================================ */}
-      {tab === 2 && (
+      {tab === 3 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -1799,145 +2210,14 @@ export default function MeterProfile() {
               </Box>
             </Box>
           </Box>
-
-          {/* ---- Vend Electricity Token Form ---- */}
-          <Box
-            gridColumn="span 6"
-            gridRow="span 3"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
-              Vend Electricity Token
-            </Typography>
-            <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
-              {presets.map((p) => (
-                <Button
-                  key={p}
-                  variant={vendAmount === String(p) ? "contained" : "outlined"}
-                  size="small"
-                  onClick={() => setVendAmount(String(p))}
-                  sx={{
-                    fontSize: "0.78rem", textTransform: "none",
-                    color: vendAmount === String(p) ? "#fff" : colors.greenAccent[500],
-                    borderColor: colors.greenAccent[500],
-                    backgroundColor: vendAmount === String(p) ? colors.greenAccent[700] : "transparent",
-                  }}
-                >
-                  N$ {p}
-                </Button>
-              ))}
-            </Box>
-            <TextField
-              size="small" label="Amount (N$)" type="number"
-              value={vendAmount} onChange={(e) => setVendAmount(e.target.value)}
-              sx={{ mb: 2, width: "200px" }} inputProps={{ min: 5 }}
-            />
-            {vendAmount && parseFloat(vendAmount) >= 5 && (
-              <Box mb={2}>
-                <Typography variant="body2" color={colors.grey[100]} fontWeight={600} mb={1}>Breakdown</Typography>
-                <TableContainer>
-                  <Table size="small"><TableBody>
-                    {(() => {
-                      const amt = parseFloat(vendAmount);
-                      const vat = amt * (tariffConfig.vatRate / 100);
-                      const fixed = tariffConfig.fixedCharge;
-                      const rel = tariffConfig.relLevy;
-                      const arrearsDeduct = customer && customer.arrears > 0 ? Math.min(customer.arrears, amt * (tariffConfig.arrearsPercentage / 100)) : 0;
-                      const net = amt - vat - fixed - rel - arrearsDeduct;
-                      const kWh = tariff?.blocks?.[0] ? (net / tariff.blocks[0].rate).toFixed(2) : (net / 1.68).toFixed(2);
-                      const rows = [
-                        { label: "Purchase Amount", value: fmtCurrency(amt) },
-                        { label: `VAT (${tariffConfig.vatRate}%)`, value: `- ${fmtCurrency(vat)}` },
-                        { label: "Fixed Charge", value: `- ${fmtCurrency(fixed)}` },
-                        { label: "REL Levy", value: `- ${fmtCurrency(rel)}` },
-                      ];
-                      if (arrearsDeduct > 0) rows.push({ label: "Arrears Deduction", value: `- ${fmtCurrency(arrearsDeduct)}` });
-                      rows.push({ label: "Net Amount", value: fmtCurrency(net) });
-                      rows.push({ label: "Estimated kWh", value: `${kWh} kWh` });
-                      return rows.map((r) => (
-                        <TableRow key={r.label}>
-                          <TableCell sx={{ color: colors.grey[100], borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "0.8rem" }}>{r.label}</TableCell>
-                          <TableCell align="right" sx={{ color: colors.greenAccent[500], fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "0.8rem" }}>{r.value}</TableCell>
-                        </TableRow>
-                      ));
-                    })()}
-                  </TableBody></Table>
-                </TableContainer>
-              </Box>
-            )}
-            <Button variant="contained" startIcon={<SendOutlined />} onClick={handleVend}
-              disabled={vendLoading || !vendAmount || parseFloat(vendAmount) < 5}
-              sx={{ backgroundColor: colors.greenAccent[700], "&:hover": { backgroundColor: colors.greenAccent[600] }, textTransform: "none" }}>
-              {vendLoading ? 'Generating...' : 'Generate Token'}
-            </Button>
-            {generatedToken && (
-              <Box mt={2} p={2} backgroundColor="rgba(76,206,172,0.1)" borderRadius="4px" border={`1px solid ${colors.greenAccent[700]}`}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <ConfirmationNumberOutlined sx={{ color: colors.greenAccent[500] }} />
-                  <Typography variant="body1" color={colors.greenAccent[500]} fontWeight={700} fontFamily="monospace" fontSize="0.9rem">{generatedToken}</Typography>
-                  <IconButton size="small" onClick={() => navigator.clipboard.writeText(generatedToken)} sx={{ color: colors.greenAccent[500] }}>
-                    <ContentCopyOutlined sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-              </Box>
-            )}
-          </Box>
-
-          {/* ---- Recent Processed Tokens ---- */}
-          <Box
-            gridColumn="span 6"
-            gridRow="span 3"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
-              Recent Processed Tokens
-            </Typography>
-            {tokenHistory.length > 0 ? (
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      {["Token ID", "Date/Time", "kWh", "Status"].map((col) => (
-                        <TableCell key={col} sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>{col}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {tokenHistory.slice(0, 10).map((t, i) => {
-                      const isAccepted = (t.display_msg || "").toLowerCase().includes("accept");
-                      return (
-                        <TableRow key={t.id || i}>
-                          <TableCell sx={{ color: colors.grey[100], fontFamily: "monospace", fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.token_id}</TableCell>
-                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.date_time ? new Date(t.date_time).toLocaleString() : "-"}</TableCell>
-                          <TableCell sx={{ color: colors.greenAccent[500], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{parseFloat(t.token_amount || 0).toFixed(1)}</TableCell>
-                          <TableCell sx={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                            <Chip label={isAccepted ? "Accepted" : (t.display_msg || "Unknown")} size="small"
-                              sx={{ bgcolor: isAccepted ? "rgba(76,206,172,0.15)" : "rgba(219,79,74,0.15)", color: isAccepted ? colors.greenAccent[500] : "#db4f4a", fontWeight: 600, fontSize: "0.68rem", height: 22 }} />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Typography color="rgba(255,255,255,0.35)" sx={{ textAlign: "center", py: 4 }}>No tokens processed yet.</Typography>
-            )}
-          </Box>
         </Box>
         </Box>
       )}
 
       {/* ================================================================ */}
-      {/* TAB 3: Configuration                                             */}
+      {/* TAB 4: Configuration                                             */}
       {/* ================================================================ */}
-      {tab === 3 && (
+      {tab === 4 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge live />
@@ -1948,34 +2228,7 @@ export default function MeterProfile() {
           gridAutoRows="140px"
           gap="5px"
         >
-          <Box
-            gridColumn="span 6"
-            gridRow="span 2"
-            backgroundColor={colors.primary[400]}
-            p="20px"
-            borderRadius="4px"
-            overflow="auto"
-          >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={1}
-            >
-              Meter Configuration
-            </Typography>
-            <InfoRow label="DRN" value={drn} mono />
-            <InfoRow label="Meter No" value={meterNo} mono />
-            <InfoRow label="Transformer" value={transformer} mono />
-            <InfoRow label="Area" value={meterArea} />
-            <InfoRow label="Suburb" value={meterSuburb} />
-            <InfoRow
-              label="Street"
-              value={profile?.StreetName || mockMeter?.street || "-"}
-            />
-            <InfoRow label="Tariff Type" value={tariffType} />
-          </Box>
-
+          {/* ── Device Actions ── */}
           <Box
             gridColumn="span 6"
             gridRow="span 2"
@@ -1983,73 +2236,147 @@ export default function MeterProfile() {
             p="20px"
             borderRadius="4px"
           >
-            <Typography
-              variant="h6"
-              color={colors.grey[100]}
-              fontWeight="bold"
-              mb={2}
-            >
-              Configuration Actions
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
+              Device Actions
             </Typography>
             <Box display="flex" flexDirection="column" gap={1.5}>
-              <Button
-                variant="outlined"
-                startIcon={configActionLoading === 'restart' ? <CircularProgress size={18} /> : <RestartAltOutlined />}
-                onClick={() => handleConfigAction('restart')}
-                disabled={!!configActionLoading}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: colors.greenAccent[500],
-                  borderColor: colors.greenAccent[500],
-                }}
-              >
+              <Button variant="outlined" startIcon={<BluetoothDisabled />} disabled={commandLoading}
+                onClick={() => setConfirmDialog({ open: true, type: "config_reset_ble", action: "reset_ble" })}
+                sx={{ textTransform: "none", justifyContent: "flex-start", color: "#00b4d8", borderColor: "#00b4d8" }}>
+                Reset BLE PIN to Default
+              </Button>
+              <Button variant="outlined" startIcon={<PersonRemoveOutlined />} disabled={commandLoading}
+                onClick={() => setConfirmDialog({ open: true, type: "config_clear_auth", action: "clear_auth" })}
+                sx={{ textTransform: "none", justifyContent: "flex-start", color: "#f2b705", borderColor: "#f2b705" }}>
+                Clear All Authorized Numbers
+              </Button>
+              <Button variant="outlined" startIcon={<RestartAltOutlined />} disabled={commandLoading}
+                onClick={() => setConfirmDialog({ open: true, type: "config_restart", action: "restart_meter" })}
+                sx={{ textTransform: "none", justifyContent: "flex-start", color: "#db4f4a", borderColor: "#db4f4a" }}>
                 Restart Meter
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={configActionLoading === 'reset_sts' ? <CircularProgress size={18} /> : <LockResetOutlined />}
-                onClick={() => handleConfigAction('reset_sts')}
-                disabled={!!configActionLoading}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#f2b705",
-                  borderColor: "#f2b705",
-                }}
-              >
-                Reset STS Keys
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={configActionLoading === 'update_config' ? <CircularProgress size={18} /> : <TuneOutlined />}
-                onClick={() => handleConfigAction('update_config')}
-                disabled={!!configActionLoading}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#00b4d8",
-                  borderColor: "#00b4d8",
-                }}
-              >
-                Update Configuration
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={configActionLoading === 'ping' ? <CircularProgress size={18} /> : <SignalCellularAltOutlined />}
-                onClick={() => handleConfigAction('ping')}
-                disabled={!!configActionLoading}
-                sx={{
-                  textTransform: "none",
-                  justifyContent: "flex-start",
-                  color: "#D4A843",
-                  borderColor: "#D4A843",
-                }}
-              >
-                Ping Meter
               </Button>
             </Box>
           </Box>
+
+          {/* ── Sleep Mode (sd) ── */}
+          <Box
+            gridColumn="span 6"
+            gridRow="span 2"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>
+              Sleep Mode
+            </Typography>
+            <Typography variant="body2" color={colors.grey[300]} mb={2}>
+              Put meter into deep sleep or wake it up. Deep sleep stops all meter activity until a wake-up command is sent.
+            </Typography>
+            <Box display="flex" gap={2}>
+              <Button variant="outlined" startIcon={<BedtimeOutlined />} disabled={commandLoading}
+                onClick={() => setConfirmDialog({ open: true, type: "config_sleep", action: "sleep_on" })}
+                sx={{ textTransform: "none", color: "#9c27b0", borderColor: "#9c27b0", flex: 1 }}>
+                Enter Deep Sleep
+              </Button>
+              <Button variant="outlined" startIcon={<WbSunnyOutlined />} disabled={commandLoading}
+                onClick={() => handleConfigAction("sleep_off")}
+                sx={{ textTransform: "none", color: "#ff9800", borderColor: "#ff9800", flex: 1 }}>
+                Wake Up
+              </Button>
+            </Box>
+            {configStatus?.sleepMode && (
+              <Typography variant="caption" color={colors.grey[400]} mt={1} display="block">
+                Last: {configStatus.sleepMode.sleep_mode_enabled ? "Sleep" : "Awake"} {configStatus.sleepMode.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Send STS Token (tk) ── */}
+          <Box
+            gridColumn="span 6"
+            gridRow="span 1"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>
+              Send Token
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center">
+              <TextField size="small" placeholder="Enter STS Token ID" value={configTokenId}
+                onChange={(e) => setConfigTokenId(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <Button variant="contained" size="small" disabled={commandLoading || !configTokenId}
+                startIcon={<SendOutlined />}
+                onClick={() => handleConfigAction("send_token", { tokenId: configTokenId })}
+                sx={{ backgroundColor: colors.greenAccent[600], textTransform: "none" }}>
+                Send
+              </Button>
+            </Box>
+            {configStatus?.pendingToken && (
+              <Typography variant="caption" color={colors.grey[400]} mt={0.5} display="block">
+                Last: {configStatus.pendingToken.token_ID} {configStatus.pendingToken.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Add Authorized Number (an) ── */}
+          <Box
+            gridColumn="span 6"
+            gridRow="span 1"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>
+              Authorized Number
+            </Typography>
+            <Box display="flex" gap={1} alignItems="center">
+              <TextField size="small" placeholder="+264 81 123 4567" value={configAuthNumber}
+                onChange={(e) => setConfigAuthNumber(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <Button variant="contained" size="small" disabled={commandLoading || !configAuthNumber}
+                startIcon={<PersonAddOutlined />}
+                onClick={() => handleConfigAction("add_auth_number", { number: configAuthNumber })}
+                sx={{ backgroundColor: "#00b4d8", textTransform: "none" }}>
+                Add Number
+              </Button>
+            </Box>
+          </Box>
+
+          {/* ── SMS Response Config (as/ase/sm) ── */}
+          <Box
+            gridColumn="span 12"
+            gridRow="span 1"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+          >
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>
+              SMS Response Configuration
+            </Typography>
+            <Box display="flex" gap={2} alignItems="center">
+              <TextField size="small" placeholder="SMS Response Number" value={configSmsNumber}
+                onChange={(e) => setConfigSmsNumber(e.target.value)}
+                sx={{ flex: 1, "& .MuiInputBase-root": { color: "#fff", backgroundColor: colors.primary[500] } }} />
+              <FormControlLabel
+                control={<Switch checked={configSmsEnabled} onChange={(e) => setConfigSmsEnabled(e.target.checked)} color="success" />}
+                label={<Typography variant="body2" color={colors.grey[300]}>{configSmsEnabled ? "Enabled" : "Disabled"}</Typography>}
+              />
+              <Button variant="contained" size="small" disabled={commandLoading || !configSmsNumber}
+                startIcon={<SmsOutlined />}
+                onClick={() => handleConfigAction("set_sms", { number: configSmsNumber, enabled: configSmsEnabled })}
+                sx={{ backgroundColor: "#7b1fa2", textTransform: "none" }}>
+                Set SMS
+              </Button>
+            </Box>
+            {configStatus?.smsResponse && (
+              <Typography variant="caption" color={colors.grey[400]} mt={0.5} display="block">
+                Current: {configStatus.smsResponse.sms_response_number || "none"} | {configStatus.smsResponse.sms_response_enabled ? "Enabled" : "Disabled"} {configStatus.smsResponse.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
         </Box>
         </Box>
       )}
@@ -2057,7 +2384,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 5: Energy Charts                                             */}
       {/* ================================================================ */}
-      {tab === 4 && (
+      {tab === 5 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -2201,7 +2528,7 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 6: Transaction History                                       */}
       {/* ================================================================ */}
-      {tab === 5 && (
+      {tab === 6 && (
         <Box>
         <Box display="flex" justifyContent="flex-end" mb={0.5}>
           <DataBadge />
@@ -2220,43 +2547,148 @@ export default function MeterProfile() {
             borderRadius="4px"
             overflow="auto"
           >
-            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={2}>
-              Token Purchase History
+            <Typography
+              variant="h6"
+              color={colors.grey[100]}
+              fontWeight="bold"
+              mb={2}
+            >
+              Transaction History
             </Typography>
-            {tokenHistory.length > 0 ? (
+            {meterTxns.length > 0 ? (
               <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      {["#", "Token ID", "Date/Time", "Amount (kWh)", "Channel", "Status", "Result"].map((col) => (
-                        <TableCell key={col} sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)", whiteSpace: "nowrap" }}>{col}</TableCell>
+                      {[
+                        "Ref",
+                        "Date/Time",
+                        "Amount",
+                        "kWh",
+                        "Token",
+                        "Status",
+                        "Operator",
+                      ].map((col) => (
+                        <TableCell
+                          key={col}
+                          sx={{
+                            color: colors.greenAccent[500],
+                            fontWeight: 600,
+                            fontSize: "0.75rem",
+                            borderBottom:
+                              "1px solid rgba(255,255,255,0.1)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {col}
+                        </TableCell>
                       ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {tokenHistory.map((t, idx) => {
-                      const channels = ["Console", "Touch Screen", "SMS", "BLE", "Server"];
-                      const channel = channels[parseInt(t.submission_Method)] || t.submission_Method || "-";
-                      const msg = (t.display_msg || "").toLowerCase();
-                      const isAccepted = msg.includes("accept");
-                      const isRejected = msg.includes("reject") || msg.includes("not authentic") || msg.includes("error") || msg.includes("used") || msg.includes("invalid");
-                      const statusLabel = isAccepted ? "Accepted" : isRejected ? "Rejected" : (t.display_msg || "Unknown");
-                      const sc = isAccepted ? { bg: "rgba(76,206,172,0.15)", text: colors.greenAccent[500] }
-                        : isRejected ? { bg: "rgba(219,79,74,0.15)", text: "#db4f4a" }
-                        : { bg: "rgba(242,183,5,0.15)", text: "#f2b705" };
-                      const authResult = parseInt(t.display_auth_result);
-                      const resultLabel = authResult === 1 ? "Valid" : authResult === 0 ? "Not Authentic" : (t.display_msg || "-");
+                    {meterTxns.map((t) => {
+                      const sc =
+                        t.status === "Completed"
+                          ? {
+                              bg: "rgba(76,206,172,0.15)",
+                              text: colors.greenAccent[500],
+                            }
+                          : t.status === "Failed"
+                          ? { bg: "rgba(219,79,74,0.15)", text: "#db4f4a" }
+                          : {
+                              bg: "rgba(242,183,5,0.15)",
+                              text: "#f2b705",
+                            };
                       return (
-                        <TableRow key={t.id || idx} sx={{ "&:hover": { bgcolor: "rgba(0,180,216,0.05)" } }}>
-                          <TableCell sx={{ color: colors.grey[400], fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{idx + 1}</TableCell>
-                          <TableCell sx={{ color: colors.grey[100], fontFamily: "monospace", fontSize: "0.72rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.token_id}</TableCell>
-                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{t.date_time ? new Date(t.date_time).toLocaleString() : "-"}</TableCell>
-                          <TableCell sx={{ color: colors.greenAccent[500], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{parseFloat(t.token_amount || 0).toFixed(1)}</TableCell>
-                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{channel}</TableCell>
-                          <TableCell sx={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                            <Chip label={statusLabel} size="small" sx={{ bgcolor: sc.bg, color: sc.text, fontWeight: 600, fontSize: "0.68rem", height: 22 }} />
+                        <TableRow
+                          key={t.id}
+                          sx={{
+                            "&:hover": {
+                              bgcolor: "rgba(0,180,216,0.05)",
+                            },
+                          }}
+                        >
+                          <TableCell
+                            sx={{
+                              color: colors.grey[100],
+                              fontSize: "0.78rem",
+                              fontFamily: "monospace",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {t.refNo}
                           </TableCell>
-                          <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{resultLabel}</TableCell>
+                          <TableCell
+                            sx={{
+                              color: colors.grey[100],
+                              fontSize: "0.78rem",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {formatDateTime(t.dateTime)}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              color: colors.grey[100],
+                              fontWeight: 600,
+                              fontSize: "0.78rem",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {fmtCurrency(t.amount)}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              color: colors.greenAccent[500],
+                              fontSize: "0.78rem",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {Number(t.kWh).toFixed(2)}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              color: colors.grey[100],
+                              fontFamily: "monospace",
+                              fontSize: "0.72rem",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {t.token}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            <Chip
+                              label={t.status}
+                              size="small"
+                              sx={{
+                                bgcolor: sc.bg,
+                                color: sc.text,
+                                fontWeight: 600,
+                                fontSize: "0.68rem",
+                                height: 22,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              color: colors.grey[100],
+                              fontSize: "0.78rem",
+                              borderBottom:
+                                "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            {t.operator}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -2264,8 +2696,11 @@ export default function MeterProfile() {
                 </Table>
               </TableContainer>
             ) : (
-              <Typography color="rgba(255,255,255,0.35)" sx={{ textAlign: "center", py: 4 }}>
-                No token history found for this meter.
+              <Typography
+                color="rgba(255,255,255,0.35)"
+                sx={{ textAlign: "center", py: 4 }}
+              >
+                No transactions found for this meter.
               </Typography>
             )}
           </Box>
@@ -2276,385 +2711,881 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 7: Commission Report                                       */}
       {/* ================================================================ */}
-      {tab === 6 && (
-        <Box>
-          <Box display="flex" justifyContent="flex-end" mb={0.5}>
-            <DataBadge />
+      {tab === 7 && (() => {
+        /* ── Color Tokens ── */
+        const tk = {
+          pass: "#4ADE80",
+          passBg: "rgba(74, 222, 128, 0.12)",
+          passBorder: "rgba(74, 222, 128, 0.30)",
+          fail: "#F87171",
+          failBg: "rgba(248, 113, 113, 0.12)",
+          failBorder: "rgba(248, 113, 113, 0.30)",
+          blue: "#60A5FA",
+          blueBg: "rgba(96, 165, 250, 0.10)",
+          purple: "#818CF8",
+          purpleBg: "rgba(129, 140, 248, 0.10)",
+          amber: "#FBBF24",
+          amberBg: "rgba(251, 191, 36, 0.10)",
+          pink: "#F472B6",
+          pinkBg: "rgba(244, 114, 182, 0.10)",
+          text: "#E2E8F0",
+          textMuted: colors.grey[400],
+          textDim: colors.grey[500],
+          cardBg: colors.primary[500],
+          innerBg: colors.primary[600],
+          panelBg: colors.primary[400],
+          border: colors.primary[600],
+          rowHover: "rgba(255,255,255,0.03)",
+          rowAlt: "rgba(255,255,255,0.015)",
+          shadow: "0 2px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)",
+          shadowLg: "0 4px 16px rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.15)",
+        };
+        const fs = { sm: "0.72rem", md: "0.8rem", sub: "0.9rem" };
+
+        /* Helper: render a detail row */
+        const DetailRow = ({ label, value, color: rowColor, bold }) => (
+          <Box display="grid" gridTemplateColumns="1fr 1fr" alignItems="center" py={0.5} px={1}
+            sx={{ borderBottom: `1px solid ${tk.border}`, "&:last-child": { borderBottom: "none" },
+              "&:hover": { backgroundColor: tk.rowHover } }}>
+            <Typography color={tk.textMuted} fontSize={fs.sm}>{label}</Typography>
+            <Typography color={rowColor || tk.text} fontSize={fs.md} fontWeight={bold ? 700 : 500} textAlign="right">{value}</Typography>
           </Box>
-          <Box
-            display="grid"
-            gridTemplateColumns="repeat(12, 1fr)"
-            gap="5px"
-          >
-            {/* Commission Reports Table */}
-            <Box
-              gridColumn="span 12"
-              backgroundColor={colors.primary[400]}
-              p="20px"
-              borderRadius="4px"
-            >
-              <Typography
-                variant="h6"
-                color={colors.grey[100]}
-                fontWeight="bold"
-                mb={2}
-              >
-                Commission Test Reports
-              </Typography>
+        );
 
-              {commissionReports.length > 0 ? (
-                commissionReports.map((report, idx) => (
-                  <Box
-                    key={report.id || idx}
-                    mb={2}
-                    p={2}
-                    sx={{
-                      backgroundColor: colors.primary[500],
-                      borderLeft: `4px solid ${
-                        report.overall_passed
-                          ? colors.greenAccent[500]
-                          : "#db4f4a"
-                      }`,
-                      borderRadius: "2px",
-                    }}
-                  >
-                    {/* Report Header */}
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      mb={1.5}
-                    >
-                      <Box display="flex" alignItems="center" gap={1.5}>
-                        <Chip
-                          label={report.report_type?.replace(/_/g, " ").toUpperCase() || "TEST"}
-                          size="small"
-                          sx={{
-                            backgroundColor: report.overall_passed
-                              ? "rgba(76,206,172,0.15)"
-                              : "rgba(219,79,74,0.15)",
-                            color: report.overall_passed
-                              ? colors.greenAccent[500]
-                              : "#db4f4a",
-                            fontWeight: 700,
-                            fontSize: "0.7rem",
-                            textTransform: "uppercase",
-                          }}
-                        />
-                        <Chip
-                          label={report.overall_passed ? "PASSED" : "FAILED"}
-                          size="small"
-                          sx={{
-                            backgroundColor: report.overall_passed
-                              ? "rgba(76,206,172,0.2)"
-                              : "rgba(219,79,74,0.2)",
-                            color: report.overall_passed
-                              ? colors.greenAccent[400]
-                              : "#f44336",
-                            fontWeight: 700,
-                            fontSize: "0.7rem",
-                          }}
-                        />
-                      </Box>
-                      <Typography
-                        color={colors.grey[300]}
-                        fontSize="0.75rem"
-                      >
-                        {report.date_time
-                          ? formatDateTime(report.date_time)
-                          : "---"}
-                      </Typography>
-                    </Box>
+        /* Helper: pass/fail chip */
+        const PassFailChip = ({ passed, label }) => (
+          <Chip
+            icon={passed ? <CheckCircleOutlined sx={{ fontSize: 14, color: `${tk.pass} !important` }} /> : <CancelOutlined sx={{ fontSize: 14, color: `${tk.fail} !important` }} />}
+            label={label || (passed ? "PASS" : "FAIL")}
+            size="small"
+            sx={{ backgroundColor: passed ? tk.passBg : tk.failBg,
+              color: passed ? tk.pass : tk.fail, fontWeight: 700, fontSize: fs.sm, minWidth: 72,
+              border: `1px solid ${passed ? tk.passBorder : tk.failBorder}`,
+              "& .MuiChip-icon": { marginLeft: "6px" } }} />
+        );
 
-                    {/* Report Details Grid */}
-                    <Box
-                      display="grid"
-                      gridTemplateColumns="repeat(auto-fit, minmax(180px, 1fr))"
-                      gap={1.5}
-                    >
-                      {/* Measurement Results */}
-                      {(report.report_type === "measurement" ||
-                        report.report_type === "auto_calibration" ||
-                        report.report_type === "full_system") &&
-                        report.voltage_measured != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              MEASUREMENT
-                            </Typography>
-                            <Box display="flex" flexDirection="column" gap={0.3}>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Voltage
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.voltage_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.voltage_measured).toFixed(1)}V
-                                  ({Number(report.voltage_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.current_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.current_measured).toFixed(3)}A
-                                  ({Number(report.current_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Power
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.power_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.power_measured).toFixed(0)}W
-                                  ({Number(report.power_error).toFixed(1)}%)
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        )}
+        /* Helper: section card with left accent strip */
+        const SectionCard = ({ title, icon, children, accentColor }) => (
+          <Box sx={{ backgroundColor: tk.cardBg, borderRadius: "8px", border: `1px solid ${tk.border}`,
+            borderLeft: `3px solid ${accentColor || tk.blue}`,
+            boxShadow: tk.shadow, mb: 2, overflow: "hidden", transition: "box-shadow 0.2s ease",
+            "&:hover": { boxShadow: tk.shadowLg } }}>
+            <Box sx={{ px: 2, py: 1.2, borderBottom: `1px solid ${tk.border}`,
+              display: "flex", alignItems: "center", gap: 1,
+              background: `linear-gradient(90deg, ${accentColor || tk.blue}08 0%, transparent 100%)` }}>
+              {icon}
+              <Typography fontSize={fs.sub} fontWeight={700} color={colors.grey[100]} letterSpacing="0.5px">{title}</Typography>
+            </Box>
+            <Box px={2} py={1.5}>{children}</Box>
+          </Box>
+        );
 
-                      {/* Load Test Results */}
-                      {(report.report_type === "load" ||
-                        report.report_type === "auto_calibration" ||
-                        report.report_type === "full_system") &&
-                        report.load_off_current != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              LOAD TEST
-                            </Typography>
-                            <Box display="flex" flexDirection="column" gap={0.3}>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  OFF Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.load_off_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.load_off_current).toFixed(3)}A
-                                  {report.load_off_passed ? " PASS" : " FAIL"}
-                                </Typography>
-                              </Box>
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  ON Current
-                                </Typography>
-                                <Typography
-                                  color={
-                                    report.load_on_passed
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(report.load_on_current).toFixed(3)}A
-                                  {report.load_on_passed ? " PASS" : " FAIL"}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* API Test Results */}
-                      {(report.report_type === "api" ||
-                        report.report_type === "full_system") &&
-                        report.api_tests_total != null && (
-                          <Box>
-                            <Typography
-                              color={colors.grey[300]}
-                              fontSize="0.7rem"
-                              fontWeight={600}
-                              mb={0.5}
-                            >
-                              API TEST
-                            </Typography>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Endpoints
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.api_tests_passed === report.api_tests_total
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.api_tests_passed}/{report.api_tests_total} passed
-                              </Typography>
-                            </Box>
-                          </Box>
-                        )}
-
-                      {/* Full System Summary */}
-                      {report.report_type === "full_system" && (
-                        <Box>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            SYSTEM SUMMARY
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.3}>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Measurement
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.measurement_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.measurement_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Load
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.load_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.load_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                API
-                              </Typography>
-                              <Typography
-                                color={
-                                  report.api_test_passed
-                                    ? colors.greenAccent[500]
-                                    : "#db4f4a"
-                                }
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {report.api_test_passed ? "PASS" : "FAIL"}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </Box>
-                      )}
-
-                      {/* Test Metadata */}
-                      <Box>
-                        <Typography
-                          color={colors.grey[300]}
-                          fontSize="0.7rem"
-                          fontWeight={600}
-                          mb={0.5}
-                        >
-                          INFO
-                        </Typography>
-                        <Box display="flex" flexDirection="column" gap={0.3}>
-                          {report.attempts != null && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Attempts
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.attempts}
-                              </Typography>
-                            </Box>
-                          )}
-                          {report.sample_count != null && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Samples
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.sample_count}
-                              </Typography>
-                            </Box>
-                          )}
-                          {report.tester_app_version && (
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                App Version
-                              </Typography>
-                              <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                {report.tester_app_version}
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      </Box>
-                    </Box>
-                  </Box>
-                ))
-              ) : (
-                <Typography
-                  color="rgba(255,255,255,0.35)"
-                  sx={{ textAlign: "center", py: 4 }}
-                >
-                  No commission reports found for this meter. Run a commission
-                  test from the NamPower Maintenance app to generate reports.
-                </Typography>
+        /* Helper: measurement row - proper grid layout */
+        const MeasRow = ({ label, unit, expected, measured, error, passed }) => (
+          <Box sx={{ borderBottom: `1px solid ${tk.border}`, py: 0.8, px: 1,
+            "&:last-of-type": { borderBottom: "none" },
+            "&:hover": { backgroundColor: tk.rowHover } }}>
+            <Box display="grid" gridTemplateColumns="1fr auto" alignItems="center" mb={0.4}>
+              <Typography color={colors.grey[200]} fontSize={fs.md} fontWeight={600}>{label}</Typography>
+              <PassFailChip passed={passed} />
+            </Box>
+            <Box display="grid" gridTemplateColumns="repeat(3, 1fr)" gap={1}>
+              {expected != null && (
+                <Box>
+                  <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Expected</Typography>
+                  <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(expected).toFixed(label === "Current" ? 3 : 1)} {unit}</Typography>
+                </Box>
+              )}
+              {measured != null && (
+                <Box>
+                  <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Measured</Typography>
+                  <Typography color={passed ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(measured).toFixed(label === "Current" ? 3 : 1)} {unit}</Typography>
+                </Box>
+              )}
+              {error != null && (
+                <Box>
+                  <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Error</Typography>
+                  <Typography color={Math.abs(Number(error)) <= 10 ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(error).toFixed(2)}%</Typography>
+                </Box>
               )}
             </Box>
           </Box>
+        );
+
+        /* Shared table header cell style */
+        const thSx = { color: tk.textMuted, fontSize: fs.sm, fontWeight: 700, py: 0.6, px: 1.2,
+          borderBottom: `2px solid ${tk.border}`, textTransform: "uppercase", letterSpacing: "0.3px",
+          whiteSpace: "nowrap" };
+        /* Shared table body cell style */
+        const tdSx = (si) => ({ fontSize: fs.sm, py: 0.5, px: 1.2,
+          borderBottom: `1px solid ${tk.border}`,
+          backgroundColor: si % 2 === 1 ? tk.rowAlt : "transparent" });
+
+        return (
+        <Box>
+          {/* ── Page Header ── */}
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2.5}>
+            <Box display="flex" alignItems="center" gap={1.2}>
+              <Box sx={{ width: 36, height: 36, borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center",
+                background: "linear-gradient(135deg, #ff9800 0%, #f57c00 100%)", boxShadow: "0 2px 8px rgba(255,152,0,0.3)" }}>
+                <AssignmentOutlined sx={{ color: "#fff", fontSize: 20 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" fontWeight="bold" color={colors.grey[100]} lineHeight={1.2}>
+                  Diagnostic & Commission Reports
+                </Typography>
+                {commissionReports.length > 0 && (
+                  <Typography color={tk.textMuted} fontSize={fs.sm}>
+                    {commissionReports.length} report{commissionReports.length > 1 ? "s" : ""} available
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+
+          {commissionReports.length > 0 ? (
+            commissionReports.map((report, idx) => (
+              <Box key={report.id || idx} mb={3} sx={{ backgroundColor: tk.panelBg, borderRadius: "10px", overflow: "hidden", boxShadow: tk.shadowLg }}>
+                {/* ── Report Header Banner ── */}
+                <Box sx={{ background: report.overall_passed
+                    ? `linear-gradient(135deg, ${tk.passBg} 0%, transparent 100%)`
+                    : `linear-gradient(135deg, ${tk.failBg} 0%, transparent 100%)`,
+                  borderBottom: `2px solid ${report.overall_passed ? tk.pass : tk.fail}`,
+                  px: 2.5, py: 1.8 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                    <Box display="flex" alignItems="center" gap={1.5}>
+                      <Box sx={{ width: 42, height: 42, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                        backgroundColor: report.overall_passed ? tk.passBg : tk.failBg,
+                        border: `2px solid ${report.overall_passed ? tk.passBorder : tk.failBorder}` }}>
+                        {report.overall_passed
+                          ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 24 }} />
+                          : <CancelOutlined sx={{ color: tk.fail, fontSize: 24 }} />}
+                      </Box>
+                      <Box>
+                        <Typography variant="h6" fontWeight={700} color={colors.grey[100]} sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                          {report.report_type?.replace(/_/g, " ")} Test Report
+                        </Typography>
+                        <Typography color={colors.grey[300]} fontSize={fs.md}>
+                          {report.date_time ? formatDateTime(report.date_time) : "---"}
+                          {report.tester_app_version ? ` | App v${report.tester_app_version}` : ""}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Chip label={report.overall_passed ? "ALL TESTS PASSED" : "TESTS FAILED"} size="medium"
+                      icon={report.overall_passed ? <CheckCircleOutlined sx={{ fontSize: 18, color: `${tk.pass} !important` }} /> : <CancelOutlined sx={{ fontSize: 18, color: `${tk.fail} !important` }} />}
+                      sx={{ backgroundColor: report.overall_passed ? tk.passBg : tk.failBg,
+                        color: report.overall_passed ? tk.pass : tk.fail, fontWeight: 700, fontSize: fs.md,
+                        border: `1px solid ${report.overall_passed ? tk.pass : tk.fail}`, px: 1,
+                        "& .MuiChip-icon": { marginLeft: "8px" } }} />
+                  </Box>
+                </Box>
+
+                <Box p={2.5}>
+                  {/* ── Full System Summary (for full_system type) ── */}
+                  {report.report_type === "full_system" && (
+                    <Box mb={2.5}>
+                      <Grid container spacing={1.5}>
+                        {[
+                          { label: "Measurement Test", passed: report.measurement_test_passed, icon: <BoltOutlined sx={{ fontSize: 22 }} />, color: tk.blue },
+                          { label: "Load Test", passed: report.load_test_passed, icon: <PowerOutlined sx={{ fontSize: 22 }} />, color: tk.amber },
+                          { label: "API Test", passed: report.api_test_passed, icon: <TuneOutlined sx={{ fontSize: 22 }} />, color: tk.purple },
+                        ].map((t) => (
+                          <Grid item xs={4} key={t.label}>
+                            <Box sx={{ background: t.passed
+                                ? `linear-gradient(135deg, ${tk.passBg} 0%, rgba(74,222,128,0.04) 100%)`
+                                : `linear-gradient(135deg, ${tk.failBg} 0%, rgba(248,113,113,0.04) 100%)`,
+                              border: `1px solid ${t.passed ? tk.passBorder : tk.failBorder}`,
+                              borderRadius: "8px", p: 1.8, textAlign: "center", boxShadow: tk.shadow,
+                              transition: "transform 0.15s ease", "&:hover": { transform: "translateY(-1px)" } }}>
+                              <Box sx={{ color: t.passed ? tk.pass : tk.fail, mb: 0.5 }}>
+                                {t.passed
+                                  ? <CheckCircleOutlined sx={{ fontSize: 30 }} />
+                                  : <CancelOutlined sx={{ fontSize: 30 }} />}
+                              </Box>
+                              <Typography color={colors.grey[100]} fontSize={fs.md} fontWeight={600}>{t.label}</Typography>
+                              <Typography color={t.passed ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700} mt={0.3}>
+                                {t.passed ? "PASSED" : "FAILED"}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  )}
+
+                  <Grid container spacing={2}>
+                    {/* ── Measurement Test Section ── */}
+                    {(report.report_type === "measurement" || report.report_type === "auto_calibration" || report.report_type === "full_system") && report.voltage_measured != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="MEASUREMENT TEST RESULTS" accentColor={tk.blue}
+                          icon={<BoltOutlined sx={{ color: tk.blue, fontSize: 20 }} />}>
+                          <MeasRow label="Voltage" unit="V" expected={report.voltage_expected} measured={report.voltage_measured} error={report.voltage_error} passed={report.voltage_passed} />
+                          <MeasRow label="Current" unit="A" expected={report.current_expected} measured={report.current_measured} error={report.current_error} passed={report.current_passed} />
+                          {report.power_measured != null && (
+                            <MeasRow label="Power" unit="W" expected={report.power_expected} measured={report.power_measured} error={report.power_error} passed={report.power_passed} />
+                          )}
+                          {/* Pass/Fail Criteria */}
+                          <Box mt={1.5} sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, border: `1px solid ${tk.border}` }}>
+                            <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.5} letterSpacing="0.3px">PASS/FAIL CRITERIA</Typography>
+                            {[
+                              { l: "Voltage Accuracy", v: report.voltage_error, p: report.voltage_passed },
+                              { l: "Current Accuracy", v: report.current_error, p: report.current_passed },
+                              ...(report.power_error != null ? [{ l: "Power Accuracy", v: report.power_error, p: report.power_passed }] : []),
+                            ].map(c => (
+                              <Box key={c.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
+                                sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
+                                <Typography color={tk.textMuted} fontSize={fs.sm}>{c.l}: {c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}%` : "N/A"} {"\u2264"} 10.0%</Typography>
+                                <Box display="flex" alignItems="center" gap={0.5}>
+                                  {c.p ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 14 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 14 }} />}
+                                  <Typography color={c.p ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>{c.p ? "PASS" : "FAIL"}</Typography>
+                                </Box>
+                              </Box>
+                            ))}
+                          </Box>
+                          {/* Test metadata */}
+                          {(report.attempts != null || report.sample_count != null) && (
+                            <Box mt={1.2} display="flex" gap={2.5} px={0.5}>
+                              {report.attempts != null && <Typography color={tk.textMuted} fontSize={fs.sm}>Attempts: <span style={{color: tk.text, fontWeight: 600}}>{report.attempts} / 5</span></Typography>}
+                              {report.sample_count != null && <Typography color={tk.textMuted} fontSize={fs.sm}>Samples: <span style={{color: tk.text, fontWeight: 600}}>{report.sample_count}</span></Typography>}
+                            </Box>
+                          )}
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── Load Test Section ── */}
+                    {(report.report_type === "load" || report.report_type === "auto_calibration" || report.report_type === "full_system") && report.load_off_current != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="LOAD TEST RESULTS" accentColor={tk.amber}
+                          icon={<PowerOutlined sx={{ color: tk.amber, fontSize: 20 }} />}>
+                          {/* Load OFF */}
+                          <Box sx={{ borderBottom: `1px solid ${tk.border}`, py: 1, px: 1,
+                            "&:hover": { backgroundColor: tk.rowHover } }}>
+                            <Box display="grid" gridTemplateColumns="1fr auto" alignItems="center">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: report.load_off_passed ? tk.pass : tk.fail,
+                                  boxShadow: `0 0 6px ${report.load_off_passed ? tk.pass : tk.fail}40` }} />
+                                <Typography color={colors.grey[200]} fontSize={fs.md} fontWeight={600}>Load OFF State</Typography>
+                              </Box>
+                              <PassFailChip passed={report.load_off_passed} />
+                            </Box>
+                            <Box ml={2.3} mt={0.4}>
+                              <Typography color={tk.textMuted} fontSize={fs.sm}>
+                                Current: <span style={{color: report.load_off_passed ? tk.pass : tk.fail, fontWeight: 600}}>{Number(report.load_off_current).toFixed(3)} A</span>
+                                <span style={{color: tk.textDim}}> (threshold: &lt; 0.2A)</span>
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* Load ON */}
+                          <Box sx={{ py: 1, px: 1, "&:hover": { backgroundColor: tk.rowHover } }}>
+                            <Box display="grid" gridTemplateColumns="1fr auto" alignItems="center">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: report.load_on_passed ? tk.pass : tk.fail,
+                                  boxShadow: `0 0 6px ${report.load_on_passed ? tk.pass : tk.fail}40` }} />
+                                <Typography color={colors.grey[200]} fontSize={fs.md} fontWeight={600}>Load ON State</Typography>
+                              </Box>
+                              <PassFailChip passed={report.load_on_passed} />
+                            </Box>
+                            <Box ml={2.3} mt={0.4}>
+                              <Typography color={tk.textMuted} fontSize={fs.sm}>
+                                Current: <span style={{color: report.load_on_passed ? tk.pass : tk.fail, fontWeight: 600}}>{Number(report.load_on_current).toFixed(3)} A</span>
+                                <span style={{color: tk.textDim}}> (threshold: &gt; 0.5A)</span>
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* System Verification */}
+                          <Box mt={1.2} sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, border: `1px solid ${tk.border}` }}>
+                            <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.5} letterSpacing="0.3px">SYSTEM VERIFICATION</Typography>
+                            {[
+                              { l: "Relay Control", ok: report.load_off_passed && report.load_on_passed },
+                              { l: "Load Isolation", ok: report.load_off_passed },
+                              { l: "Current Measurement", ok: true },
+                              { l: "Safety Function", ok: report.load_off_passed },
+                            ].map(s => (
+                              <Box key={s.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
+                                sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
+                                <Box display="flex" alignItems="center" gap={0.6}>
+                                  {s.ok ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 13 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 13 }} />}
+                                  <Typography color={tk.textMuted} fontSize={fs.sm}>{s.l}</Typography>
+                                </Box>
+                                <Typography color={s.ok ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={600}>{s.ok ? "WORKING" : "ISSUE"}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                          {(report.attempts != null || report.sample_count != null) && (
+                            <Box mt={1.2} display="flex" gap={2.5} px={0.5}>
+                              {report.attempts != null && <Typography color={tk.textMuted} fontSize={fs.sm}>Attempts: <span style={{color: tk.text, fontWeight: 600}}>{report.attempts} / 5</span></Typography>}
+                              {report.sample_count != null && <Typography color={tk.textMuted} fontSize={fs.sm}>Samples: <span style={{color: tk.text, fontWeight: 600}}>{report.sample_count}</span></Typography>}
+                            </Box>
+                          )}
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── API Test Section ── */}
+                    {(report.report_type === "api" || report.report_type === "full_system") && report.api_tests_total != null && (
+                      <Grid item xs={12} md={6}>
+                        <SectionCard title="API TEST RESULTS" accentColor={tk.purple}
+                          icon={<TuneOutlined sx={{ color: tk.purple, fontSize: 20 }} />}>
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.2} px={0.5}>
+                            <Typography color={colors.grey[200]} fontSize={fs.sub} fontWeight={600}>
+                              Endpoints Tested
+                            </Typography>
+                            <Chip label={`${report.api_tests_passed} / ${report.api_tests_total} Passed`} size="small"
+                              sx={{ backgroundColor: report.api_tests_passed === report.api_tests_total ? tk.passBg : tk.failBg,
+                                color: report.api_tests_passed === report.api_tests_total ? tk.pass : tk.fail, fontWeight: 700, fontSize: fs.sm,
+                                border: `1px solid ${report.api_tests_passed === report.api_tests_total ? tk.passBorder : tk.failBorder}` }} />
+                          </Box>
+                          {/* Progress bar */}
+                          <Box sx={{ position: "relative", height: 6, backgroundColor: tk.innerBg, borderRadius: 3, overflow: "hidden", mx: 0.5 }}>
+                            <Box sx={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 3,
+                              width: `${report.api_tests_total > 0 ? (report.api_tests_passed / report.api_tests_total) * 100 : 0}%`,
+                              background: report.api_tests_passed === report.api_tests_total
+                                ? `linear-gradient(90deg, ${tk.pass}CC, ${tk.pass})`
+                                : `linear-gradient(90deg, ${tk.amber}CC, ${tk.amber})`,
+                              transition: "width 0.5s ease" }} />
+                          </Box>
+                          <Box mt={1.5} sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, border: `1px solid ${tk.border}` }}>
+                            <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.3} letterSpacing="0.3px">STATUS</Typography>
+                            <Box display="flex" alignItems="center" gap={0.6}>
+                              {report.api_tests_passed === report.api_tests_total
+                                ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} />
+                                : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                              <Typography color={report.api_tests_passed === report.api_tests_total ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>
+                                {report.api_tests_passed === report.api_tests_total
+                                  ? "All API endpoints responding correctly"
+                                  : `${report.api_tests_total - report.api_tests_passed} endpoint(s) failed - review meter connectivity`}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </SectionCard>
+                      </Grid>
+                    )}
+
+                    {/* ── Detailed Report Data (from report_data JSON) ── */}
+                    {(() => {
+                      let rd = report.report_data;
+                      if (!rd) return null;
+                      if (typeof rd === "string") { try { rd = JSON.parse(rd); } catch { return null; } }
+
+                      // Helper for measurement detail rendering (used by both standalone and full_system)
+                      const renderMeasurementDetail = (meas, title) => {
+                        if (!meas) return null;
+                        return (
+                          <Grid item xs={12}>
+                            <SectionCard title={title || "MEASUREMENT SAMPLE HISTORY"} accentColor={tk.purple}
+                              icon={<AssignmentOutlined sx={{ color: tk.purple, fontSize: 20 }} />}>
+                              {/* Sample Table */}
+                              {meas.samples && meas.samples.length > 0 && (
+                                <>
+                                  <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.8} letterSpacing="0.3px">Sample History</Typography>
+                                  <TableContainer sx={{ mb: 1.5, borderRadius: "6px", border: `1px solid ${tk.border}`, overflow: "hidden" }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow sx={{ backgroundColor: tk.innerBg }}>
+                                          {["ID", "Voltage (V)", "V Error", "Current (A)", "I Error", "Power (W)", "P Error"].map(h => (
+                                            <TableCell key={h} sx={thSx}>{h}</TableCell>
+                                          ))}
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {meas.samples.map((s, si) => (
+                                          <TableRow key={si} sx={{ "&:hover": { backgroundColor: `${tk.rowHover} !important` } }}>
+                                            <TableCell sx={{ ...tdSx(si), color: colors.grey[300], fontWeight: 600 }}>A{s.attempt}-S{s.sample_number}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.voltage).toFixed(1)}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.voltage_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.voltage_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.current).toFixed(3)}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.current_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.current_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.power).toFixed(0)}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.power_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.power_error).toFixed(1)}%</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                </>
+                              )}
+                              {/* Statistical Analysis - Grid layout */}
+                              {meas.statistics && (
+                                <Box sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, border: `1px solid ${tk.border}` }}>
+                                  <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={1} letterSpacing="0.3px">STATISTICAL ANALYSIS</Typography>
+                                  <Box display="grid" gridTemplateColumns="auto repeat(4, 1fr)" gap={0.5} alignItems="center">
+                                    {/* Header row */}
+                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} px={0.5}></Typography>
+                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} textAlign="center">Avg</Typography>
+                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} textAlign="center">Max</Typography>
+                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} textAlign="center">Min</Typography>
+                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} textAlign="center">{"\u03C3"}</Typography>
+                                    {/* Data rows */}
+                                    {[
+                                      { l: "Voltage", avg: meas.statistics.voltage_avg ?? meas.voltage_error, max: meas.statistics.voltage_max, min: meas.statistics.voltage_min, sd: meas.statistics.voltage_stddev },
+                                      { l: "Current", avg: meas.statistics.current_avg ?? meas.current_error, max: meas.statistics.current_max, min: meas.statistics.current_min, sd: meas.statistics.current_stddev },
+                                      { l: "Power", avg: meas.statistics.power_avg ?? meas.power_error, max: meas.statistics.power_max, min: meas.statistics.power_min, sd: meas.statistics.power_stddev },
+                                    ].map((row, ri) => (
+                                      <React.Fragment key={row.l}>
+                                        <Typography color={tk.text} fontSize={fs.sm} fontWeight={600} px={0.5}
+                                          sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent", borderRadius: "4px 0 0 4px" }}>
+                                          {row.l}
+                                        </Typography>
+                                        <Typography color={tk.text} fontSize={fs.sm} textAlign="center"
+                                          sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent" }}>
+                                          {row.avg != null ? Number(row.avg).toFixed(1) : "-"}%
+                                        </Typography>
+                                        <Typography color={tk.text} fontSize={fs.sm} textAlign="center"
+                                          sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent" }}>
+                                          {row.max != null ? Number(row.max).toFixed(1) : "-"}%
+                                        </Typography>
+                                        <Typography color={tk.text} fontSize={fs.sm} textAlign="center"
+                                          sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent" }}>
+                                          {row.min != null ? Number(row.min).toFixed(1) : "-"}%
+                                        </Typography>
+                                        <Typography color={tk.text} fontSize={fs.sm} textAlign="center"
+                                          sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent", borderRadius: "0 4px 4px 0" }}>
+                                          {row.sd != null ? Number(row.sd).toFixed(1) : "-"}%
+                                        </Typography>
+                                      </React.Fragment>
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Helper for load detail rendering
+                      const renderLoadDetail = (load, title) => {
+                        if (!load) return null;
+                        const cycles = load.load_cycles || [];
+                        const sv = load.system_verification;
+
+                        // Build flat sample measurements list from cycles
+                        const allSamples = [];
+                        cycles.forEach(c => {
+                          if (c.off_samples) {
+                            c.off_samples.forEach(s => allSamples.push({ attempt: c.attempt, state: "OFF", ...s }));
+                          }
+                          if (c.on_samples) {
+                            c.on_samples.forEach(s => allSamples.push({ attempt: c.attempt, state: "ON", ...s }));
+                          }
+                        });
+
+                        return (
+                          <Grid item xs={12}>
+                            <SectionCard title={title || "LOAD TEST DETAIL"} accentColor={tk.amber}
+                              icon={<PowerOutlined sx={{ color: tk.amber, fontSize: 20 }} />}>
+                              {/* Load Test Cycles */}
+                              {cycles.length > 0 && (
+                                <>
+                                  <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.8} letterSpacing="0.3px">Load Test Cycles</Typography>
+                                  {cycles.map((c, ci) => (
+                                    <Box key={ci} sx={{ mb: 1.5, borderRadius: "6px", border: `1px solid ${tk.border}`, overflow: "hidden" }}>
+                                      {/* OFF row */}
+                                      <Box display="grid" gridTemplateColumns="24px 1fr auto" alignItems="center" gap={1} py={0.6} px={1.2}
+                                        sx={{ backgroundColor: tk.innerBg, borderBottom: `1px solid ${tk.border}` }}>
+                                        <Box sx={{ display: "flex", justifyContent: "center" }}>
+                                          {c.off_passed ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                                        </Box>
+                                        <Typography color={tk.text} fontSize={fs.md} fontWeight={600}>
+                                          Attempt {c.attempt} &mdash; OFF
+                                        </Typography>
+                                        <Typography color={c.off_passed ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>
+                                          {c.off_passed ? "PASS" : "FAIL"}
+                                        </Typography>
+                                      </Box>
+                                      <Box px={1.2} py={0.6} display="grid" gridTemplateColumns="repeat(3, 1fr)" gap={1}
+                                        sx={{ borderBottom: c.on_current > 0 ? `1px solid ${tk.border}` : "none" }}>
+                                        <Box>
+                                          <Typography color={tk.textMuted} fontSize={fs.sm}>Voltage</Typography>
+                                          <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.off_voltage).toFixed(1)} V</Typography>
+                                        </Box>
+                                        <Box>
+                                          <Typography color={tk.textMuted} fontSize={fs.sm}>Current</Typography>
+                                          <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.off_current).toFixed(3)} A</Typography>
+                                        </Box>
+                                        <Box>
+                                          <Typography color={tk.textMuted} fontSize={fs.sm}>Power</Typography>
+                                          <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.off_power).toFixed(0)} W</Typography>
+                                        </Box>
+                                      </Box>
+                                      {/* ON row */}
+                                      {c.on_current > 0 && (
+                                        <>
+                                          <Box display="grid" gridTemplateColumns="24px 1fr auto" alignItems="center" gap={1} py={0.6} px={1.2}
+                                            sx={{ backgroundColor: tk.innerBg, borderBottom: `1px solid ${tk.border}` }}>
+                                            <Box sx={{ display: "flex", justifyContent: "center" }}>
+                                              {c.on_passed ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                                            </Box>
+                                            <Typography color={tk.text} fontSize={fs.md} fontWeight={600}>
+                                              Attempt {c.attempt} &mdash; ON
+                                            </Typography>
+                                            <Typography color={c.on_passed ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>
+                                              {c.on_passed ? "PASS" : "FAIL"}
+                                            </Typography>
+                                          </Box>
+                                          <Box px={1.2} py={0.6} display="grid" gridTemplateColumns="repeat(3, 1fr)" gap={1}>
+                                            <Box>
+                                              <Typography color={tk.textMuted} fontSize={fs.sm}>Voltage</Typography>
+                                              <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.on_voltage).toFixed(1)} V</Typography>
+                                            </Box>
+                                            <Box>
+                                              <Typography color={tk.textMuted} fontSize={fs.sm}>Current</Typography>
+                                              <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.on_current).toFixed(3)} A</Typography>
+                                            </Box>
+                                            <Box>
+                                              <Typography color={tk.textMuted} fontSize={fs.sm}>Power</Typography>
+                                              <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(c.on_power).toFixed(0)} W</Typography>
+                                            </Box>
+                                          </Box>
+                                        </>
+                                      )}
+                                    </Box>
+                                  ))}
+                                </>
+                              )}
+
+                              {/* Sample Measurements Table */}
+                              {allSamples.length > 0 && (
+                                <>
+                                  <Divider sx={{ my: 1.5, borderColor: tk.border }} />
+                                  <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.8} letterSpacing="0.3px">Sample Measurements</Typography>
+                                  <TableContainer sx={{ mb: 1.5, borderRadius: "6px", border: `1px solid ${tk.border}`, overflow: "hidden" }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow sx={{ backgroundColor: tk.innerBg }}>
+                                          {["Attempt", "State", "Sample", "Voltage (V)", "Current (A)", "Power (W)"].map(h => (
+                                            <TableCell key={h} sx={thSx}>{h}</TableCell>
+                                          ))}
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {allSamples.map((s, si) => (
+                                          <TableRow key={si} sx={{ "&:hover": { backgroundColor: `${tk.rowHover} !important` } }}>
+                                            <TableCell sx={{ ...tdSx(si), color: colors.grey[300], fontWeight: 600 }}>A{s.attempt}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si) }}>
+                                              <Chip label={s.state} size="small" sx={{ height: 20, fontSize: fs.sm, fontWeight: 700,
+                                                backgroundColor: s.state === "ON" ? tk.passBg : tk.blueBg,
+                                                color: s.state === "ON" ? tk.pass : tk.blue,
+                                                border: `1px solid ${s.state === "ON" ? tk.passBorder : "rgba(96,165,250,0.3)"}` }} />
+                                            </TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: colors.grey[300] }}>S{s.sample_number}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.voltage).toFixed(1)}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.current).toFixed(3)}</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.power).toFixed(0)}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                </>
+                              )}
+
+                              {/* Load Statistics */}
+                              {(() => {
+                                const stats = load.statistics || load;
+                                const hasStats = stats.avg_off_voltage != null || stats.avg_on_voltage != null;
+                                if (!hasStats) return null;
+                                return (
+                                  <Box sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, mt: 1.2, border: `1px solid ${tk.border}` }}>
+                                    <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.8} letterSpacing="0.3px">LOAD TEST STATISTICS</Typography>
+                                    <Box display="grid" gridTemplateColumns="auto 1fr 1fr" gap={0.5} alignItems="center">
+                                      {/* Header */}
+                                      <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={700} px={0.5}></Typography>
+                                      <Typography color={tk.blue} fontSize={fs.sm} fontWeight={700} textAlign="center">OFF</Typography>
+                                      <Typography color={tk.pass} fontSize={fs.sm} fontWeight={700} textAlign="center">ON</Typography>
+                                      {[
+                                        { l: "Avg Voltage", off: stats.avg_off_voltage, on: stats.avg_on_voltage, u: "V", d: 1 },
+                                        { l: "Avg Current", off: stats.avg_off_current, on: stats.avg_on_current, u: "A", d: 3 },
+                                        { l: "Avg Power", off: stats.avg_off_power, on: stats.avg_on_power, u: "W", d: 0 },
+                                        { l: "Max Current", off: stats.max_off_current, on: stats.max_on_current, u: "A", d: 3 },
+                                      ].map((row, ri) => (
+                                        <React.Fragment key={row.l}>
+                                          <Typography color={tk.text} fontSize={fs.sm} fontWeight={600} px={0.5}
+                                            sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent", borderRadius: "4px 0 0 4px" }}>
+                                            {row.l}
+                                          </Typography>
+                                          <Typography color={tk.blue} fontSize={fs.sm} textAlign="center"
+                                            sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent" }}>
+                                            {row.off != null ? Number(row.off).toFixed(row.d) : "-"} {row.u}
+                                          </Typography>
+                                          <Typography color={tk.pass} fontSize={fs.sm} textAlign="center"
+                                            sx={{ py: 0.4, backgroundColor: ri % 2 === 1 ? tk.rowAlt : "transparent", borderRadius: "0 4px 4px 0" }}>
+                                            {row.on != null ? Number(row.on).toFixed(row.d) : "-"} {row.u}
+                                          </Typography>
+                                        </React.Fragment>
+                                      ))}
+                                    </Box>
+                                  </Box>
+                                );
+                              })()}
+
+                              {/* Analysis */}
+                              {(() => {
+                                const offCurrent = load.avg_off_current ?? load.statistics?.avg_off_current;
+                                const onCurrent = load.avg_on_current ?? load.statistics?.avg_on_current;
+                                if (offCurrent == null && onCurrent == null) return null;
+                                return (
+                                  <Box sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, mt: 1.2, border: `1px solid ${tk.border}` }}>
+                                    <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.5} letterSpacing="0.3px">ANALYSIS</Typography>
+                                    {offCurrent != null && (
+                                      <Box display="flex" alignItems="center" gap={0.8} py={0.4} px={0.5}
+                                        sx={{ "&:hover": { backgroundColor: tk.rowHover }, borderRadius: "4px" }}>
+                                        {offCurrent < 0.2
+                                          ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} />
+                                          : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                                        <Box>
+                                          <Typography color={offCurrent < 0.2 ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={600}>Load OFF</Typography>
+                                          <Typography color={tk.textMuted} fontSize={fs.sm}>Current {Number(offCurrent).toFixed(3)} A {offCurrent < 0.2 ? "<" : ">"} 0.2A threshold</Typography>
+                                        </Box>
+                                      </Box>
+                                    )}
+                                    {onCurrent != null && (
+                                      <Box display="flex" alignItems="center" gap={0.8} py={0.4} px={0.5}
+                                        sx={{ "&:hover": { backgroundColor: tk.rowHover }, borderRadius: "4px" }}>
+                                        {onCurrent > 0.5
+                                          ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} />
+                                          : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                                        <Box>
+                                          <Typography color={onCurrent > 0.5 ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={600}>Load ON</Typography>
+                                          <Typography color={tk.textMuted} fontSize={fs.sm}>Current {Number(onCurrent).toFixed(3)} A {onCurrent > 0.5 ? ">" : "<"} 0.5A threshold</Typography>
+                                        </Box>
+                                      </Box>
+                                    )}
+                                  </Box>
+                                );
+                              })()}
+
+                              {/* System Verification */}
+                              {sv && (
+                                <Box sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, mt: 1.2, border: `1px solid ${tk.border}` }}>
+                                  <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.5} letterSpacing="0.3px">SYSTEM VERIFICATION</Typography>
+                                  {[
+                                    { l: "Relay Control", ok: sv.relay_control },
+                                    { l: "Load Isolation", ok: sv.load_isolation },
+                                    { l: "Current Measurement", ok: sv.current_measurement },
+                                    { l: "BLE Communication", ok: sv.ble_communication },
+                                    { l: "Safety Function", ok: sv.safety_function },
+                                  ].map(s => (
+                                    <Box key={s.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
+                                      sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
+                                      <Box display="flex" alignItems="center" gap={0.6}>
+                                        {s.ok ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 13 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 13 }} />}
+                                        <Typography color={tk.textMuted} fontSize={fs.sm}>{s.l}</Typography>
+                                      </Box>
+                                      <Typography color={s.ok ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={600}>{s.ok ? "WORKING" : "ISSUE"}</Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Helper for API detail rendering
+                      const renderApiDetail = (api, title) => {
+                        if (!api) return null;
+                        const endpoints = api.endpoint_results || [];
+                        if (endpoints.length === 0) return null;
+                        return (
+                          <Grid item xs={12} md={6}>
+                            <SectionCard title={title || "API ENDPOINT RESULTS"} accentColor={tk.purple}
+                              icon={<TuneOutlined sx={{ color: tk.purple, fontSize: 20 }} />}>
+                              <TableContainer sx={{ borderRadius: "6px", border: `1px solid ${tk.border}`, overflow: "hidden" }}>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow sx={{ backgroundColor: tk.innerBg }}>
+                                      {["", "Endpoint", "Status", "Response Time"].map(h => (
+                                        <TableCell key={h} sx={thSx}>{h}</TableCell>
+                                      ))}
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {endpoints.map((t, ti) => (
+                                      <TableRow key={ti} sx={{ "&:hover": { backgroundColor: `${tk.rowHover} !important` } }}>
+                                        <TableCell sx={{ ...tdSx(ti), width: 28 }}>
+                                          {t.passed
+                                            ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 16 }} />
+                                            : <CancelOutlined sx={{ color: tk.fail, fontSize: 16 }} />}
+                                        </TableCell>
+                                        <TableCell sx={{ ...tdSx(ti), color: tk.text, fontWeight: 600, fontSize: fs.md }}>{t.name}</TableCell>
+                                        <TableCell sx={tdSx(ti)}>
+                                          <Chip label={t.passed ? "PASSED" : "FAILED"} size="small"
+                                            sx={{ backgroundColor: t.passed ? tk.passBg : tk.failBg,
+                                              color: t.passed ? tk.pass : tk.fail, fontWeight: 700, fontSize: fs.sm, height: 22,
+                                              border: `1px solid ${t.passed ? tk.passBorder : tk.failBorder}` }} />
+                                        </TableCell>
+                                        <TableCell sx={{ ...tdSx(ti), color: tk.textMuted }}>
+                                          {t.response_time != null ? `${t.response_time}ms` : "-"}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+                            </SectionCard>
+                          </Grid>
+                        );
+                      };
+
+                      // Render based on report type
+                      if (rd.type === "measurement") {
+                        return renderMeasurementDetail(rd);
+                      } else if (rd.type === "load") {
+                        return renderLoadDetail(rd);
+                      } else if (rd.type === "api") {
+                        return renderApiDetail(rd);
+                      } else if (rd.type === "full_system") {
+                        return (
+                          <>
+                            {renderMeasurementDetail(rd.measurement, "MEASUREMENT SAMPLE HISTORY")}
+                            {renderLoadDetail(rd.load, "LOAD TEST DETAIL")}
+                            {renderApiDetail(rd.api, "API ENDPOINT RESULTS")}
+                          </>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    {/* ── Commissioning Details Section ── */}
+                    {report.report_type === "commissioning" && (
+                      <>
+                        {/* Location & Installation */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="LOCATION & INSTALLATION" accentColor={tk.pass}
+                            icon={<MapOutlinedIcon sx={{ color: tk.pass, fontSize: 20 }} />}>
+                            {report.region && <DetailRow label="Region" value={report.region} />}
+                            {report.sub_region && <DetailRow label="Sub-Region" value={report.sub_region} />}
+                            {report.area && <DetailRow label="Area" value={report.area} />}
+                            {report.street_name && <DetailRow label="Street" value={report.street_name} />}
+                            {report.erf_number && <DetailRow label="ERF Number" value={report.erf_number} />}
+                            {(report.gps_latitude || report.gps_longitude) && (
+                              <DetailRow label="GPS Coordinates" value={`${report.gps_latitude?.toFixed(6)}, ${report.gps_longitude?.toFixed(6)}`} />
+                            )}
+                            {report.sim_number && <DetailRow label="SIM Number" value={report.sim_number} />}
+                          </SectionCard>
+                        </Grid>
+
+                        {/* Owner Information */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="OWNER INFORMATION" accentColor={tk.pink}
+                            icon={<HomeOutlined sx={{ color: tk.pink, fontSize: 20 }} />}>
+                            {report.owner_name && <DetailRow label="Name" value={`${report.owner_name} ${report.owner_surname || ""}`} />}
+                            {report.owner_phone && <DetailRow label="Phone" value={report.owner_phone} />}
+                            {report.owner_email && <DetailRow label="Email" value={report.owner_email} />}
+                          </SectionCard>
+                        </Grid>
+
+                        {/* System Status */}
+                        <Grid item xs={12} md={6}>
+                          <SectionCard title="SYSTEM STATUS" accentColor={tk.blue}
+                            icon={<SpeedOutlined sx={{ color: tk.blue, fontSize: 20 }} />}>
+                            {report.firmware_version && <DetailRow label="Firmware Version" value={`v${report.firmware_version}`} />}
+                            {report.nextion_connected != null && (
+                              <DetailRow label="Nextion Display" value={report.nextion_connected ? "Connected" : "Disconnected"}
+                                color={report.nextion_connected ? tk.pass : tk.fail} bold />
+                            )}
+                            {report.gsm_registered != null && (
+                              <DetailRow label="GSM Network" value={report.gsm_registered ? "Registered" : "Not Registered"}
+                                color={report.gsm_registered ? tk.pass : tk.fail} bold />
+                            )}
+                            {/* Measurement summary if available */}
+                            {report.voltage_measured != null && (
+                              <>
+                                <DetailRow label="Voltage" value={`${Number(report.voltage_measured).toFixed(1)} V (${Number(report.voltage_error).toFixed(1)}%)`}
+                                  color={report.voltage_passed ? tk.pass : tk.fail} bold />
+                                <DetailRow label="Current" value={`${Number(report.current_measured).toFixed(3)} A (${Number(report.current_error).toFixed(1)}%)`}
+                                  color={report.current_passed ? tk.pass : tk.fail} bold />
+                              </>
+                            )}
+                            {report.load_off_current != null && (
+                              <>
+                                <DetailRow label="Load OFF Current" value={`${Number(report.load_off_current).toFixed(3)} A`}
+                                  color={report.load_off_passed ? tk.pass : tk.fail} bold />
+                                <DetailRow label="Load ON Current" value={`${Number(report.load_on_current).toFixed(3)} A`}
+                                  color={report.load_on_passed ? tk.pass : tk.fail} bold />
+                              </>
+                            )}
+                          </SectionCard>
+                        </Grid>
+                      </>
+                    )}
+
+                    {/* ── Divider before Recommendations ── */}
+                    <Grid item xs={12}>
+                      <Divider sx={{ borderColor: tk.border, my: 0.5 }} />
+                    </Grid>
+
+                    {/* ── Recommendations Section ── */}
+                    <Grid item xs={12}>
+                      <Box sx={{ backgroundColor: tk.cardBg, borderRadius: "8px",
+                        border: `1px solid ${tk.border}`,
+                        borderLeft: `3px solid ${report.overall_passed ? tk.pass : tk.fail}`,
+                        boxShadow: tk.shadow, p: 2,
+                        background: report.overall_passed
+                          ? `linear-gradient(135deg, ${tk.passBg} 0%, ${tk.cardBg} 40%)`
+                          : `linear-gradient(135deg, ${tk.failBg} 0%, ${tk.cardBg} 40%)` }}>
+                        <Box display="flex" alignItems="center" gap={0.8} mb={1}>
+                          {report.overall_passed
+                            ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 18 }} />
+                            : <CancelOutlined sx={{ color: tk.fail, fontSize: 18 }} />}
+                          <Typography color={colors.grey[200]} fontSize={fs.sub} fontWeight={700} letterSpacing="0.3px">
+                            {report.overall_passed ? "RECOMMENDATIONS" : "ACTION REQUIRED"}
+                          </Typography>
+                        </Box>
+                        {report.overall_passed ? (
+                          <Box display="flex" flexDirection="column" gap={0.5} pl={0.5}>
+                            <Typography color={tk.pass} fontSize={fs.md} fontWeight={600}>All {report.report_type === "full_system" ? "system " : ""}tests within acceptable limits</Typography>
+                            {(report.report_type === "measurement" || report.report_type === "full_system") && (
+                              <Typography color={tk.textMuted} fontSize={fs.sm}>System calibration is accurate. No adjustments required.</Typography>
+                            )}
+                            {(report.report_type === "load" || report.report_type === "full_system") && (
+                              <Typography color={tk.textMuted} fontSize={fs.sm}>Relay control and load isolation working correctly. Schedule next test in 6 months.</Typography>
+                            )}
+                          </Box>
+                        ) : (
+                          <Box display="flex" flexDirection="column" gap={0.5} pl={0.5}>
+                            <Typography color={tk.fail} fontSize={fs.md} fontWeight={600}>One or more tests failed. Review the following:</Typography>
+                            {report.voltage_passed === false && <Typography color={tk.textMuted} fontSize={fs.sm}>- Review voltage measurement setup and check calibration equipment</Typography>}
+                            {report.current_passed === false && <Typography color={tk.textMuted} fontSize={fs.sm}>- Verify current measurement sensor and expected reference values</Typography>}
+                            {report.power_passed === false && <Typography color={tk.textMuted} fontSize={fs.sm}>- Check power calculation — may indicate voltage or current sensor issues</Typography>}
+                            {report.load_off_passed === false && <Typography color={tk.textMuted} fontSize={fs.sm}>- Load isolation failed — physically inspect relay contacts and wiring</Typography>}
+                            {report.load_on_passed === false && <Typography color={tk.textMuted} fontSize={fs.sm}>- Load ON test failed — verify load wiring, check relay coil voltage, consider relay replacement</Typography>}
+                            {report.api_tests_passed != null && report.api_tests_passed < report.api_tests_total && (
+                              <Typography color={tk.textMuted} fontSize={fs.sm}>- API endpoints not responding — check meter connectivity and firmware version</Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Box>
+            ))
+          ) : (
+            /* ── Empty State ── */
+            <Box sx={{ backgroundColor: tk.panelBg, borderRadius: "12px", p: 5, textAlign: "center",
+              border: `1px dashed ${tk.border}`, boxShadow: tk.shadow }}>
+              <Box sx={{ width: 64, height: 64, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                backgroundColor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", mb: 2 }}>
+                <AssignmentOutlined sx={{ fontSize: 32, color: "rgba(255,255,255,0.18)" }} />
+              </Box>
+              <Typography color="rgba(255,255,255,0.45)" fontSize={fs.sub} fontWeight={600} mb={0.5}>
+                No Commission Reports Found
+              </Typography>
+              <Typography color="rgba(255,255,255,0.25)" fontSize={fs.md} maxWidth={360} mx="auto">
+                Run a commission test from the GRIDx Maintenance app to generate diagnostic reports for this meter.
+              </Typography>
+            </Box>
+          )}
         </Box>
-      )}
+        );
+      })()}
 
       {/* ================================================================ */}
       {/* TAB 8: Home Classification                                      */}
       {/* ================================================================ */}
-      {tab === 7 && (
+      {tab === 8 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={0.5}>
             <DataBadge />
@@ -2687,350 +3618,167 @@ export default function MeterProfile() {
                     : typeof cls.selected_loads === "string"
                     ? (() => { try { return JSON.parse(cls.selected_loads); } catch { return []; } })()
                     : [];
+                  const calStatus = cls.calibration_status === "completed"
+                    ? (cls.calibration_passed ? "CALIBRATED" : "FAILED")
+                    : (cls.calibration_status?.toUpperCase() || "PENDING");
+                  const calColor = cls.calibration_passed ? "#4cceac" : cls.calibration_status === "pending" ? "#6870fa" : "#f44336";
+                  const totalPower = cls.total_expected_power || 0;
+                  const totalCurrent = cls.total_expected_current || 0;
 
                   return (
-                    <Box
-                      key={cls.id || idx}
-                      mb={2}
-                      p={2}
-                      sx={{
-                        backgroundColor: colors.primary[500],
-                        borderLeft: `4px solid ${
-                          cls.calibration_passed
-                            ? colors.greenAccent[500]
-                            : cls.calibration_status === "pending"
-                            ? colors.blueAccent?.[400] || "#D4A843"
-                            : "#db4f4a"
-                        }`,
-                        borderRadius: "2px",
-                      }}
-                    >
-                      {/* Classification Header */}
+                    <Box key={cls.id || idx} mb={3}>
+                      {/* Classification Card Header */}
                       <Box
-                        display="flex"
-                        justifyContent="space-between"
-                        alignItems="center"
-                        mb={1.5}
+                        display="flex" justifyContent="space-between" alignItems="center"
+                        p={2} sx={{ backgroundColor: colors.primary[500], borderRadius: "8px 8px 0 0", borderBottom: `3px solid ${calColor}` }}
                       >
-                        <Box display="flex" alignItems="center" gap={1.5}>
-                          <Chip
-                            label={cls.classification_type || "UNCLASSIFIED"}
-                            size="small"
-                            sx={{
-                              backgroundColor: "rgba(129,140,248,0.15)",
-                              color: "#818CF8",
-                              fontWeight: 700,
-                              fontSize: "0.7rem",
-                              textTransform: "uppercase",
-                            }}
-                          />
-                          <Chip
-                            label={
-                              cls.calibration_status === "completed"
-                                ? cls.calibration_passed
-                                  ? "CALIBRATED"
-                                  : "FAILED"
-                                : cls.calibration_status?.toUpperCase() || "PENDING"
-                            }
-                            size="small"
-                            sx={{
-                              backgroundColor:
-                                cls.calibration_passed
-                                  ? "rgba(76,206,172,0.2)"
-                                  : cls.calibration_status === "pending"
-                                  ? "rgba(104,112,250,0.2)"
-                                  : "rgba(219,79,74,0.2)",
-                              color:
-                                cls.calibration_passed
-                                  ? colors.greenAccent[400]
-                                  : cls.calibration_status === "pending"
-                                  ? "#D4A843"
-                                  : "#f44336",
-                              fontWeight: 700,
-                              fontSize: "0.7rem",
-                            }}
-                          />
-                        </Box>
-                        <Typography
-                          color={colors.grey[300]}
-                          fontSize="0.75rem"
-                        >
-                          {cls.date_time
-                            ? formatDateTime(cls.date_time)
-                            : "---"}
-                        </Typography>
-                      </Box>
-
-                      {/* Classification Details Grid */}
-                      <Box
-                        display="grid"
-                        gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))"
-                        gap={1.5}
-                      >
-                        {/* Power Summary */}
-                        <Box>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            POWER SUMMARY
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.3}>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Expected Power
-                              </Typography>
-                              <Typography
-                                color={colors.grey[100]}
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {cls.total_expected_power >= 1000
-                                  ? `${(cls.total_expected_power / 1000).toFixed(1)} kW`
-                                  : `${Number(cls.total_expected_power).toFixed(0)} W`}
-                              </Typography>
-                            </Box>
-                            <Box display="flex" justifyContent="space-between">
-                              <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                Expected Current
-                              </Typography>
-                              <Typography
-                                color={colors.grey[100]}
-                                fontSize="0.72rem"
-                                fontWeight={600}
-                              >
-                                {Number(cls.total_expected_current).toFixed(1)} A
-                              </Typography>
-                            </Box>
-                            {cls.measured_power != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Measured Power
-                                </Typography>
-                                <Typography
-                                  color={colors.grey[100]}
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(cls.measured_power).toFixed(0)} W
-                                </Typography>
-                              </Box>
-                            )}
-                            {cls.measured_current != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Measured Current
-                                </Typography>
-                                <Typography
-                                  color={colors.grey[100]}
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(cls.measured_current).toFixed(3)} A
-                                </Typography>
-                              </Box>
-                            )}
-                            {cls.power_deviation != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Power Deviation
-                                </Typography>
-                                <Typography
-                                  color={
-                                    cls.power_deviation <= 30
-                                      ? colors.greenAccent[500]
-                                      : "#db4f4a"
-                                  }
-                                  fontSize="0.72rem"
-                                  fontWeight={600}
-                                >
-                                  {Number(cls.power_deviation).toFixed(1)}%
-                                </Typography>
-                              </Box>
-                            )}
+                        <Box display="flex" alignItems="center" gap={2}>
+                          <Box sx={{ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: `${calColor}22`, border: `2px solid ${calColor}` }}>
+                            <HomeOutlined sx={{ color: calColor, fontSize: 24 }} />
+                          </Box>
+                          <Box>
+                            <Typography variant="h6" fontWeight="bold" color={colors.grey[100]}>
+                              {cls.classification_type || "Unclassified"}
+                            </Typography>
+                            <Typography variant="caption" color={colors.grey[400]}>
+                              {cls.date_time ? formatDateTime(cls.date_time) : "---"}
+                              {cls.technician_name ? ` | Technician: ${cls.technician_name}` : ""}
+                            </Typography>
                           </Box>
                         </Box>
+                        <Chip
+                          label={calStatus}
+                          sx={{ backgroundColor: `${calColor}22`, color: calColor, fontWeight: 700, fontSize: "0.75rem", px: 1, border: `1px solid ${calColor}44` }}
+                        />
+                      </Box>
 
-                        {/* Household Loads */}
-                        <Box gridColumn={loads.length > 5 ? "span 2" : "span 1"}>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            HOUSEHOLD LOADS ({loads.length})
+                      {/* Power Metrics Cards */}
+                      <Box sx={{ backgroundColor: colors.primary[500], p: 2, borderRadius: "0 0 0 0" }}>
+                        <Grid container spacing={1.5}>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ backgroundColor: colors.primary[400], borderRadius: 2, p: 1.5, textAlign: "center", border: "1px solid rgba(129,140,248,0.2)" }}>
+                              <Typography variant="caption" color={colors.grey[400]}>Expected Power</Typography>
+                              <Typography variant="h5" fontWeight="bold" color="#818CF8">
+                                {totalPower >= 1000 ? `${(totalPower / 1000).toFixed(1)}` : Number(totalPower).toFixed(0)}
+                              </Typography>
+                              <Typography variant="caption" color={colors.grey[400]}>{totalPower >= 1000 ? "kW" : "W"}</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ backgroundColor: colors.primary[400], borderRadius: 2, p: 1.5, textAlign: "center", border: "1px solid rgba(76,206,172,0.2)" }}>
+                              <Typography variant="caption" color={colors.grey[400]}>Expected Current</Typography>
+                              <Typography variant="h5" fontWeight="bold" color="#4cceac">
+                                {Number(totalCurrent).toFixed(1)}
+                              </Typography>
+                              <Typography variant="caption" color={colors.grey[400]}>A</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ backgroundColor: colors.primary[400], borderRadius: 2, p: 1.5, textAlign: "center", border: `1px solid ${cls.measured_power != null ? "rgba(255,152,0,0.2)" : "rgba(255,255,255,0.05)"}` }}>
+                              <Typography variant="caption" color={colors.grey[400]}>Measured Power</Typography>
+                              <Typography variant="h5" fontWeight="bold" color={cls.measured_power != null ? "#ff9800" : colors.grey[600]}>
+                                {cls.measured_power != null ? Number(cls.measured_power).toFixed(0) : "--"}
+                              </Typography>
+                              <Typography variant="caption" color={colors.grey[400]}>W</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Box sx={{ backgroundColor: colors.primary[400], borderRadius: 2, p: 1.5, textAlign: "center", border: `1px solid ${cls.power_deviation != null ? (cls.power_deviation <= 30 ? "rgba(76,206,172,0.2)" : "rgba(244,67,54,0.2)") : "rgba(255,255,255,0.05)"}` }}>
+                              <Typography variant="caption" color={colors.grey[400]}>Deviation</Typography>
+                              <Typography variant="h5" fontWeight="bold" color={cls.power_deviation != null ? (cls.power_deviation <= 30 ? "#4cceac" : "#f44336") : colors.grey[600]}>
+                                {cls.power_deviation != null ? `${Number(cls.power_deviation).toFixed(1)}%` : "--"}
+                              </Typography>
+                              <Typography variant="caption" color={colors.grey[400]}>{cls.power_deviation != null ? (cls.power_deviation <= 30 ? "Within range" : "Out of range") : ""}</Typography>
+                            </Box>
+                          </Grid>
+                        </Grid>
+
+                        {/* Additional metrics row */}
+                        {(cls.measured_voltage != null || cls.measured_current != null) && (
+                          <Box display="flex" gap={2} mt={1.5} flexWrap="wrap">
+                            {cls.measured_voltage != null && (
+                              <Chip label={`Voltage: ${Number(cls.measured_voltage).toFixed(1)} V`} size="small" variant="outlined" sx={{ color: colors.grey[300], borderColor: colors.grey[600] }} />
+                            )}
+                            {cls.measured_current != null && (
+                              <Chip label={`Measured Current: ${Number(cls.measured_current).toFixed(3)} A`} size="small" variant="outlined" sx={{ color: colors.grey[300], borderColor: colors.grey[600] }} />
+                            )}
+                            {cls.tester_app_version && (
+                              <Chip label={`App: ${cls.tester_app_version}`} size="small" variant="outlined" sx={{ color: colors.grey[300], borderColor: colors.grey[600] }} />
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+
+                      {/* Household Loads Table */}
+                      {loads.length > 0 && (
+                        <Box sx={{ backgroundColor: colors.primary[500], p: 2, borderRadius: "0 0 8px 8px", borderTop: `1px solid ${colors.primary[600]}` }}>
+                          <Typography variant="subtitle2" color={colors.grey[300]} fontWeight={700} mb={1}>
+                            HOUSEHOLD LOADS ({loads.length} appliances)
                           </Typography>
-                          <TableContainer sx={{ maxHeight: 200 }}>
+                          <TableContainer sx={{ maxHeight: 300 }}>
                             <Table size="small" stickyHeader>
                               <TableHead>
                                 <TableRow>
-                                  <TableCell
-                                    sx={{
-                                      backgroundColor: colors.primary[600] || colors.primary[400],
-                                      color: colors.grey[300],
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      py: 0.5,
-                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
-                                    }}
-                                  >
-                                    Appliance
-                                  </TableCell>
-                                  <TableCell
-                                    align="right"
-                                    sx={{
-                                      backgroundColor: colors.primary[600] || colors.primary[400],
-                                      color: colors.grey[300],
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      py: 0.5,
-                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
-                                    }}
-                                  >
-                                    Power
-                                  </TableCell>
-                                  <TableCell
-                                    align="right"
-                                    sx={{
-                                      backgroundColor: colors.primary[600] || colors.primary[400],
-                                      color: colors.grey[300],
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      py: 0.5,
-                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
-                                    }}
-                                  >
-                                    Current
-                                  </TableCell>
-                                  <TableCell
-                                    sx={{
-                                      backgroundColor: colors.primary[600] || colors.primary[400],
-                                      color: colors.grey[300],
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      py: 0.5,
-                                      borderBottom: `1px solid ${colors.primary[300] || "rgba(255,255,255,0.1)"}`,
-                                    }}
-                                  >
-                                    Category
-                                  </TableCell>
+                                  {["Appliance", "Power (W)", "Current (A)", "Category"].map((h, hi) => (
+                                    <TableCell
+                                      key={h}
+                                      align={hi > 0 && hi < 3 ? "right" : "left"}
+                                      sx={{
+                                        backgroundColor: colors.primary[400],
+                                        color: colors.greenAccent[500],
+                                        fontSize: "0.72rem",
+                                        fontWeight: 700,
+                                        py: 0.8,
+                                        borderBottom: `2px solid ${colors.greenAccent[700]}`,
+                                      }}
+                                    >
+                                      {h}
+                                    </TableCell>
+                                  ))}
                                 </TableRow>
                               </TableHead>
                               <TableBody>
                                 {loads.map((load, li) => (
-                                  <TableRow key={li}>
-                                    <TableCell
-                                      sx={{
-                                        color: colors.grey[100],
-                                        fontSize: "0.72rem",
-                                        py: 0.3,
-                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
-                                      }}
-                                    >
+                                  <TableRow key={li} sx={{ "&:hover": { backgroundColor: "rgba(255,255,255,0.03)" } }}>
+                                    <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", fontWeight: 500, py: 0.6, borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
                                       {load.name}
                                     </TableCell>
-                                    <TableCell
-                                      align="right"
-                                      sx={{
-                                        color: "#818CF8",
-                                        fontSize: "0.72rem",
-                                        fontWeight: 600,
-                                        py: 0.3,
-                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
-                                      }}
-                                    >
-                                      {load.powerRating}W
+                                    <TableCell align="right" sx={{ color: "#818CF8", fontSize: "0.78rem", fontWeight: 600, py: 0.6, borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+                                      {load.powerRating}
                                     </TableCell>
-                                    <TableCell
-                                      align="right"
-                                      sx={{
-                                        color: colors.greenAccent[500],
-                                        fontSize: "0.72rem",
-                                        fontWeight: 600,
-                                        py: 0.3,
-                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
-                                      }}
-                                    >
-                                      {load.currentRating}A
+                                    <TableCell align="right" sx={{ color: colors.greenAccent[400], fontSize: "0.78rem", fontWeight: 600, py: 0.6, borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+                                      {load.currentRating}
                                     </TableCell>
-                                    <TableCell
-                                      sx={{
-                                        color: colors.grey[400],
-                                        fontSize: "0.68rem",
-                                        py: 0.3,
-                                        borderBottom: `1px solid rgba(255,255,255,0.05)`,
-                                      }}
-                                    >
-                                      {load.category}
+                                    <TableCell sx={{ color: colors.grey[400], fontSize: "0.72rem", py: 0.6, borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+                                      <Chip label={load.category || "General"} size="small" sx={{ fontSize: "0.65rem", height: 20, backgroundColor: "rgba(129,140,248,0.1)", color: colors.grey[300] }} />
                                     </TableCell>
                                   </TableRow>
                                 ))}
+                                {/* Totals row */}
+                                <TableRow>
+                                  <TableCell sx={{ color: colors.grey[100], fontSize: "0.78rem", fontWeight: 700, py: 0.8, borderTop: `2px solid ${colors.primary[600]}` }}>
+                                    Total ({loads.length})
+                                  </TableCell>
+                                  <TableCell align="right" sx={{ color: "#818CF8", fontSize: "0.78rem", fontWeight: 700, py: 0.8, borderTop: `2px solid ${colors.primary[600]}` }}>
+                                    {loads.reduce((s, l) => s + (Number(l.powerRating) || 0), 0)}
+                                  </TableCell>
+                                  <TableCell align="right" sx={{ color: colors.greenAccent[400], fontSize: "0.78rem", fontWeight: 700, py: 0.8, borderTop: `2px solid ${colors.primary[600]}` }}>
+                                    {loads.reduce((s, l) => s + (Number(l.currentRating) || 0), 0).toFixed(1)}
+                                  </TableCell>
+                                  <TableCell sx={{ py: 0.8, borderTop: `2px solid ${colors.primary[600]}` }} />
+                                </TableRow>
                               </TableBody>
                             </Table>
                           </TableContainer>
-                        </Box>
 
-                        {/* Metadata */}
-                        <Box>
-                          <Typography
-                            color={colors.grey[300]}
-                            fontSize="0.7rem"
-                            fontWeight={600}
-                            mb={0.5}
-                          >
-                            INFO
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.3}>
-                            {cls.measured_voltage != null && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Voltage
-                                </Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                  {Number(cls.measured_voltage).toFixed(1)} V
-                                </Typography>
-                              </Box>
-                            )}
-                            {cls.technician_name && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  Technician
-                                </Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                  {cls.technician_name}
-                                </Typography>
-                              </Box>
-                            )}
-                            {cls.tester_app_version && (
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography color={colors.grey[400]} fontSize="0.72rem">
-                                  App Version
-                                </Typography>
-                                <Typography color={colors.grey[100]} fontSize="0.72rem">
-                                  {cls.tester_app_version}
-                                </Typography>
-                              </Box>
-                            )}
-                            {cls.notes && (
-                              <Box mt={0.5}>
-                                <Typography color={colors.grey[400]} fontSize="0.68rem">
-                                  Notes:
-                                </Typography>
-                                <Typography
-                                  color={colors.grey[200]}
-                                  fontSize="0.72rem"
-                                  sx={{ fontStyle: "italic" }}
-                                >
-                                  {cls.notes}
-                                </Typography>
-                              </Box>
-                            )}
-                          </Box>
+                          {cls.notes && (
+                            <Box mt={1.5} p={1.5} sx={{ backgroundColor: colors.primary[400], borderRadius: 1, borderLeft: `3px solid ${colors.grey[600]}` }}>
+                              <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>Notes</Typography>
+                              <Typography variant="body2" color={colors.grey[200]} sx={{ fontStyle: "italic", mt: 0.3 }}>{cls.notes}</Typography>
+                            </Box>
+                          )}
                         </Box>
-                      </Box>
+                      )}
                     </Box>
                   );
                 })
@@ -3040,7 +3788,7 @@ export default function MeterProfile() {
                   sx={{ textAlign: "center", py: 4 }}
                 >
                   No home classification records found for this meter. Use the
-                  NamPower Maintenance app to classify the home&apos;s electrical loads
+                  GRIDx Maintenance app to classify the home&apos;s electrical loads
                   and run a calibration.
                 </Typography>
               )}
@@ -3052,105 +3800,215 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 9: Meter Health                                              */}
       {/* ================================================================ */}
-      {tab === 8 && (
+      {tab === 9 && (
         <Box>
-          {healthLoading && <LinearProgress sx={{ mb: 2 }} />}
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6" fontWeight="bold" color={colors.grey[100]}>Meter Health</Typography>
+            <Button
+              variant="contained"
+              startIcon={healthLoading ? <CircularProgress size={16} color="inherit" /> : <FavoriteBorderOutlined />}
+              disabled={healthLoading}
+              onClick={async () => {
+                setHealthLoading(true);
+                try {
+                  const [latest, history] = await Promise.allSettled([
+                    meterHealthAPI.getLatest(drn),
+                    meterHealthAPI.getHistory(drn, 72),
+                  ]);
+                  if (latest.status === "fulfilled") setHealthData(latest.value?.data || latest.value);
+                  if (history.status === "fulfilled") setHealthHistory(history.value?.data || []);
+                  setSnackbar({ open: true, message: healthData ? "Health data refreshed" : "No health data available yet", severity: healthData ? "success" : "info" });
+                } catch (e) {
+                  setSnackbar({ open: true, message: "Failed to fetch health data", severity: "error" });
+                }
+                setHealthLoading(false);
+              }}
+              sx={{
+                textTransform: "none",
+                backgroundColor: colors.greenAccent[700],
+                "&:hover": { backgroundColor: colors.greenAccent[600] },
+              }}
+            >
+              {healthLoading ? "Checking..." : "Run Health Check"}
+            </Button>
+          </Box>
+          {healthLoading && <LinearProgress sx={{ mb: 2, "& .MuiLinearProgress-bar": { backgroundColor: "#e91e63" } }} />}
           {healthData ? (() => {
             const score = healthData.health_score ?? 0;
-            const scoreColor = score >= 80 ? "#2E7D32" : score >= 50 ? "#ff9800" : "#f44336";
+            const scoreColor = score >= 80 ? "#00e676" : score >= 50 ? "#ffab00" : "#ff1744";
+            const scoreBg = score >= 80 ? "rgba(0,230,118,0.08)" : score >= 50 ? "rgba(255,171,0,0.08)" : "rgba(255,23,68,0.08)";
             const scoreLabel = score >= 80 ? "GOOD" : score >= 50 ? "WARNING" : "CRITICAL";
+            const scoreGlow = score >= 80 ? "0 0 40px rgba(0,230,118,0.3)" : score >= 50 ? "0 0 40px rgba(255,171,0,0.3)" : "0 0 40px rgba(255,23,68,0.3)";
             return (
               <Box>
                 {/* Header */}
-                <Box display="flex" alignItems="center" gap={2} mb={2}>
-                  <FavoriteBorderOutlined sx={{ color: scoreColor, fontSize: 28 }} />
+                <Box display="flex" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
+                  <Box sx={{ width: 40, height: 40, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: scoreBg, border: `2px solid ${scoreColor}` }}>
+                    <FavoriteBorderOutlined sx={{ color: scoreColor, fontSize: 22 }} />
+                  </Box>
                   <Typography variant="h5" fontWeight="bold" color={colors.grey[100]}>Meter Health Report</Typography>
-                  <Chip label={scoreLabel} size="small" sx={{ backgroundColor: scoreColor, color: "#fff", fontWeight: 700 }} />
-                  {healthData.firmware && <Chip label={`FW: ${healthData.firmware}`} size="small" variant="outlined" sx={{ color: colors.grey[300], borderColor: colors.grey[600] }} />}
-                  {healthData.uptime_seconds && <Chip label={`Uptime: ${Math.floor(healthData.uptime_seconds / 3600)}h`} size="small" variant="outlined" sx={{ color: colors.grey[300], borderColor: colors.grey[600] }} />}
+                  <Chip label={scoreLabel} size="small" sx={{ backgroundColor: scoreColor, color: "#000", fontWeight: 800, letterSpacing: 1, px: 1 }} />
+                  {healthData.firmware && <Chip label={`FW: ${healthData.firmware}`} size="small" sx={{ backgroundColor: "rgba(104,112,250,0.15)", color: "#868dfb", border: "1px solid rgba(104,112,250,0.4)", fontWeight: 600 }} />}
+                  {healthData.uptime_seconds && <Chip label={`Uptime: ${Math.floor(healthData.uptime_seconds / 3600)}h`} size="small" sx={{ backgroundColor: "rgba(33,150,243,0.15)", color: "#64b5f6", border: "1px solid rgba(33,150,243,0.4)", fontWeight: 600 }} />}
                 </Box>
 
-                <Grid container spacing={2}>
+                <Grid container spacing={2.5}>
                   {/* Score gauge */}
                   <Grid item xs={12} md={4}>
-                    <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, p: 3, textAlign: "center", border: `1px solid ${colors.primary[600]}` }}>
-                      <Box sx={{ position: "relative", display: "inline-flex" }}>
-                        <CircularProgress variant="determinate" value={score} size={140} thickness={6} sx={{ color: scoreColor, "& .MuiCircularProgress-circle": { strokeLinecap: "round" } }} />
+                    <Box sx={{
+                      background: `linear-gradient(145deg, ${colors.primary[400]} 0%, ${colors.primary[500]} 100%)`,
+                      borderRadius: 3, p: 4, textAlign: "center",
+                      border: `1px solid ${scoreColor}33`,
+                      boxShadow: scoreGlow,
+                      position: "relative", overflow: "hidden",
+                    }}>
+                      {/* Subtle radial glow behind the gauge */}
+                      <Box sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle, ${scoreColor}15 0%, transparent 70%)` }} />
+                      <Box sx={{ position: "relative", display: "inline-flex", mb: 2 }}>
+                        {/* Track ring */}
+                        <CircularProgress variant="determinate" value={100} size={160} thickness={5} sx={{ color: colors.primary[600], position: "absolute" }} />
+                        {/* Score ring */}
+                        <CircularProgress variant="determinate" value={score} size={160} thickness={5} sx={{ color: scoreColor, "& .MuiCircularProgress-circle": { strokeLinecap: "round", filter: `drop-shadow(0 0 6px ${scoreColor})` } }} />
                         <Box sx={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
-                          <Typography variant="h3" fontWeight="bold" color={scoreColor}>{score}</Typography>
-                          <Typography variant="caption" color={colors.grey[300]}>/ 100</Typography>
+                          <Typography variant="h2" fontWeight="900" color={scoreColor} sx={{ lineHeight: 1, textShadow: `0 0 20px ${scoreColor}55` }}>{score}</Typography>
+                          <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>/ 100</Typography>
                         </Box>
                       </Box>
-                      <Typography variant="subtitle1" color={colors.grey[100]} mt={1}>Health Score</Typography>
+                      <Typography variant="subtitle1" color={colors.grey[100]} fontWeight={700} letterSpacing={1}>Health Score</Typography>
+                      <Typography variant="caption" color={colors.grey[400]}>Overall meter condition</Typography>
+                    </Box>
+
+                    {/* Status indicators below gauge */}
+                    <Box mt={2} display="flex" gap={1}>
+                      {[
+                        { label: "Mains", on: healthData.mains_state, icon: <PowerSettingsNewOutlined sx={{ fontSize: 16 }} /> },
+                        { label: "Geyser", on: healthData.geyser_state, icon: <HotTub sx={{ fontSize: 16 }} /> },
+                      ].map((s) => (
+                        <Box key={s.label} sx={{
+                          flex: 1, borderRadius: 2, p: 1.5, textAlign: "center",
+                          backgroundColor: s.on ? "rgba(0,230,118,0.1)" : "rgba(255,23,68,0.1)",
+                          border: `1px solid ${s.on ? "rgba(0,230,118,0.4)" : "rgba(255,23,68,0.4)"}`,
+                        }}>
+                          <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
+                            <Box sx={{ color: s.on ? "#00e676" : "#ff1744" }}>{s.icon}</Box>
+                            <Typography variant="caption" color={colors.grey[300]} fontWeight={600}>{s.label}</Typography>
+                          </Box>
+                          <Typography variant="subtitle2" fontWeight="bold" color={s.on ? "#00e676" : "#ff1744"} mt={0.5}>{s.on ? "ON" : "OFF"}</Typography>
+                        </Box>
+                      ))}
                     </Box>
                   </Grid>
 
                   {/* Power readings + Error counters */}
                   <Grid item xs={12} md={8}>
-                    <Grid container spacing={1}>
+                    <Typography variant="overline" color={colors.grey[400]} fontWeight={700} letterSpacing={2} mb={1} display="block">Live Readings</Typography>
+                    <Grid container spacing={1.5}>
                       {[
-                        { label: "Voltage", value: healthData.voltage, unit: "V", color: "#2E7D32" },
-                        { label: "Current", value: healthData.current_a, unit: "A", color: "#D4A843" },
-                        { label: "Power", value: healthData.active_power, unit: "W", color: "#ff9800" },
-                        { label: "Temperature", value: healthData.temperature, unit: "°C", color: "#f44336" },
-                        { label: "Frequency", value: healthData.frequency, unit: "Hz", color: "#2196f3" },
-                        { label: "Power Factor", value: healthData.power_factor, unit: "", color: "#ab47bc" },
-                        { label: "Mains", value: healthData.mains_state ? "ON" : "OFF", unit: "", color: healthData.mains_state ? "#2E7D32" : "#f44336" },
-                        { label: "Geyser", value: healthData.geyser_state ? "ON" : "OFF", unit: "", color: healthData.geyser_state ? "#2E7D32" : "#f44336" },
+                        { label: "Voltage", value: healthData.voltage, unit: "V", color: "#00e676", bg: "rgba(0,230,118,0.08)", icon: <BoltOutlined sx={{ fontSize: 20 }} /> },
+                        { label: "Current", value: healthData.current_a, unit: "A", color: "#768fff", bg: "rgba(118,143,255,0.08)", icon: <ElectricalServicesOutlined sx={{ fontSize: 20 }} /> },
+                        { label: "Power", value: healthData.active_power, unit: "W", color: "#ffab00", bg: "rgba(255,171,0,0.08)", icon: <PowerOutlined sx={{ fontSize: 20 }} /> },
+                        { label: "Temperature", value: healthData.temperature, unit: "°C", color: "#ff6e40", bg: "rgba(255,110,64,0.08)", icon: <ThermostatOutlined sx={{ fontSize: 20 }} /> },
+                        { label: "Frequency", value: healthData.frequency, unit: "Hz", color: "#40c4ff", bg: "rgba(64,196,255,0.08)", icon: <GraphicEqOutlined sx={{ fontSize: 20 }} /> },
+                        { label: "Power Factor", value: healthData.power_factor, unit: "", color: "#ea80fc", bg: "rgba(234,128,252,0.08)", icon: <SpeedOutlined sx={{ fontSize: 20 }} /> },
                       ].map((stat) => (
-                        <Grid item xs={6} sm={3} key={stat.label}>
-                          <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 1, p: 1.5, border: `1px solid ${colors.primary[600]}` }}>
-                            <Typography variant="caption" color={colors.grey[400]}>{stat.label}</Typography>
-                            <Typography variant="h6" fontWeight="bold" color={stat.color}>{stat.value != null ? `${stat.value}${stat.unit ? ` ${stat.unit}` : ""}` : "-"}</Typography>
+                        <Grid item xs={6} sm={4} key={stat.label}>
+                          <Box sx={{
+                            background: `linear-gradient(135deg, ${stat.bg} 0%, ${colors.primary[500]} 100%)`,
+                            borderRadius: 2, p: 2,
+                            border: `1px solid ${stat.color}30`,
+                            transition: "all 0.2s ease",
+                            "&:hover": { border: `1px solid ${stat.color}60`, transform: "translateY(-2px)", boxShadow: `0 4px 20px ${stat.color}15` },
+                          }}>
+                            <Box display="flex" alignItems="center" gap={1} mb={1}>
+                              <Box sx={{ color: stat.color, opacity: 0.7 }}>{stat.icon}</Box>
+                              <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>{stat.label}</Typography>
+                            </Box>
+                            <Typography variant="h5" fontWeight="800" color={stat.color}>
+                              {stat.value != null ? stat.value : "-"}
+                              {stat.value != null && stat.unit && <Typography component="span" variant="body2" color={colors.grey[400]} ml={0.5}>{stat.unit}</Typography>}
+                            </Typography>
                           </Box>
                         </Grid>
                       ))}
                     </Grid>
+
                     {/* Error counters */}
-                    <Grid container spacing={1} mt={0.5}>
+                    <Typography variant="overline" color={colors.grey[400]} fontWeight={700} letterSpacing={2} mt={2.5} mb={1} display="block">Diagnostics</Typography>
+                    <Grid container spacing={1.5}>
                       {[
-                        { label: "UART Errors", value: healthData.uart_errors, color: "#f44336" },
-                        { label: "Relay Mismatches", value: healthData.relay_mismatches, color: "#ff9800" },
-                        { label: "Power Anomalies", value: healthData.power_anomalies, color: "#ab47bc" },
-                      ].map((err) => (
-                        <Grid item xs={4} key={err.label}>
-                          <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 1, p: 1.5, border: `1px solid ${colors.primary[600]}`, textAlign: "center" }}>
-                            <Typography variant="caption" color={colors.grey[400]}>{err.label}</Typography>
-                            <Typography variant="h5" fontWeight="bold" color={err.value > 0 ? err.color : colors.grey[300]}>{err.value ?? 0}</Typography>
-                          </Box>
-                        </Grid>
-                      ))}
+                        { label: "UART Errors", value: healthData.uart_errors, color: "#ff1744", bg: "rgba(255,23,68,0.06)" },
+                        { label: "Relay Mismatches", value: healthData.relay_mismatches, color: "#ffab00", bg: "rgba(255,171,0,0.06)" },
+                        { label: "Power Anomalies", value: healthData.power_anomalies, color: "#ea80fc", bg: "rgba(234,128,252,0.06)" },
+                      ].map((err) => {
+                        const hasError = (err.value ?? 0) > 0;
+                        return (
+                          <Grid item xs={4} key={err.label}>
+                            <Box sx={{
+                              background: hasError ? err.bg : colors.primary[500],
+                              borderRadius: 2, p: 2, textAlign: "center",
+                              border: `1px solid ${hasError ? `${err.color}50` : colors.primary[600]}`,
+                              position: "relative", overflow: "hidden",
+                            }}>
+                              {hasError && <Box sx={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, backgroundColor: err.color, opacity: 0.8 }} />}
+                              <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>{err.label}</Typography>
+                              <Typography variant="h4" fontWeight="900" color={hasError ? err.color : colors.grey[500]} sx={{ textShadow: hasError ? `0 0 10px ${err.color}40` : "none" }}>{err.value ?? 0}</Typography>
+                            </Box>
+                          </Grid>
+                        );
+                      })}
                     </Grid>
                   </Grid>
                 </Grid>
 
                 {/* Health trend chart */}
                 {healthHistory.length > 1 && (
-                  <Box mt={3} sx={{ backgroundColor: colors.primary[500], borderRadius: 2, p: 2, border: `1px solid ${colors.primary[600]}` }}>
-                    <Typography variant="subtitle2" color={colors.grey[300]} mb={1}>Health Score Trend</Typography>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <LineChart data={healthHistory.slice().reverse().map((h) => ({ time: new Date(h.created_at).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }), score: h.health_score }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={colors.primary[600]} />
-                        <XAxis dataKey="time" tick={{ fill: colors.grey[400], fontSize: 10 }} />
-                        <YAxis domain={[0, 100]} tick={{ fill: colors.grey[400], fontSize: 10 }} />
-                        <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                        <Line type="monotone" dataKey="score" stroke="#2E7D32" strokeWidth={2} dot={false} />
-                      </LineChart>
+                  <Box mt={3} sx={{
+                    background: `linear-gradient(145deg, ${colors.primary[400]} 0%, ${colors.primary[500]} 100%)`,
+                    borderRadius: 3, p: 3,
+                    border: `1px solid ${colors.primary[600]}`,
+                  }}>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <BarChartOutlined sx={{ color: "#00e676", fontSize: 20 }} />
+                        <Typography variant="subtitle1" color={colors.grey[100]} fontWeight={700}>Health Score Trend</Typography>
+                      </Box>
+                      <Chip label={`${healthHistory.length} readings`} size="small" sx={{ backgroundColor: "rgba(0,230,118,0.1)", color: "#00e676", fontWeight: 600, fontSize: 11 }} />
+                    </Box>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <AreaChart data={healthHistory.slice().reverse().map((h) => ({ time: new Date(h.created_at).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }), score: h.health_score }))}>
+                        <defs>
+                          <linearGradient id="healthGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#00e676" stopOpacity={0.3} />
+                            <stop offset="100%" stopColor="#00e676" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={colors.primary[600]} opacity={0.5} />
+                        <XAxis dataKey="time" tick={{ fill: colors.grey[400], fontSize: 10 }} axisLine={{ stroke: colors.primary[600] }} />
+                        <YAxis domain={[0, 100]} tick={{ fill: colors.grey[400], fontSize: 10 }} axisLine={{ stroke: colors.primary[600] }} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: `1px solid ${colors.primary[600]}`, borderRadius: 8, color: colors.grey[100] }} />
+                        <Area type="monotone" dataKey="score" stroke="#00e676" strokeWidth={2.5} fill="url(#healthGradient)" dot={false} activeDot={{ r: 5, fill: "#00e676", stroke: colors.primary[400], strokeWidth: 2 }} />
+                      </AreaChart>
                     </ResponsiveContainer>
                   </Box>
                 )}
 
                 {healthData.created_at && (
-                  <Typography variant="caption" color={colors.grey[400]} mt={2} display="block">
-                    Last updated: {new Date(healthData.created_at).toLocaleString("en-ZA")}
-                  </Typography>
+                  <Box mt={2} display="flex" alignItems="center" gap={1}>
+                    <Box sx={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#00e676", boxShadow: "0 0 8px rgba(0,230,118,0.5)" }} />
+                    <Typography variant="caption" color={colors.grey[400]}>
+                      Last updated: {new Date(healthData.created_at).toLocaleString("en-ZA")}
+                    </Typography>
+                  </Box>
                 )}
               </Box>
             );
           })() : !healthLoading && (
-            <Typography color={colors.grey[400]} sx={{ textAlign: "center", py: 6 }}>
-              No health data received yet. The meter sends health reports every hour via SIM800.
-            </Typography>
+            <Box sx={{ textAlign: "center", py: 8 }}>
+              <FavoriteBorderOutlined sx={{ fontSize: 48, color: colors.grey[600], mb: 2 }} />
+              <Typography color={colors.grey[400]}>
+                No health data received yet. The meter sends health reports every hour via SIM800.
+              </Typography>
+            </Box>
           )}
         </Box>
       )}
@@ -3158,26 +4016,27 @@ export default function MeterProfile() {
       {/* ================================================================ */}
       {/* TAB 10: Relay Events                                             */}
       {/* ================================================================ */}
-      {tab === 9 && (() => {
-        const REASON_COLORS = ["#868dfb","#2E7D32","#f44336","#ff9800","#2196f3","#ab47bc","#78909c","#e91e63","#ff5722"];
+      {tab === 10 && (() => {
+        const REASON_COLORS = ["#868dfb","#4cceac","#f44336","#ff9800","#2196f3","#ab47bc","#78909c","#e91e63","#ff5722"];
         const REASON_LABELS = ["Unknown","Manual Control","Credit Expired","Power Limit","Scheduled","Remote Command","System Startup","Tamper Detected","Overcurrent"];
         const fmtTime = (ts) => ts ? new Date(ts).toLocaleString("en-ZA", { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-";
 
-        // Pie chart data from summary
-        const pieData = relaySummary?.summary ? Object.entries(
-          relaySummary.summary.reduce((acc, s) => {
-            const label = s.reason_name || REASON_LABELS[s.reason_code] || "Unknown";
-            acc[label] = (acc[label] || 0) + s.event_count;
-            return acc;
-          }, {})
-        ).map(([name, value]) => ({ name, value })) : [];
+        // Pie chart data from summary (supports both old and new API formats)
+        const pieData = relaySummary?.byReason ? relaySummary.byReason :
+          relaySummary?.summary ? Object.entries(
+            relaySummary.summary.reduce((acc, s) => {
+              const label = s.reason_name || REASON_LABELS[s.reason_code] || "Unknown";
+              acc[label] = (acc[label] || 0) + (s.event_count || s.count || 0);
+              return acc;
+            }, {})
+          ).map(([name, value]) => ({ name, value })) : [];
 
         return (
           <Box>
             {/* Header */}
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
               <Box display="flex" alignItems="center" gap={1}>
-                <SwapVertOutlined sx={{ color: "#2E7D32", fontSize: 28 }} />
+                <SwapVertOutlined sx={{ color: "#4cceac", fontSize: 28 }} />
                 <Typography variant="h5" fontWeight="bold" color={colors.grey[100]}>Relay Event Log</Typography>
                 {relayTotal > 0 && <Chip label={`${relayTotal} events`} size="small" sx={{ backgroundColor: colors.primary[500], color: colors.grey[100] }} />}
               </Box>
@@ -3219,15 +4078,15 @@ export default function MeterProfile() {
                   <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, p: 2, border: `1px solid ${colors.primary[600]}` }}>
                     <Typography variant="subtitle2" color={colors.grey[300]} mb={1}>Event Breakdown</Typography>
                     <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={[
-                        { name: "Mains", count: relaySummary?.summary?.filter(s => s.relay_index === 0).reduce((sum, s) => sum + s.event_count, 0) || 0 },
-                        { name: "Geyser", count: relaySummary?.summary?.filter(s => s.relay_index === 1).reduce((sum, s) => sum + s.event_count, 0) || 0 },
+                      <BarChart data={relaySummary?.byRelay ? relaySummary.byRelay.map(r => ({ name: r.name, count: (r.state || 0) + (r.control || 0) })) : [
+                        { name: "Mains", count: relaySummary?.summary?.filter(s => s.relay_index === 0).reduce((sum, s) => sum + (s.event_count || s.count || 0), 0) || 0 },
+                        { name: "Geyser", count: relaySummary?.summary?.filter(s => s.relay_index === 1).reduce((sum, s) => sum + (s.event_count || s.count || 0), 0) || 0 },
                       ]}>
                         <CartesianGrid strokeDasharray="3 3" stroke={colors.primary[600]} />
                         <XAxis dataKey="name" tick={{ fill: colors.grey[400] }} />
                         <YAxis tick={{ fill: colors.grey[400] }} />
                         <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                        <Bar dataKey="count" fill="#2E7D32" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="count" fill="#4cceac" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </Box>
@@ -3253,13 +4112,13 @@ export default function MeterProfile() {
                       <TableCell sx={{ color: colors.grey[100], fontSize: 12, whiteSpace: "nowrap" }}>{fmtTime(evt.meter_timestamp || evt.received_at)}</TableCell>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={0.5}>
-                          {evt.relay_index === 0 ? <PowerOutlined sx={{ fontSize: 16, color: "#2E7D32" }} /> : <HotTub sx={{ fontSize: 16, color: "#f4a261" }} />}
+                          {evt.relay_index === 0 ? <PowerOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> : <HotTub sx={{ fontSize: 16, color: "#f4a261" }} />}
                           <Typography variant="body2" color={colors.grey[100]} fontWeight={500}>{evt.relay_name || (evt.relay_index === 0 ? "Mains" : "Geyser")}</Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip label={evt.entry_type === 0 ? "State" : "Control"} size="small" variant="outlined"
-                          sx={{ color: evt.entry_type === 0 ? "#2E7D32" : "#ab47bc", borderColor: evt.entry_type === 0 ? "#2E7D32" : "#ab47bc", fontSize: 11 }} />
+                          sx={{ color: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", borderColor: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", fontSize: 11 }} />
                       </TableCell>
                       <TableCell>
                         {evt.entry_type === 0 ? (
@@ -3307,26 +4166,63 @@ export default function MeterProfile() {
         }}
       >
         <DialogTitle>
-          Confirm {confirmDialog.type === "mains" ? "Mains" : "Heater"}{" "}
-          {confirmDialog.action === "enable" ? "Enable" : "Disable"}
+          {confirmDialog.type?.startsWith("config_")
+            ? `Confirm ${confirmDialog.action === "reset_ble" ? "Reset BLE PIN" : confirmDialog.action === "clear_auth" ? "Clear Authorized Numbers" : "Restart Meter"}`
+            : `Confirm ${confirmDialog.type?.replace("_state", "").replace("mains", "Mains").replace("heater", "Heater")} ${confirmDialog.action === "enable" ? "Enable" : confirmDialog.action === "disable" ? "Disable" : confirmDialog.action === "on" ? "Turn ON" : "Turn OFF"}`
+          }
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: colors.grey[100] }}>
-            Are you sure you want to{" "}
-            <strong>
-              {confirmDialog.action === "enable" ? "enable" : "disable"}
-            </strong>{" "}
-            the{" "}
-            <strong>
-              {confirmDialog.type === "mains" ? "mains relay" : "heater relay"}
-            </strong>{" "}
-            for meter <strong>{drn}</strong>?
-            <br />
-            <br />
-            Reason:{" "}
-            <strong>
-              {confirmDialog.type === "mains" ? mainsReason : heaterReason}
-            </strong>
+            {confirmDialog.type?.startsWith("config_") ? (
+              <>
+                Are you sure you want to{" "}
+                <strong>
+                  {confirmDialog.action === "reset_ble" ? "reset the BLE PIN to default"
+                    : confirmDialog.action === "clear_auth" ? "clear all authorized numbers"
+                    : confirmDialog.action === "restart_meter" ? "restart the meter"
+                    : confirmDialog.action === "sleep_on" ? "put the meter into deep sleep mode"
+                    : confirmDialog.action === "set_base_url" ? `update the base URL to "${configBaseUrl}"`
+                    : confirmDialog.action}
+                </strong>{" "}
+                for meter <strong>{drn}</strong>?
+                {confirmDialog.action === "restart_meter" && (
+                  <>
+                    <br /><br />
+                    This will cause the meter to reboot. It may be temporarily offline.
+                  </>
+                )}
+                {confirmDialog.action === "sleep_on" && (
+                  <>
+                    <br /><br />
+                    The meter will enter deep sleep mode. It will stop responding until a wake-up command is sent.
+                  </>
+                )}
+                {confirmDialog.action === "set_base_url" && (
+                  <>
+                    <br /><br />
+                    WARNING: Setting an incorrect URL will prevent the meter from communicating with the server.
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                Are you sure you want to{" "}
+                <strong>
+                  {confirmDialog.action === "enable" ? "enable" : confirmDialog.action === "disable" ? "disable" : confirmDialog.action === "on" ? "turn ON" : "turn OFF"}
+                </strong>{" "}
+                the{" "}
+                <strong>
+                  {confirmDialog.type?.includes("mains") ? "mains relay" : "heater relay"}
+                </strong>{" "}
+                for meter <strong>{drn}</strong>?
+                <br />
+                <br />
+                Reason:{" "}
+                <strong>
+                  {confirmDialog.type?.includes("mains") ? mainsReason : heaterReason}
+                </strong>
+              </>
+            )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -3339,16 +4235,28 @@ export default function MeterProfile() {
             Cancel
           </Button>
           <Button
-            onClick={handleConfirmLoadControl}
+            onClick={() => {
+              if (confirmDialog.type?.startsWith("config_")) {
+                const action = confirmDialog.action;
+                setConfirmDialog({ open: false, type: "", action: "" });
+                if (action === "set_base_url") {
+                  handleConfigAction(action, { url: configBaseUrl });
+                } else {
+                  handleConfigAction(action);
+                }
+              } else {
+                handleConfirmLoadControl();
+              }
+            }}
             variant="contained"
             sx={{
               backgroundColor:
-                confirmDialog.action === "enable"
+                confirmDialog.action === "enable" || confirmDialog.action === "on" || confirmDialog.action === "reset_ble" || confirmDialog.action === "clear_auth"
                   ? colors.greenAccent[700]
                   : "#db4f4a",
               "&:hover": {
                 backgroundColor:
-                  confirmDialog.action === "enable"
+                  confirmDialog.action === "enable" || confirmDialog.action === "on" || confirmDialog.action === "reset_ble" || confirmDialog.action === "clear_auth"
                     ? colors.greenAccent[600]
                     : "#c0413c",
               },
