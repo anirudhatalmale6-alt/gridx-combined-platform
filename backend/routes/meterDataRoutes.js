@@ -520,4 +520,57 @@ router.get('/meterDailyPower/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── CALIBRATION ────────────────────────────────────────────
+// POST /calibrate/:drn — send calibration command to a single meter
+// action: "auto" (start auto-calibration), "verify" (check accuracy), "exercise" (exercise load switch)
+router.post('/calibrate/:drn', authenticateToken, async (req, res) => {
+  try {
+    const DRN = req.params.drn;
+    const { action, user } = req.body;
+
+    if (!action || !['auto', 'verify', 'exercise'].includes(action)) {
+      return res.status(400).json({ error: 'action must be one of: auto, verify, exercise' });
+    }
+
+    // Log the calibration command
+    await new Promise((resolve, reject) => {
+      db.query(
+        `INSERT INTO MeterCalibrationLog (DRN, action, requested_by, status)
+         VALUES (?, ?, ?, 'pending')`,
+        [DRN, action, user || 'Admin'],
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+    });
+
+    // Send MQTT command to meter
+    try {
+      mqttHandler.publishCommand(DRN, { type: 'calibrate', action }, 1);
+    } catch (e) {
+      console.error('[MeterData] MQTT calibrate publish error:', e.message);
+      return res.status(500).json({ error: 'MQTT publish failed: ' + e.message });
+    }
+
+    res.json({
+      success: true,
+      message: `Calibration '${action}' command sent to ${DRN}`,
+      mqtt_sent: true,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /calibration-log/:drn — get calibration history for a meter
+router.get('/calibration-log/:drn', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT * FROM MeterCalibrationLog WHERE DRN = ? ORDER BY created_at DESC LIMIT 50`,
+      [req.params.drn]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

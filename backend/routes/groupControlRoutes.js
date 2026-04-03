@@ -68,7 +68,7 @@ async function ensureTables() {
     CREATE TABLE IF NOT EXISTS LoadControlActions (
       id INT AUTO_INCREMENT PRIMARY KEY,
       group_id INT,
-      action_type ENUM('mains_off', 'mains_on', 'geyser_off', 'geyser_on') NOT NULL,
+      action_type ENUM('mains_off', 'mains_on', 'geyser_off', 'geyser_on', 'calibrate_auto', 'calibrate_verify', 'calibrate_exercise') NOT NULL,
       meter_count INT DEFAULT 0,
       executed_by VARCHAR(100) DEFAULT 'Admin',
       reason TEXT,
@@ -83,6 +83,11 @@ async function ensureTables() {
 
 // Initialize tables on module load
 ensureTables().catch(err => console.warn('Group control tables init:', err.message));
+
+// Extend ENUM to include calibration action types (safe to run multiple times)
+execute(`ALTER TABLE LoadControlActions MODIFY COLUMN action_type
+  ENUM('mains_off', 'mains_on', 'geyser_off', 'geyser_on', 'calibrate_auto', 'calibrate_verify', 'calibrate_exercise') NOT NULL`)
+  .catch(() => { /* ignore if already correct */ });
 
 // ─── GET ALL GROUPS ─────────────────────────────────────────
 router.get('/loadcontrol/groups', authenticateToken, async (req, res) => {
@@ -238,38 +243,65 @@ router.post('/loadcontrol/execute', authenticateToken, async (req, res) => {
     );
     const actionId = actionResult.insertId;
 
-    // Determine which control table to insert into
+    const isCalibration = action_type.startsWith('calibrate_');
     const isMainsAction = action_type.startsWith('mains');
-    const state = action_type.endsWith('_on') ? '1' : '0';
-    const tableName = isMainsAction ? 'MeterMainsStateTable' : 'MeterHeaterStateTable';
-    const controlReason = reason || `Group load control: ${action_type}`;
-
-    // Insert control commands for each meter
     let successCount = 0;
     let failCount = 0;
 
-    // Build MQTT command: { ms: 0|1 } for mains state, { gs: 0|1 } for geyser state
-    // ms/gs = relay ON/OFF (state), mc/gc = enable/disable (control permission)
-    const mqttCmd = isMainsAction ? { ms: parseInt(state) } : { gs: parseInt(state) };
+    if (isCalibration) {
+      // Calibration group action
+      const calAction = action_type.replace('calibrate_', ''); // auto, verify, or exercise
+      const mqttCmd = { type: 'calibrate', action: calAction };
 
-    for (const drn of targetMeters) {
-      try {
-        await execute(
-          `INSERT INTO ${tableName} (DRN, user, state, processed, reason)
-           VALUES (?, ?, ?, '0', ?)`,
-          [drn, executed_by || 'Admin', state, controlReason]
-        );
-
-        // Publish MQTT command to the meter
+      for (const drn of targetMeters) {
         try {
-          mqttHandler.publishCommand(drn, mqttCmd);
-        } catch (mqttErr) {
-          console.error(`[GroupControl] MQTT publish to ${drn} failed:`, mqttErr.message);
-        }
+          // Log calibration command
+          await execute(
+            `INSERT INTO MeterCalibrationLog (DRN, action, requested_by, status)
+             VALUES (?, ?, ?, 'pending')`,
+            [drn, calAction, executed_by || 'Admin']
+          );
 
-        successCount++;
-      } catch (e) {
-        failCount++;
+          // Publish MQTT command
+          try {
+            mqttHandler.publishCommand(drn, mqttCmd, 1);
+          } catch (mqttErr) {
+            console.error(`[GroupControl] MQTT calibrate to ${drn} failed:`, mqttErr.message);
+          }
+
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+    } else {
+      // Relay control group action (existing logic)
+      const state = action_type.endsWith('_on') ? '1' : '0';
+      const tableName = isMainsAction ? 'MeterMainsStateTable' : 'MeterHeaterStateTable';
+      const controlReason = reason || `Group load control: ${action_type}`;
+
+      // Build MQTT command: { ms: 0|1 } for mains state, { gs: 0|1 } for geyser state
+      const mqttCmd = isMainsAction ? { ms: parseInt(state) } : { gs: parseInt(state) };
+
+      for (const drn of targetMeters) {
+        try {
+          await execute(
+            `INSERT INTO ${tableName} (DRN, user, state, processed, reason)
+             VALUES (?, ?, ?, '0', ?)`,
+            [drn, executed_by || 'Admin', state, controlReason]
+          );
+
+          // Publish MQTT command to the meter
+          try {
+            mqttHandler.publishCommand(drn, mqttCmd);
+          } catch (mqttErr) {
+            console.error(`[GroupControl] MQTT publish to ${drn} failed:`, mqttErr.message);
+          }
+
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
       }
     }
 

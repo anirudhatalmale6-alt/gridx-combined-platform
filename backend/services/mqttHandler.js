@@ -161,6 +161,29 @@ function ensureTables() {
     INDEX idx_target (target_drn),
     INDEX idx_status (status)
   )`, (err) => { if (err) console.error('[MQTT] CreditTransfers table error:', err.message); });
+
+  db.query(`CREATE TABLE IF NOT EXISTS MeterCalibrationLog (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    DRN VARCHAR(50) NOT NULL,
+    action ENUM('auto','verify','exercise') NOT NULL,
+    requested_by VARCHAR(100) DEFAULT 'Admin',
+    status ENUM('pending','completed','failed') DEFAULT 'pending',
+    result VARCHAR(100),
+    voltage FLOAT,
+    current_val FLOAT,
+    active_power FLOAT,
+    reactive_power FLOAT,
+    apparent_power FLOAT,
+    frequency FLOAT,
+    power_factor FLOAT,
+    temperature FLOAT,
+    deviation_pct FLOAT,
+    health_score INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    INDEX idx_drn (DRN),
+    INDEX idx_status (status)
+  )`, (err) => { if (err) console.error('[MQTT] MeterCalibrationLog table error:', err.message); });
 }
 
 // ==================== Init ====================
@@ -508,6 +531,62 @@ function handleAckJson(drn, data) {
       'UPDATE MeterMainsStateTable SET processed = 1 WHERE DRN = ? AND processed = 0',
       [drn],
       (err) => { if (err) console.error('[MQTT] ACK MainsState processed update error:', err.message); }
+    );
+  }
+}
+
+  // On calibration ACK — log results from auto-calibrate or verify
+  if ((data.type === 'calibrate' || data.type === 'cal') && data.status === 'ok') {
+    console.log(`[MQTT] Calibration ACK from ${drn}: detail=${data.detail}`);
+
+    const updateData = { status: 'completed' };
+
+    if (data.readings) {
+      updateData.voltage = data.readings.voltage || null;
+      updateData.current_val = data.readings.current || null;
+      updateData.active_power = data.readings.active_power || null;
+      updateData.reactive_power = data.readings.reactive_power || null;
+      updateData.apparent_power = data.readings.apparent_power || null;
+      updateData.frequency = data.readings.frequency || null;
+      updateData.power_factor = data.readings.power_factor || null;
+      updateData.temperature = data.readings.temperature || null;
+      updateData.deviation_pct = data.readings.deviation_pct || null;
+      updateData.result = data.readings.result || data.detail;
+      updateData.health_score = data.readings.health_score || null;
+    } else {
+      updateData.result = data.detail || 'ok';
+    }
+
+    // Update the most recent pending calibration log for this meter
+    db.query(
+      `UPDATE MeterCalibrationLog SET status = ?, result = ?, voltage = ?, current_val = ?,
+       active_power = ?, reactive_power = ?, apparent_power = ?, frequency = ?,
+       power_factor = ?, temperature = ?, deviation_pct = ?, health_score = ?,
+       completed_at = NOW()
+       WHERE DRN = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`,
+      [
+        updateData.status, updateData.result || 'ok',
+        updateData.voltage || null, updateData.current_val || null,
+        updateData.active_power || null, updateData.reactive_power || null,
+        updateData.apparent_power || null, updateData.frequency || null,
+        updateData.power_factor || null, updateData.temperature || null,
+        updateData.deviation_pct || null, updateData.health_score || null,
+        drn,
+      ],
+      (err) => {
+        if (err) console.error('[MQTT] Calibration log update error:', err.message);
+        else console.log(`[MQTT] Calibration log updated for ${drn}: ${updateData.result}`);
+      }
+    );
+  }
+
+  if ((data.type === 'calibrate' || data.type === 'cal') && data.status === 'error') {
+    console.error(`[MQTT] Calibration error from ${drn}: ${data.detail}`);
+    db.query(
+      `UPDATE MeterCalibrationLog SET status = 'failed', result = ?, completed_at = NOW()
+       WHERE DRN = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`,
+      [data.detail || 'unknown error', drn],
+      (err) => { if (err) console.error('[MQTT] Calibration log fail update error:', err.message); }
     );
   }
 }
