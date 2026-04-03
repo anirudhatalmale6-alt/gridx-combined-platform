@@ -54,6 +54,9 @@ import {
   DeselectOutlined,
   MyLocationOutlined,
   RefreshOutlined,
+  BuildOutlined,
+  VerifiedOutlined,
+  SpeedOutlined,
 } from "@mui/icons-material";
 import {
   GoogleMap,
@@ -393,7 +396,7 @@ export default function GroupControl() {
       const res = await groupControlAPI.execute({
         group_id: selectedGroup?.id || null,
         action_type: controlAction,
-        reason: controlReason || `Load control: ${controlAction}`,
+        reason: controlReason || (controlAction.startsWith("calibrate") ? `Calibration: ${controlAction}` : `Load control: ${controlAction}`),
         meter_drns: Array.from(selectedMeters),
       });
       setShowControlDialog(false);
@@ -436,7 +439,7 @@ export default function GroupControl() {
 
   return (
     <Box m="10px 20px" height="calc(100vh - 80px)" display="flex" flexDirection="column">
-      <Header title="LOAD CONTROL" subtitle="Group-based ripple control and load management" />
+      <Header title="GROUP CONTROL" subtitle="Group-based ripple control, load management & calibration" />
 
       <Box flex={1} display="flex" gap="12px" overflow="hidden" mt="8px">
         {/* =============== LEFT PANEL — Groups & Areas =============== */}
@@ -1028,8 +1031,10 @@ export default function GroupControl() {
       >
         <DialogTitle sx={{ color: colors.grey[100] }}>Send Control Command</DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            This will send control commands to {totalSelected} meter(s). This action affects real meters.
+          <Alert severity={controlAction.startsWith("calibrate") ? "info" : "warning"} sx={{ mb: 2 }}>
+            {controlAction.startsWith("calibrate")
+              ? `This will send a calibration command to ${totalSelected} meter(s).`
+              : `This will send control commands to ${totalSelected} meter(s). This action affects real meters.`}
           </Alert>
 
           <FormControl fullWidth size="small" sx={{ mb: 2 }}>
@@ -1057,6 +1062,22 @@ export default function GroupControl() {
               <MenuItem value="mains_on">
                 <Box display="flex" alignItems="center" gap="8px">
                   <BoltOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> Turn ON Mains
+                </Box>
+              </MenuItem>
+              <Divider sx={{ my: 0.5, borderColor: "rgba(255,255,255,0.1)" }} />
+              <MenuItem value="calibrate_auto">
+                <Box display="flex" alignItems="center" gap="8px">
+                  <BuildOutlined sx={{ fontSize: 16, color: "#6870fa" }} /> Auto-Calibrate
+                </Box>
+              </MenuItem>
+              <MenuItem value="calibrate_verify">
+                <Box display="flex" alignItems="center" gap="8px">
+                  <VerifiedOutlined sx={{ fontSize: 16, color: "#f2b705" }} /> Verify Calibration
+                </Box>
+              </MenuItem>
+              <MenuItem value="calibrate_exercise">
+                <Box display="flex" alignItems="center" gap="8px">
+                  <SpeedOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> Exercise Load Switch
                 </Box>
               </MenuItem>
             </Select>
@@ -1089,9 +1110,9 @@ export default function GroupControl() {
             disabled={actionLoading}
             startIcon={actionLoading ? <CircularProgress size={16} /> : <PowerSettingsNewOutlined />}
             sx={{
-              bgcolor: controlAction.endsWith("_off") ? "#db4f4a" : "#4cceac",
+              bgcolor: controlAction.startsWith("calibrate") ? "#6870fa" : controlAction.endsWith("_off") ? "#db4f4a" : "#4cceac",
               color: "#fff",
-              "&:hover": { bgcolor: controlAction.endsWith("_off") ? "#c53030" : "#38a89d" },
+              "&:hover": { bgcolor: controlAction.startsWith("calibrate") ? "#5a60d8" : controlAction.endsWith("_off") ? "#c53030" : "#38a89d" },
             }}
           >
             {actionLoading ? "Sending..." : "Execute"}

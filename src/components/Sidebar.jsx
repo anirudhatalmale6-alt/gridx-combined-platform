@@ -378,7 +378,7 @@ const Sidebar = () => {
           accentColor={colors.greenAccent[500]}
         />
         <NavItem
-          title="Load Control"
+          title="Group Control"
           to="/load-control"
           icon={<TuneIcon />}
           isCollapsed={isCollapsed}

@@ -81,6 +81,8 @@ import {
   WbSunnyOutlined,
   TokenOutlined,
   PersonAddOutlined,
+  BuildOutlined,
+  VerifiedOutlined,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -346,6 +348,8 @@ export default function MeterProfile() {
   const [configBaseUrl, setConfigBaseUrl] = useState("");
   const [configTokenId, setConfigTokenId] = useState("");
   const [configStatus, setConfigStatus] = useState(null);
+  const [calibrationLog, setCalibrationLog] = useState([]);
+  const [calibrationLoading, setCalibrationLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -395,6 +399,12 @@ export default function MeterProfile() {
       try {
         const tokenRes = await meterAPI.getStsTokens(drn);
         if (Array.isArray(tokenRes)) setTokenHistory(tokenRes.filter(t => t.token_id));
+      } catch (e) { /* ignore */ }
+
+      // Fetch calibration log
+      try {
+        const calRes = await meterConfigAPI.getCalibrationLog(drn);
+        if (calRes?.data) setCalibrationLog(calRes.data);
       } catch (e) { /* ignore */ }
 
       setLoading(false);
@@ -711,6 +721,21 @@ export default function MeterProfile() {
           setConfigBaseUrl("");
           setSnackbar({ open: true, message: "Base URL update command sent", severity: "success" });
           break;
+        case "calibrate_auto":
+          await meterConfigAPI.calibrate(drn, "auto");
+          setSnackbar({ open: true, message: "Auto-calibration command sent", severity: "success" });
+          meterConfigAPI.getCalibrationLog(drn).then(r => setCalibrationLog(r?.data || [])).catch(() => {});
+          break;
+        case "calibrate_verify":
+          await meterConfigAPI.calibrate(drn, "verify");
+          setSnackbar({ open: true, message: "Calibration verify command sent", severity: "success" });
+          meterConfigAPI.getCalibrationLog(drn).then(r => setCalibrationLog(r?.data || [])).catch(() => {});
+          break;
+        case "calibrate_exercise":
+          await meterConfigAPI.calibrate(drn, "exercise");
+          setSnackbar({ open: true, message: "Exercise load switch command sent", severity: "success" });
+          meterConfigAPI.getCalibrationLog(drn).then(r => setCalibrationLog(r?.data || [])).catch(() => {});
+          break;
         default:
           break;
       }
@@ -731,6 +756,7 @@ export default function MeterProfile() {
     if (tab === 3 && drn) {
       meterConfigAPI.getStatus(drn).then(r => setConfigStatus(r?.data || null)).catch(() => {});
       meterConfigAPI.getAuthorizedNumbers(drn).then(r => setAuthorizedNumbers(r?.numbers || [])).catch(() => {});
+      meterConfigAPI.getCalibrationLog(drn).then(r => setCalibrationLog(r?.data || [])).catch(() => {});
     }
   }, [tab, drn]);
 
@@ -1334,6 +1360,15 @@ export default function MeterProfile() {
               label="Current Balance"
               value={`${parseFloat(units).toFixed(1)} kWh`}
               color="#00b4d8"
+            />
+            <InfoRow
+              label="Last Calibrated"
+              value={calibrationLog.length > 0 && calibrationLog[0].completed_at
+                ? new Date(calibrationLog[0].completed_at).toLocaleString()
+                : "Never"}
+              color={calibrationLog.length > 0 && calibrationLog[0].result === "VERIFIED" ? "#4cceac"
+                : calibrationLog.length > 0 && calibrationLog[0].result === "ACCEPTABLE" ? "#f2b705"
+                : colors.grey[400]}
             />
           </Box>
 
@@ -2377,6 +2412,99 @@ export default function MeterProfile() {
             {configStatus?.sleepMode && (
               <Typography variant="caption" color={colors.grey[400]} mt={1} display="block">
                 Last: {configStatus.sleepMode.sleep_mode_enabled ? "Sleep" : "Awake"} {configStatus.sleepMode.processed ? "(processed)" : "(pending)"}
+              </Typography>
+            )}
+          </Box>
+
+          {/* ── Calibration ── */}
+          <Box
+            gridColumn="span 12"
+            gridRow="span 2"
+            backgroundColor={colors.primary[400]}
+            p="20px"
+            borderRadius="4px"
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6" color={colors.grey[100]} fontWeight="bold">
+                Meter Calibration
+              </Typography>
+              {calibrationLog.length > 0 && calibrationLog[0].completed_at && (
+                <Chip
+                  label={`Last calibrated: ${new Date(calibrationLog[0].completed_at).toLocaleString()}`}
+                  size="small"
+                  sx={{ bgcolor: "rgba(104,112,250,0.15)", color: "#868dfb", fontWeight: 600, fontSize: "0.72rem" }}
+                />
+              )}
+            </Box>
+
+            <Box display="flex" gap={2} mb={2}>
+              <Button variant="outlined" startIcon={<BuildOutlined />} disabled={commandLoading}
+                onClick={() => setConfirmDialog({ open: true, type: "config_calibrate_auto", action: "calibrate_auto" })}
+                sx={{ textTransform: "none", color: "#6870fa", borderColor: "#6870fa", flex: 1 }}>
+                Auto-Calibrate
+              </Button>
+              <Button variant="outlined" startIcon={<VerifiedOutlined />} disabled={commandLoading}
+                onClick={() => handleConfigAction("calibrate_verify")}
+                sx={{ textTransform: "none", color: "#f2b705", borderColor: "#f2b705", flex: 1 }}>
+                Verify Calibration
+              </Button>
+              <Button variant="outlined" startIcon={<SpeedOutlined />} disabled={commandLoading}
+                onClick={() => handleConfigAction("calibrate_exercise")}
+                sx={{ textTransform: "none", color: "#4cceac", borderColor: "#4cceac", flex: 1 }}>
+                Exercise Load Switch
+              </Button>
+            </Box>
+
+            {calibrationLog.length > 0 ? (
+              <TableContainer sx={{ maxHeight: 160, overflow: "auto" }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Date</TableCell>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Action</TableCell>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Result</TableCell>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Deviation</TableCell>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Health</TableCell>
+                      <TableCell sx={{ bgcolor: colors.primary[500], color: colors.grey[100], fontSize: "0.75rem", py: 0.5 }}>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {calibrationLog.slice(0, 10).map((log, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell sx={{ color: colors.grey[300], fontSize: "0.72rem", py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          {log.created_at ? new Date(log.created_at).toLocaleString() : "-"}
+                        </TableCell>
+                        <TableCell sx={{ color: colors.grey[100], fontSize: "0.72rem", py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          {log.action}
+                        </TableCell>
+                        <TableCell sx={{ py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          <Chip label={log.result || "-"} size="small" sx={{
+                            fontSize: "0.68rem", height: 20,
+                            bgcolor: log.result === "VERIFIED" ? "rgba(76,206,172,0.15)" : log.result === "ACCEPTABLE" ? "rgba(242,183,5,0.15)" : log.result === "NEEDS_ATTENTION" ? "rgba(219,79,74,0.15)" : "rgba(108,117,125,0.2)",
+                            color: log.result === "VERIFIED" ? "#4cceac" : log.result === "ACCEPTABLE" ? "#f2b705" : log.result === "NEEDS_ATTENTION" ? "#db4f4a" : colors.grey[400],
+                          }} />
+                        </TableCell>
+                        <TableCell sx={{ color: colors.grey[300], fontSize: "0.72rem", py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          {log.deviation_pct != null ? `${Number(log.deviation_pct).toFixed(1)}%` : "-"}
+                        </TableCell>
+                        <TableCell sx={{ color: colors.grey[300], fontSize: "0.72rem", py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          {log.health_score != null ? log.health_score : "-"}
+                        </TableCell>
+                        <TableCell sx={{ py: 0.5, borderBottom: `1px solid ${colors.primary[500]}` }}>
+                          <Chip label={log.status} size="small" sx={{
+                            fontSize: "0.68rem", height: 20,
+                            bgcolor: log.status === "completed" ? "rgba(76,206,172,0.15)" : log.status === "pending" ? "rgba(242,183,5,0.15)" : "rgba(219,79,74,0.15)",
+                            color: log.status === "completed" ? "#4cceac" : log.status === "pending" ? "#f2b705" : "#db4f4a",
+                          }} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography color={colors.grey[400]} fontSize="0.85rem">
+                No calibration history found
               </Typography>
             )}
           </Box>
@@ -4315,7 +4443,7 @@ export default function MeterProfile() {
       >
         <DialogTitle>
           {confirmDialog.type?.startsWith("config_")
-            ? `Confirm ${confirmDialog.action === "reset_ble" ? "Reset BLE PIN" : confirmDialog.action === "clear_auth" ? "Clear Authorized Numbers" : "Restart Meter"}`
+            ? `Confirm ${confirmDialog.action === "reset_ble" ? "Reset BLE PIN" : confirmDialog.action === "clear_auth" ? "Clear Authorized Numbers" : confirmDialog.action === "calibrate_auto" ? "Auto-Calibration" : "Restart Meter"}`
             : `Confirm ${confirmDialog.type?.replace("_state", "").replace("mains", "Mains").replace("heater", "Heater")} ${confirmDialog.action === "enable" ? "Enable" : confirmDialog.action === "disable" ? "Disable" : confirmDialog.action === "on" ? "Turn ON" : "Turn OFF"}`
           }
         </DialogTitle>
@@ -4330,6 +4458,7 @@ export default function MeterProfile() {
                     : confirmDialog.action === "restart_meter" ? "restart the meter"
                     : confirmDialog.action === "sleep_on" ? "put the meter into deep sleep mode"
                     : confirmDialog.action === "set_base_url" ? `update the base URL to "${configBaseUrl}"`
+                    : confirmDialog.action === "calibrate_auto" ? "start auto-calibration on this meter"
                     : confirmDialog.action}
                 </strong>{" "}
                 for meter <strong>{drn}</strong>?
@@ -4399,7 +4528,7 @@ export default function MeterProfile() {
             variant="contained"
             sx={{
               backgroundColor:
-                confirmDialog.action === "enable" || confirmDialog.action === "on" || confirmDialog.action === "reset_ble" || confirmDialog.action === "clear_auth"
+                confirmDialog.action === "enable" || confirmDialog.action === "on" || confirmDialog.action === "reset_ble" || confirmDialog.action === "clear_auth" || confirmDialog.action?.startsWith("calibrate")
                   ? colors.greenAccent[700]
                   : "#db4f4a",
               "&:hover": {

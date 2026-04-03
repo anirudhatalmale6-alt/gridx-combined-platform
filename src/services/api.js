@@ -239,6 +239,9 @@ export const meterConfigAPI = {
   getMeterProfiles: () => get('/meter-config/meter-profiles'),
   // Authorized numbers
   getAuthorizedNumbers: (drn) => get(`/meterAuthorizedNumbers/${drn}`),
+  // Calibration
+  calibrate: (drn, action) => post(`/calibrate/${drn}`, { action }),
+  getCalibrationLog: (drn) => get(`/calibration-log/${drn}`),
 };
 
 // ===== METER BILLING =====
