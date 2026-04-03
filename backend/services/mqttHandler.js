@@ -333,10 +333,10 @@ function handleTokenBin(drn, buf) {
 function handleAckJson(drn, data) {
   console.log(`[MQTT] ACK from ${drn}: type=${data.type}, status=${data.status}${data.detail ? ', detail=' + data.detail : ''}${data.amount !== undefined ? ', amount=' + data.amount : ''}`);
 
-  // On successful geyser control ACK, immediately update MeterLoadControl
-  // so the app can poll and see the new state without waiting 15 min for the load topic
-  if (data.type === 'geyser_control' && data.status === 'ok') {
-    const geyserState = data.detail === 'on' ? 1 : 0;
+  // On successful geyser control ACK (gc = control enable/disable, gs = relay state on/off)
+  // ESP32 sends type: "gc" or "gs", detail: "enabled"/"disabled" or "on"/"off"
+  if ((data.type === 'gc' || data.type === 'gs' || data.type === 'geyser_control') && data.status === 'ok') {
+    const geyserState = (data.detail === 'on' || data.detail === 'enabled') ? 1 : 0;
     // Get last known mains values to build a complete record
     db.query(
       'SELECT mains_state, mains_control FROM MeterLoadControl WHERE DRN = ? ORDER BY date_time DESC LIMIT 1',
@@ -462,9 +462,10 @@ function handleAckJson(drn, data) {
     }
   }
 
-  // On successful mains control ACK, same pattern
-  if (data.type === 'mains_control' && data.status === 'ok') {
-    const mainsState = data.detail === 'on' ? 1 : 0;
+  // On successful mains control ACK (mc = control enable/disable, ms = relay state on/off)
+  // ESP32 sends type: "mc" or "ms", detail: "enabled"/"disabled" or "on"/"off"
+  if ((data.type === 'mc' || data.type === 'ms' || data.type === 'mains_control') && data.status === 'ok') {
+    const mainsState = (data.detail === 'on' || data.detail === 'enabled') ? 1 : 0;
     db.query(
       'SELECT geyser_state, geyser_control FROM MeterLoadControl WHERE DRN = ? ORDER BY date_time DESC LIMIT 1',
       [drn],

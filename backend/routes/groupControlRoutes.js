@@ -241,15 +241,16 @@ router.post('/loadcontrol/execute', authenticateToken, async (req, res) => {
     // Determine which control table to insert into
     const isMainsAction = action_type.startsWith('mains');
     const state = action_type.endsWith('_on') ? '1' : '0';
-    const tableName = isMainsAction ? 'MeterMainsControlTable' : 'MeterHeaterControlTable';
+    const tableName = isMainsAction ? 'MeterMainsStateTable' : 'MeterHeaterStateTable';
     const controlReason = reason || `Group load control: ${action_type}`;
 
     // Insert control commands for each meter
     let successCount = 0;
     let failCount = 0;
 
-    // Build MQTT command: { mc: 0|1 } for mains, { gc: 0|1 } for geyser
-    const mqttCmd = isMainsAction ? { mc: parseInt(state) } : { gc: parseInt(state) };
+    // Build MQTT command: { ms: 0|1 } for mains state, { gs: 0|1 } for geyser state
+    // ms/gs = relay ON/OFF (state), mc/gc = enable/disable (control permission)
+    const mqttCmd = isMainsAction ? { ms: parseInt(state) } : { gs: parseInt(state) };
 
     for (const drn of targetMeters) {
       try {
