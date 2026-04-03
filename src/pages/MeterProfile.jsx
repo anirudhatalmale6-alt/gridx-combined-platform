@@ -730,7 +730,7 @@ export default function MeterProfile() {
   useEffect(() => {
     if (tab === 3 && drn) {
       meterConfigAPI.getStatus(drn).then(r => setConfigStatus(r?.data || null)).catch(() => {});
-      meterConfigAPI.getAuthorizedNumbers(drn).then(r => setAuthorizedNumbers(r?.data?.numbers || [])).catch(() => {});
+      meterConfigAPI.getAuthorizedNumbers(drn).then(r => setAuthorizedNumbers(r?.numbers || [])).catch(() => {});
     }
   }, [tab, drn]);
 
