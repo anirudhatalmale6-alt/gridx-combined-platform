@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Typography, useTheme, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Skeleton } from "@mui/material";
 import { tokens } from "../theme";
 import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import StatBox from "../components/StatBox";
-import { meterAPI, tokenAPI, financeAPI, energyAPI } from "../services/api";
+import { meterAPI, tokenAPI, financeAPI, energyAPI, mqttAPI } from "../services/api";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import { dashboardData as mockDashboard, notifications as mockNotifications } from "../services/mockData";
 import ElectricBoltOutlinedIcon from "@mui/icons-material/ElectricBoltOutlined";
@@ -100,108 +100,54 @@ export default function Dashboard() {
   const [suburbEnergy, setSuburbEnergy] = useState({});
   const [hourlyTokenCounts, setHourlyTokenCounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const refreshRef = useRef(null);
 
-  useEffect(() => {
-    const withTimeout = (promise, ms = 8000) =>
-      Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+  // Primary data source: single MQTT dashboard-stats endpoint (fast, real-time)
+  const fetchMqttStats = useCallback(async () => {
+    try {
+      const stats = await mqttAPI.getDashboardStats();
+      if (!stats?.success) return;
 
-    // Fire-and-forget: each call updates state as soon as it resolves
-    // KPIs load fast, charts load in background — UI is never blocked
-    const fetchKpis = async () => {
-      try {
-        const [meterDash, tokenAmt, tokenCnt, dayEnergy] = await Promise.allSettled([
-          withTimeout(meterAPI.getDashboard()),
-          withTimeout(tokenAPI.getAmount()),
-          withTimeout(tokenAPI.getCount()),
-          withTimeout(energyAPI.getCurrentDay()),
-        ]);
-        if (meterDash.status === "fulfilled" && meterDash.value?.data) {
-          const d = meterDash.value.data;
-          setKpis((prev) => ({
-            ...prev,
-            totalMeters: d.totalMeters || d.total || prev.totalMeters,
-            activeMeters: d.activeMeters || d.active || prev.activeMeters,
-            inactiveMeters: d.inactiveMeters || d.inactive || prev.inactiveMeters,
-            systemLoad: d.systemLoad || prev.systemLoad,
-          }));
-        }
-        if (tokenAmt.status === "fulfilled") {
-          setKpis((prev) => ({ ...prev, todayRevenue: parseFloat(tokenAmt.value?.grandTotal) || prev.todayRevenue }));
-        }
-        if (tokenCnt.status === "fulfilled") {
-          setKpis((prev) => ({ ...prev, todayTokens: tokenCnt.value?.grandTotal || prev.todayTokens }));
-        }
-        if (dayEnergy.status === "fulfilled") {
-          setKpis((prev) => ({ ...prev, avgConsumption: dayEnergy.value?.totalEnergy || prev.avgConsumption }));
-        }
-      } catch (e) { console.error("KPI fetch:", e); }
-      setLoading(false);
-    };
+      // Update KPIs from MQTT-derived data
+      setKpis((prev) => ({
+        ...prev,
+        totalMeters: stats.kpis.totalMeters || prev.totalMeters,
+        activeMeters: stats.kpis.liveMeters || prev.activeMeters,
+        inactiveMeters: stats.kpis.offlineMeters || prev.inactiveMeters,
+        systemLoad: stats.kpis.systemLoad || prev.systemLoad,
+        todayRevenue: stats.tokens.todayRevenue || prev.todayRevenue,
+        todayTokens: stats.tokens.todayCount || prev.todayTokens,
+        avgConsumption: stats.energy.todayKwh || prev.avgConsumption,
+        // Additional MQTT-specific KPIs
+        liveMeters: stats.kpis.liveMeters || 0,
+        offlineMeters: stats.kpis.offlineMeters || 0,
+        avgPower: stats.power.avgPower || 0,
+        peakPower: stats.power.peakPower || 0,
+        avgVoltage: stats.power.avgVoltage || 0,
+        reportingMeters: stats.power.reportingMeters || 0,
+      }));
 
-    const fetchCharts = async () => {
-      // Week trend
-      withTimeout(financeAPI.getPastWeekTokens()).then((val) => {
-        if (Array.isArray(val)) {
-          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-          const trend = val.map((item) => {
-            const d = new Date(item.date || item.Date);
-            return {
-              day: dayNames[d.getDay()] || "?",
-              revenue: parseFloat(item.total_amount || item.amount || 0),
-              tokens: parseInt(item.token_count || item.count || 0, 10),
-              kWh: parseFloat(item.total_kwh || item.kwh || 0),
-            };
-          });
-          if (trend.length > 0) setSalesTrend(trend);
-        }
-      }).catch(() => {});
+      // Hourly power chart from MQTT data
+      if (Array.isArray(stats.hourlyPower)) {
+        const chartData = stats.hourlyPower.map((val, i) => ({
+          hour: `${i < 10 ? "0" + i : i}:00`,
+          kWh: Number(val) || 0,
+        }));
+        setHourlyData(chartData);
+        const vals = chartData.map((d) => d.kWh);
+        const sum = vals.reduce((a, b) => a + b, 0);
+        const avg = vals.length ? sum / vals.length : 0;
+        setHourlyTotals({
+          averagePower: stats.power.avgPower || avg,
+          peakPower: stats.power.peakPower || Math.max(...vals),
+        });
+      }
 
-      // Area summary
-      withTimeout(meterAPI.getAreaSummary()).then((val) => {
-        if (val) {
-          if (Array.isArray(val.areaPower)) setAreaPower(val.areaPower);
-          if (Array.isArray(val.areaRevenue)) setAreaRevenue(val.areaRevenue);
-        }
-      }).catch(() => {});
-
-      // Hourly power
-      withTimeout(energyAPI.getHourlyPower()).then((hData) => {
-        if (Array.isArray(hData?.sums)) {
-          setHourlyData(hData.sums.map((val, i) => ({
-            hour: `${i < 10 ? '0' + i : i}:00`,
-            kWh: Number(val) || 0,
-          })));
-        }
-      }).catch(() => {});
-
-      // Weekly amount
-      withTimeout(energyAPI.getWeeklyAmount()).then((wData) => {
-        if (wData) {
-          const avgPower = typeof wData.averagePower === "number"
-            ? wData.averagePower
-            : wData?.enhancedSystemPowerAnalysis?.daily_analysis?.overall_average_power || 0;
-          const peakPower = typeof wData.peakPower === "number"
-            ? wData.peakPower
-            : wData?.enhancedSystemPowerAnalysis?.daily_analysis?.overall_peak_power || 0;
-          setHourlyTotals({ averagePower: avgPower, peakPower: peakPower });
-        }
-      }).catch(() => {});
-
-      // Suburb energy (slowest — 10s timeout)
-      withTimeout(energyAPI.getSuburbHourlyEnergy(ALL_SUBURBS), 10000).then((val) => {
-        const sData = val?.data || val;
-        if (typeof sData === "object" && !Array.isArray(sData)) {
-          const fullData = {};
-          ALL_SUBURBS.forEach((s) => { fullData[s] = Number(sData[s]) || 0; });
-          setSuburbEnergy(fullData);
-        }
-      }).catch(() => {});
-
-      // Token entries
-      withTimeout(tokenAPI.getAllTokenEntries()).then((val) => {
-        const data = Array.isArray(val?.data) ? val.data : Array.isArray(val) ? val : [];
+      // Recent tokens from MQTT
+      if (Array.isArray(stats.recentTokens) && stats.recentTokens.length > 0) {
         const channels = ["Console", "Touch Screen", "SMS", "BLE", "Server"];
-        const txns = data.slice(0, 50).map((t, i) => ({
+        const txns = stats.recentTokens.map((t, i) => ({
           id: t.id || `TXN-${i}`,
           time: t.date_time || new Date().toISOString(),
           customer: t.DRN || "-",
@@ -213,28 +159,86 @@ export default function Dashboard() {
             : (t.display_msg || "").toLowerCase().includes("reject") || (t.display_msg || "").toLowerCase().includes("not authentic") || (t.display_msg || "").toLowerCase().includes("error") ? "Rejected"
             : t.display_msg || "Unknown",
         }));
-        if (txns.length > 0) setRecentTxns(txns);
-      }).catch(() => {});
+        setRecentTxns(txns);
+      }
 
       // Hourly token counts
-      withTimeout(tokenAPI.getHourlyTokenCounts()).then((val) => {
-        const hData = Array.isArray(val?.data) ? val.data : Array.isArray(val) ? val : [];
-        if (hData.length > 0) setHourlyTokenCounts(hData);
-      }).catch(() => {});
-    };
+      if (Array.isArray(stats.hourlyTokens)) {
+        const hTokens = stats.hourlyTokens
+          .map((v, i) => (typeof v === "object" ? { hour: i, ...v } : { hour: i, count: 0, revenue: 0 }))
+          .filter((v) => v.count > 0);
+        if (hTokens.length > 0) setHourlyTokenCounts(hTokens);
+      }
 
-    // KPIs first (fast), then charts stream in
-    fetchKpis();
-    fetchCharts();
+      setLastUpdate(new Date());
+    } catch (e) {
+      console.error("MQTT dashboard fetch:", e);
+    }
+    setLoading(false);
   }, []);
+
+  // Secondary: slower chart data (suburb energy, weekly trends, area summary)
+  const fetchSlowCharts = useCallback(async () => {
+    const withTimeout = (promise, ms = 8000) =>
+      Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+
+    // Week trend
+    withTimeout(financeAPI.getPastWeekTokens()).then((val) => {
+      if (Array.isArray(val)) {
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const trend = val.map((item) => {
+          const d = new Date(item.date || item.Date);
+          return {
+            day: dayNames[d.getDay()] || "?",
+            revenue: parseFloat(item.total_amount || item.amount || 0),
+            tokens: parseInt(item.token_count || item.count || 0, 10),
+            kWh: parseFloat(item.total_kwh || item.kwh || 0),
+          };
+        });
+        if (trend.length > 0) setSalesTrend(trend);
+      }
+    }).catch(() => {});
+
+    // Area summary
+    withTimeout(meterAPI.getAreaSummary()).then((val) => {
+      if (val) {
+        if (Array.isArray(val.areaPower)) setAreaPower(val.areaPower);
+        if (Array.isArray(val.areaRevenue)) setAreaRevenue(val.areaRevenue);
+      }
+    }).catch(() => {});
+
+    // Suburb energy
+    withTimeout(energyAPI.getSuburbHourlyEnergy(ALL_SUBURBS), 10000).then((val) => {
+      const sData = val?.data || val;
+      if (typeof sData === "object" && !Array.isArray(sData)) {
+        const fullData = {};
+        ALL_SUBURBS.forEach((s) => { fullData[s] = Number(sData[s]) || 0; });
+        setSuburbEnergy(fullData);
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Initial load: fast MQTT stats first, then slow charts
+    fetchMqttStats();
+    fetchSlowCharts();
+
+    // Auto-refresh MQTT stats every 30 seconds for real-time dashboard
+    refreshRef.current = setInterval(fetchMqttStats, 30000);
+    return () => clearInterval(refreshRef.current);
+  }, [fetchMqttStats, fetchSlowCharts]);
 
   return (
     <Box m="20px">
       <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Header title="DASHBOARD" subtitle="Meters Network Summary" />
-        <Box display="flex" gap={0.5}>
+        <Header title="DASHBOARD" subtitle="Meters Network Summary — MQTT Real-Time" />
+        <Box display="flex" gap={0.5} alignItems="center">
           <DataBadge live />
-          <DataBadge />
+          {lastUpdate && (
+            <Typography variant="caption" sx={{ color: colors.grey[400], fontSize: "0.65rem" }}>
+              Auto-refresh 30s
+            </Typography>
+          )}
         </Box>
       </Box>
 
@@ -245,6 +249,7 @@ export default function Dashboard() {
         gap="5px"
       >
         {/* ROW 1: 4 Stat Boxes */}
+        {/* ROW 1a: 4 Meter Status Boxes (MQTT live data) */}
         <Box
           gridColumn="span 3"
           backgroundColor={colors.primary[400]}
@@ -255,8 +260,8 @@ export default function Dashboard() {
           <StatBox
             title={fmt(kpis.totalMeters)}
             subtitle="Total Meters"
-            progress="0.75"
-            increase="+2.4%"
+            progress={kpis.totalMeters > 0 ? String(Math.min(1, (kpis.liveMeters || kpis.activeMeters) / kpis.totalMeters)) : "0"}
+            increase={kpis.reportingMeters ? `${kpis.reportingMeters} reporting` : ""}
             link="/meters"
             icon={
               <ElectricMeterOutlinedIcon
@@ -274,14 +279,14 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={fmt(kpis.activeMeters)}
-            subtitle="Active Meters"
-            progress="0.89"
-            increase="+1.2%"
+            title={fmt(kpis.liveMeters || kpis.activeMeters)}
+            subtitle="Live Meters"
+            progress={kpis.totalMeters > 0 ? String((kpis.liveMeters || kpis.activeMeters) / kpis.totalMeters) : "0"}
+            increase="via MQTT"
             link="/meters"
             icon={
               <ElectricBoltOutlinedIcon
-                sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
+                sx={{ color: "#4cceac", fontSize: "26px" }}
               />
             }
           />
@@ -295,13 +300,56 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={fmt(kpis.inactiveMeters)}
-            subtitle="Inactive Meters"
-            progress="0.11"
-            increase="-0.8%"
+            title={fmt(kpis.offlineMeters || kpis.inactiveMeters)}
+            subtitle="Offline Meters"
+            progress={kpis.totalMeters > 0 ? String((kpis.offlineMeters || kpis.inactiveMeters) / kpis.totalMeters) : "0"}
+            increase="no signal > 5m"
             link="/meters"
             icon={
               <BatteryChargingFullIcon
+                sx={{ color: "#db4f4a", fontSize: "26px" }}
+              />
+            }
+          />
+        </Box>
+
+        <Box
+          gridColumn="span 3"
+          backgroundColor={colors.primary[400]}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <StatBox
+            title={`${kpis.avgPower ? kpis.avgPower.toFixed(1) : kpis.systemLoad + "%"}`}
+            subtitle={kpis.avgPower ? "Avg Power (W)" : "System Load"}
+            progress={String(Math.min(1, (kpis.avgPower || 0) / 5000))}
+            increase={kpis.peakPower ? `Peak: ${kpis.peakPower.toFixed(0)} W` : ""}
+            link="/"
+            icon={
+              <BoltIcon
+                sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
+              />
+            }
+          />
+        </Box>
+
+        {/* ROW 1b: 4 Revenue/Energy Boxes */}
+        <Box
+          gridColumn="span 3"
+          backgroundColor={colors.primary[400]}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <StatBox
+            title={fmtCurrency(kpis.todayRevenue)}
+            subtitle="Today's Revenue"
+            progress="0.6"
+            increase={kpis.todayTokens ? `${fmt(kpis.todayTokens)} tokens` : ""}
+            link="/"
+            icon={
+              <AccountBalanceWalletOutlinedIcon
                 sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
               />
             }
@@ -316,13 +364,55 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={`${kpis.systemLoad}%`}
-            subtitle="Current System Load"
-            progress={String(kpis.systemLoad / 100)}
-            increase="+3.1%"
+            title={fmt(kpis.todayTokens)}
+            subtitle="Tokens Today"
+            progress="0.5"
+            increase="from MQTT"
             link="/"
             icon={
-              <BoltIcon
+              <ShoppingCartIcon
+                sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
+              />
+            }
+          />
+        </Box>
+
+        <Box
+          gridColumn="span 3"
+          backgroundColor={colors.primary[400]}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <StatBox
+            title={`${Number(kpis.avgConsumption || 0).toFixed(1)} kWh`}
+            subtitle="Today's Consumption"
+            progress="0.45"
+            increase="total energy"
+            link="/"
+            icon={
+              <FlashOnIcon
+                sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
+              />
+            }
+          />
+        </Box>
+
+        <Box
+          gridColumn="span 3"
+          backgroundColor={colors.primary[400]}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <StatBox
+            title={kpis.avgVoltage ? `${kpis.avgVoltage.toFixed(1)} V` : "—"}
+            subtitle="Avg Voltage"
+            progress={kpis.avgVoltage ? String(Math.min(1, kpis.avgVoltage / 250)) : "0"}
+            increase={lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
+            link="/"
+            icon={
+              <PowerOutlinedIcon
                 sx={{ color: colors.greenAccent[500], fontSize: "26px" }}
               />
             }

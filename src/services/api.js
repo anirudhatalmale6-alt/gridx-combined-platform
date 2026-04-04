@@ -334,6 +334,8 @@ export const mqttAPI = {
   getStatus: () => get('/mqtt/status'),
   sendCommand: (drn, command) => post(`/mqtt/command/${drn}`, command),
   testPublish: (drn) => post('/mqtt/test-publish', { drn }),
+  getLiveStatus: (threshold) => get(`/mqtt/live-status${threshold ? '?threshold=' + threshold : ''}`),
+  getDashboardStats: () => get('/mqtt/dashboard-stats'),
 };
 
 // ===== SUBURB ENERGY =====

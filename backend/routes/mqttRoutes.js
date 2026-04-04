@@ -451,4 +451,218 @@ router.post('/mqtt/test-publish', authenticateToken, (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// LIVE STATUS — meter online/offline based on MQTT last-seen
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /mqtt/live-status
+ * Returns live/offline meter counts and per-meter status.
+ * A meter is "live" if it sent an MQTT message within the last 5 minutes.
+ * Query: ?threshold=300 (seconds, default 300 = 5 min)
+ */
+router.get('/mqtt/live-status', authenticateToken, async (req, res) => {
+  try {
+    const thresholdSec = parseInt(req.query.threshold) || 300;
+
+    const [summary] = await Promise.all([
+      queryAll(
+        `SELECT
+           COUNT(*) as totalTracked,
+           SUM(CASE WHEN last_seen >= NOW() - INTERVAL ? SECOND THEN 1 ELSE 0 END) as liveCount,
+           SUM(CASE WHEN last_seen < NOW() - INTERVAL ? SECOND THEN 1 ELSE 0 END) as offlineCount
+         FROM MeterLastSeen`,
+        [thresholdSec, thresholdSec]
+      ),
+    ]);
+
+    const meters = await queryAll(
+      `SELECT DRN, last_seen, last_topic, message_count,
+              CASE WHEN last_seen >= NOW() - INTERVAL ? SECOND THEN 'live' ELSE 'offline' END as status
+       FROM MeterLastSeen ORDER BY last_seen DESC`,
+      [thresholdSec]
+    );
+
+    const s = summary[0] || {};
+    res.json({
+      success: true,
+      threshold_seconds: thresholdSec,
+      totalTracked: s.totalTracked || 0,
+      liveCount: parseInt(s.liveCount) || 0,
+      offlineCount: parseInt(s.offlineCount) || 0,
+      meters,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// DASHBOARD STATS — aggregated MQTT-logged data for dashboard
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /mqtt/dashboard-stats
+ * Single endpoint returning all dashboard KPIs from MQTT-logged data:
+ *   - Live/offline counts, total meters
+ *   - System power (latest from all meters)
+ *   - Today's energy consumption
+ *   - Today's token count and revenue
+ *   - Hourly power breakdown (24h)
+ *   - Recent token entries
+ */
+router.get('/mqtt/dashboard-stats', authenticateToken, async (req, res) => {
+  try {
+    const thresholdSec = parseInt(req.query.threshold) || 300;
+
+    // Run all queries in parallel
+    const [
+      liveStatus,
+      totalMeters,
+      systemPower,
+      todayEnergy,
+      todayTokens,
+      hourlyPower,
+      recentTokens,
+      hourlyTokenCounts,
+    ] = await Promise.allSettled([
+      // 1. Live/offline from MeterLastSeen
+      queryAll(
+        `SELECT
+           COUNT(*) as totalTracked,
+           SUM(CASE WHEN last_seen >= NOW() - INTERVAL ? SECOND THEN 1 ELSE 0 END) as liveCount,
+           SUM(CASE WHEN last_seen < NOW() - INTERVAL ? SECOND THEN 1 ELSE 0 END) as offlineCount
+         FROM MeterLastSeen`,
+        [thresholdSec, thresholdSec]
+      ),
+      // 2. Total registered meters
+      queryAll('SELECT COUNT(DISTINCT DRN) as total FROM MeterProfileReal', []),
+      // 3. System-wide power (avg of latest reading per meter in last 10 min)
+      queryAll(
+        `SELECT
+           ROUND(AVG(p.active_power), 1) as avgPower,
+           ROUND(MAX(p.active_power), 1) as peakPower,
+           ROUND(AVG(p.voltage), 1) as avgVoltage,
+           ROUND(AVG(p.current), 3) as avgCurrent,
+           ROUND(AVG(p.power_factor), 2) as avgPF,
+           COUNT(DISTINCT p.DRN) as reportingMeters
+         FROM MeteringPower p
+         INNER JOIN (
+           SELECT DRN, MAX(id) as maxId FROM MeteringPower
+           WHERE date_time >= NOW() - INTERVAL 10 MINUTE
+           GROUP BY DRN
+         ) latest ON p.DRN = latest.DRN AND p.id = latest.maxId`,
+        []
+      ),
+      // 4. Today's total energy consumption
+      queryAll(
+        `SELECT
+           ROUND(SUM(e.units), 2) as totalKwh,
+           COUNT(DISTINCT e.DRN) as metersReporting
+         FROM MeterCumulativeEnergyUsage e
+         WHERE DATE(e.date_time) = CURDATE()`,
+        []
+      ),
+      // 5. Today's tokens (count + revenue from STSTokesInfo)
+      queryAll(
+        `SELECT
+           COUNT(*) as tokenCount,
+           ROUND(COALESCE(SUM(token_amount), 0), 2) as totalRevenue
+         FROM STSTokesInfo
+         WHERE DATE(date_time) = CURDATE()`,
+        []
+      ),
+      // 6. Hourly power (24h breakdown)
+      queryAll(
+        `SELECT
+           HOUR(date_time) as hour,
+           ROUND(AVG(active_power), 2) as avgPower,
+           ROUND(SUM(active_power), 2) as totalPower,
+           COUNT(*) as readings
+         FROM MeteringPower
+         WHERE DATE(date_time) = CURDATE()
+         GROUP BY HOUR(date_time)
+         ORDER BY hour`,
+        []
+      ),
+      // 7. Recent token entries (last 30)
+      queryAll(
+        `SELECT id, DRN, token_id, token_cls, submission_Method, display_msg,
+                display_auth_result, display_token_result, display_validation_result,
+                token_time, token_amount, date_time
+         FROM STSTokesInfo
+         ORDER BY id DESC LIMIT 30`,
+        []
+      ),
+      // 8. Hourly token counts for today
+      queryAll(
+        `SELECT
+           HOUR(date_time) as hour,
+           COUNT(*) as count,
+           ROUND(COALESCE(SUM(token_amount), 0), 2) as revenue
+         FROM STSTokesInfo
+         WHERE DATE(date_time) = CURDATE()
+         GROUP BY HOUR(date_time)
+         ORDER BY hour`,
+        []
+      ),
+    ]);
+
+    // Build 24-hour array for hourly power
+    const hourlyPowerArr = new Array(24).fill(0);
+    if (hourlyPower.status === 'fulfilled') {
+      hourlyPower.value.forEach(row => {
+        hourlyPowerArr[row.hour] = row.avgPower || 0;
+      });
+    }
+
+    // Build 24-hour array for hourly tokens
+    const hourlyTokenArr = new Array(24).fill(0);
+    if (hourlyTokenCounts.status === 'fulfilled') {
+      hourlyTokenCounts.value.forEach(row => {
+        hourlyTokenArr[row.hour] = { count: row.count, revenue: row.revenue };
+      });
+    }
+
+    const live = liveStatus.status === 'fulfilled' ? liveStatus.value[0] || {} : {};
+    const total = totalMeters.status === 'fulfilled' ? totalMeters.value[0] || {} : {};
+    const power = systemPower.status === 'fulfilled' ? systemPower.value[0] || {} : {};
+    const energy = todayEnergy.status === 'fulfilled' ? todayEnergy.value[0] || {} : {};
+    const tokens = todayTokens.status === 'fulfilled' ? todayTokens.value[0] || {} : {};
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      kpis: {
+        totalMeters: parseInt(total.total) || 0,
+        liveMeters: parseInt(live.liveCount) || 0,
+        offlineMeters: parseInt(live.offlineCount) || 0,
+        totalTracked: parseInt(live.totalTracked) || 0,
+        systemLoad: power.avgPower ? Math.min(100, Math.round((power.avgPower / 5000) * 100)) : 0,
+      },
+      power: {
+        avgPower: parseFloat(power.avgPower) || 0,
+        peakPower: parseFloat(power.peakPower) || 0,
+        avgVoltage: parseFloat(power.avgVoltage) || 0,
+        avgCurrent: parseFloat(power.avgCurrent) || 0,
+        avgPF: parseFloat(power.avgPF) || 0,
+        reportingMeters: parseInt(power.reportingMeters) || 0,
+      },
+      energy: {
+        todayKwh: parseFloat(energy.totalKwh) || 0,
+        metersReporting: parseInt(energy.metersReporting) || 0,
+      },
+      tokens: {
+        todayCount: parseInt(tokens.tokenCount) || 0,
+        todayRevenue: parseFloat(tokens.totalRevenue) || 0,
+      },
+      hourlyPower: hourlyPowerArr,
+      hourlyTokens: hourlyTokenArr,
+      recentTokens: recentTokens.status === 'fulfilled' ? recentTokens.value : [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

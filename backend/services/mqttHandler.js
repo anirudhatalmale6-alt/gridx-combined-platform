@@ -176,6 +176,15 @@ function ensureTables() {
     INDEX idx_status (status)
   )`, (err) => { if (err) console.error('[MQTT] CreditTransfers table error:', err.message); });
 
+  // Live status tracking — updated on every MQTT message from a meter
+  db.query(`CREATE TABLE IF NOT EXISTS MeterLastSeen (
+    DRN VARCHAR(50) PRIMARY KEY,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_topic VARCHAR(30),
+    message_count INT UNSIGNED DEFAULT 1,
+    INDEX idx_last_seen (last_seen)
+  )`, (err) => { if (err) console.error('[MQTT] MeterLastSeen table error:', err.message); });
+
   db.query(`CREATE TABLE IF NOT EXISTS MeterCalibrationLog (
     id INT AUTO_INCREMENT PRIMARY KEY,
     DRN VARCHAR(50) NOT NULL,
@@ -242,6 +251,14 @@ function handleMessage(topic, buf) {
 
   const drn = parts[1];
   const type = parts[2];
+
+  // Update last-seen timestamp for live/offline tracking
+  db.query(
+    `INSERT INTO MeterLastSeen (DRN, last_seen, last_topic, message_count)
+     VALUES (?, NOW(), ?, 1)
+     ON DUPLICATE KEY UPDATE last_seen = NOW(), last_topic = ?, message_count = message_count + 1`,
+    [drn, type, type]
+  );
 
   // JSON-only topics (ack, health, relay_log, auth_numbers, energy_usage)
   if (['ack', 'health', 'relay_log', 'auth_numbers', 'energy_usage'].includes(type)) {
