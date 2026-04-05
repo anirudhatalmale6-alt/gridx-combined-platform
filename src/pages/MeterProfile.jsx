@@ -3073,36 +3073,60 @@ export default function MeterProfile() {
         );
 
         /* Helper: measurement row - proper grid layout */
-        const MeasRow = ({ label, unit, expected, measured, error, passed }) => (
+        // Thresholds for meaningful comparison (below = no-load condition)
+        const MIN_EXPECTED_CURRENT = 0.01; // 10mA
+        const MIN_EXPECTED_POWER = 1.0;    // 1W
+
+        const MeasRow = ({ label, unit, expected, measured, error, passed }) => {
+          // Determine if this is a no-load condition (expected near zero)
+          const isNoLoad = (label === "Current" && expected != null && Math.abs(Number(expected)) < MIN_EXPECTED_CURRENT)
+            || (label === "Power" && expected != null && Math.abs(Number(expected)) < MIN_EXPECTED_POWER);
+          const effectivePassed = isNoLoad ? true : passed;
+          const showError = error != null && !isNoLoad;
+
+          return (
           <Box sx={{ borderBottom: `1px solid ${tk.border}`, py: 0.8, px: 1,
             "&:last-of-type": { borderBottom: "none" },
             "&:hover": { backgroundColor: tk.rowHover } }}>
             <Box display="grid" gridTemplateColumns="1fr auto" alignItems="center" mb={0.4}>
-              <Typography color={colors.grey[200]} fontSize={fs.md} fontWeight={600}>{label}</Typography>
-              <PassFailChip passed={passed} />
+              <Typography color={colors.grey[200]} fontSize={fs.md} fontWeight={600}>
+                {label}
+                {isNoLoad && <span style={{color: tk.textDim, fontWeight: 400, fontSize: fs.sm}}> (no load)</span>}
+              </Typography>
+              {isNoLoad
+                ? <Chip label="NO LOAD" size="small" sx={{ backgroundColor: "rgba(148,163,184,0.12)", color: tk.textDim, fontWeight: 700, fontSize: fs.sm, border: `1px solid rgba(148,163,184,0.25)`, height: 22 }} />
+                : <PassFailChip passed={effectivePassed} />}
             </Box>
             <Box display="grid" gridTemplateColumns="repeat(3, 1fr)" gap={1}>
               {expected != null && (
                 <Box>
                   <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Expected</Typography>
-                  <Typography color={tk.text} fontSize={fs.md} fontWeight={500}>{Number(expected).toFixed(label === "Current" ? 3 : 1)} {unit}</Typography>
+                  <Typography color={isNoLoad ? tk.textDim : tk.text} fontSize={fs.md} fontWeight={500}>
+                    {isNoLoad ? "—" : `${Number(expected).toFixed(label === "Current" ? 3 : 1)} ${unit}`}
+                  </Typography>
                 </Box>
               )}
               {measured != null && (
                 <Box>
                   <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Measured</Typography>
-                  <Typography color={passed ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(measured).toFixed(label === "Current" ? 3 : 1)} {unit}</Typography>
+                  <Typography color={isNoLoad ? tk.textDim : effectivePassed ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(measured).toFixed(label === "Current" ? 3 : 1)} {unit}</Typography>
                 </Box>
               )}
-              {error != null && (
+              {showError ? (
                 <Box>
                   <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Error</Typography>
                   <Typography color={Math.abs(Number(error)) <= 5 ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(error).toFixed(2)}%</Typography>
                 </Box>
-              )}
+              ) : isNoLoad ? (
+                <Box>
+                  <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Status</Typography>
+                  <Typography color={tk.textDim} fontSize={fs.md} fontWeight={500}>No load detected</Typography>
+                </Box>
+              ) : null}
             </Box>
           </Box>
         );
+        };
 
         /* Shared table header cell style */
         const thSx = { color: tk.textMuted, fontSize: fs.sm, fontWeight: 700, py: 0.6, px: 1.2,
@@ -3255,29 +3279,35 @@ export default function MeterProfile() {
                           {/* Pass/Fail Criteria */}
                           <Box mt={1.5} sx={{ backgroundColor: tk.innerBg, borderRadius: "6px", p: 1.4, border: `1px solid ${tk.border}` }}>
                             <Typography color={colors.grey[300]} fontSize={fs.sm} fontWeight={700} mb={0.5} letterSpacing="0.3px">PASS/FAIL CRITERIA</Typography>
-                            {[
-                              { l: "Voltage Accuracy", v: report.voltage_error, p: report.voltage_passed, criteria: true },
-                              { l: "Current Accuracy", v: report.current_error, p: report.current_passed, criteria: true },
-                              ...(report.power_error != null ? [{ l: "Power Accuracy", v: report.power_error, p: report.power_passed, criteria: false }] : []),
-                            ].map(c => (
-                              <Box key={c.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
-                                sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
-                                <Typography color={tk.textMuted} fontSize={fs.sm}>
-                                  {c.l}: {c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}%` : "N/A"} {"\u2264"} 5.0%
-                                  {!c.criteria && <span style={{color: tk.textDim, fontStyle: "italic"}}> (recorded only)</span>}
-                                </Typography>
-                                <Box display="flex" alignItems="center" gap={0.5}>
-                                  {c.criteria ? (
-                                    <>
-                                      {c.p ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 14 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 14 }} />}
-                                      <Typography color={c.p ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>{c.p ? "PASS" : "FAIL"}</Typography>
-                                    </>
-                                  ) : (
-                                    <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={600}>RECORDED</Typography>
-                                  )}
+                            {(() => {
+                              const currentNoLoad = report.current_expected != null && Math.abs(Number(report.current_expected)) < MIN_EXPECTED_CURRENT;
+                              const powerNoLoad = report.power_expected != null && Math.abs(Number(report.power_expected)) < MIN_EXPECTED_POWER;
+                              return [
+                                { l: "Voltage Accuracy", v: report.voltage_error, p: report.voltage_passed, criteria: true, noLoad: false },
+                                { l: "Current Accuracy", v: report.current_error, p: report.current_passed, criteria: true, noLoad: currentNoLoad },
+                                ...(report.power_measured != null ? [{ l: "Power Accuracy", v: report.power_error, p: report.power_passed, criteria: false, noLoad: powerNoLoad }] : []),
+                              ].map(c => (
+                                <Box key={c.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
+                                  sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
+                                  <Typography color={tk.textMuted} fontSize={fs.sm}>
+                                    {c.l}: {c.noLoad ? "N/A (no load)" : c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}% \u2264 5.0%` : "N/A"}
+                                    {!c.criteria && !c.noLoad && <span style={{color: tk.textDim, fontStyle: "italic"}}> (recorded only)</span>}
+                                  </Typography>
+                                  <Box display="flex" alignItems="center" gap={0.5}>
+                                    {c.noLoad ? (
+                                      <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={600}>NO LOAD</Typography>
+                                    ) : c.criteria ? (
+                                      <>
+                                        {c.p ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 14 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 14 }} />}
+                                        <Typography color={c.p ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>{c.p ? "PASS" : "FAIL"}</Typography>
+                                      </>
+                                    ) : (
+                                      <Typography color={tk.textDim} fontSize={fs.sm} fontWeight={600}>RECORDED</Typography>
+                                    )}
+                                  </Box>
                                 </Box>
-                              </Box>
-                            ))}
+                              ));
+                            })()}
                           </Box>
                           {/* Test metadata */}
                           {(report.attempts != null || report.sample_count != null) && (
