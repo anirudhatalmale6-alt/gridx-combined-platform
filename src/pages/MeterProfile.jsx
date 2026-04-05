@@ -477,6 +477,22 @@ export default function MeterProfile() {
     fetchHourly();
   }, [drn, tab]);
 
+  /* ---------- Auto-refresh commission reports when tab 6 is active ---------- */
+  useEffect(() => {
+    if (tab !== 6) return;
+    // Fetch immediately on tab switch
+    const fetchReports = async () => {
+      try {
+        const res = await commissionReportAPI.getByDRN(drn);
+        if (Array.isArray(res)) setCommissionReports(res);
+      } catch (e) { /* ignore */ }
+    };
+    fetchReports();
+    // Poll every 5 seconds for live updates during commissioning
+    const interval = setInterval(fetchReports, 5000);
+    return () => clearInterval(interval);
+  }, [drn, tab]);
+
   /* ---------- fallback mock meter ---------- */
   const mockMeter = mockMeters.find((m) => m.drn === drn);
 
@@ -3081,7 +3097,7 @@ export default function MeterProfile() {
               {error != null && (
                 <Box>
                   <Typography color={tk.textMuted} fontSize={fs.sm} lineHeight={1.2}>Error</Typography>
-                  <Typography color={Math.abs(Number(error)) <= 10 ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(error).toFixed(2)}%</Typography>
+                  <Typography color={Math.abs(Number(error)) <= 5 ? tk.pass : tk.fail} fontSize={fs.md} fontWeight={600}>{Number(error).toFixed(2)}%</Typography>
                 </Box>
               )}
             </Box>
@@ -3117,6 +3133,16 @@ export default function MeterProfile() {
                 )}
               </Box>
             </Box>
+            <Box display="flex" alignItems="center" gap={1}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, px: 1.2, py: 0.4, borderRadius: "12px",
+                backgroundColor: "rgba(74, 222, 128, 0.12)", border: "1px solid rgba(74, 222, 128, 0.30)" }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#4ADE80",
+                  animation: "pulse 2s ease-in-out infinite",
+                  "@keyframes pulse": { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.4 } } }} />
+                <Typography fontSize="0.7rem" fontWeight={700} color="#4ADE80" letterSpacing="0.5px">LIVE</Typography>
+              </Box>
+              <Typography color={tk.textDim} fontSize="0.68rem">Auto-refreshing every 5s</Typography>
+            </Box>
           </Box>
 
           {commissionReports.length > 0 ? (
@@ -3147,12 +3173,26 @@ export default function MeterProfile() {
                         </Typography>
                       </Box>
                     </Box>
-                    <Chip label={report.overall_passed ? "ALL TESTS PASSED" : "TESTS FAILED"} size="medium"
-                      icon={report.overall_passed ? <CheckCircleOutlined sx={{ fontSize: 18, color: `${tk.pass} !important` }} /> : <CancelOutlined sx={{ fontSize: 18, color: `${tk.fail} !important` }} />}
-                      sx={{ backgroundColor: report.overall_passed ? tk.passBg : tk.failBg,
-                        color: report.overall_passed ? tk.pass : tk.fail, fontWeight: 700, fontSize: fs.md,
-                        border: `1px solid ${report.overall_passed ? tk.pass : tk.fail}`, px: 1,
-                        "& .MuiChip-icon": { marginLeft: "8px" } }} />
+                    {(() => {
+                      const inProgress = report.report_type === "full_system" &&
+                        (report.measurement_test_passed == null || report.load_test_passed == null || report.api_test_passed == null);
+                      const chipLabel = inProgress ? "COMMISSION IN PROGRESS" : report.overall_passed ? "ALL TESTS PASSED" : "TESTS FAILED";
+                      const chipColor = inProgress ? tk.amber : report.overall_passed ? tk.pass : tk.fail;
+                      const chipBg = inProgress ? "rgba(251,191,36,0.12)" : report.overall_passed ? tk.passBg : tk.failBg;
+                      return (
+                        <Chip label={chipLabel} size="medium"
+                          icon={inProgress
+                            ? <Box sx={{ width: 16, height: 16, border: `2px solid ${tk.amber}`, borderTop: "2px solid transparent",
+                                borderRadius: "50%", animation: "spin 1s linear infinite",
+                                "@keyframes spin": { "0%": { transform: "rotate(0deg)" }, "100%": { transform: "rotate(360deg)" } } }} />
+                            : report.overall_passed
+                              ? <CheckCircleOutlined sx={{ fontSize: 18, color: `${tk.pass} !important` }} />
+                              : <CancelOutlined sx={{ fontSize: 18, color: `${tk.fail} !important` }} />}
+                          sx={{ backgroundColor: chipBg, color: chipColor, fontWeight: 700, fontSize: fs.md,
+                            border: `1px solid ${chipColor}`, px: 1,
+                            "& .MuiChip-icon": { marginLeft: "8px" } }} />
+                      );
+                    })()}
                   </Box>
                 </Box>
 
@@ -3164,27 +3204,39 @@ export default function MeterProfile() {
                         {[
                           { label: "Measurement Test", passed: report.measurement_test_passed, icon: <BoltOutlined sx={{ fontSize: 22 }} />, color: tk.blue },
                           { label: "Load Test", passed: report.load_test_passed, icon: <PowerOutlined sx={{ fontSize: 22 }} />, color: tk.amber },
-                          { label: "API Test", passed: report.api_test_passed, icon: <TuneOutlined sx={{ fontSize: 22 }} />, color: tk.purple },
-                        ].map((t) => (
+                          { label: "MQTT API Test", passed: report.api_test_passed, icon: <TuneOutlined sx={{ fontSize: 22 }} />, color: tk.purple },
+                        ].map((t) => {
+                          const pending = t.passed == null;
+                          const bg = pending
+                            ? `linear-gradient(135deg, rgba(251,191,36,0.10) 0%, rgba(251,191,36,0.03) 100%)`
+                            : t.passed
+                              ? `linear-gradient(135deg, ${tk.passBg} 0%, rgba(74,222,128,0.04) 100%)`
+                              : `linear-gradient(135deg, ${tk.failBg} 0%, rgba(248,113,113,0.04) 100%)`;
+                          const borderColor = pending ? "rgba(251,191,36,0.35)" : t.passed ? tk.passBorder : tk.failBorder;
+                          const statusColor = pending ? tk.amber : t.passed ? tk.pass : tk.fail;
+                          return (
                           <Grid item xs={4} key={t.label}>
-                            <Box sx={{ background: t.passed
-                                ? `linear-gradient(135deg, ${tk.passBg} 0%, rgba(74,222,128,0.04) 100%)`
-                                : `linear-gradient(135deg, ${tk.failBg} 0%, rgba(248,113,113,0.04) 100%)`,
-                              border: `1px solid ${t.passed ? tk.passBorder : tk.failBorder}`,
+                            <Box sx={{ background: bg, border: `1px solid ${borderColor}`,
                               borderRadius: "8px", p: 1.8, textAlign: "center", boxShadow: tk.shadow,
-                              transition: "transform 0.15s ease", "&:hover": { transform: "translateY(-1px)" } }}>
-                              <Box sx={{ color: t.passed ? tk.pass : tk.fail, mb: 0.5 }}>
-                                {t.passed
-                                  ? <CheckCircleOutlined sx={{ fontSize: 30 }} />
-                                  : <CancelOutlined sx={{ fontSize: 30 }} />}
+                              transition: "all 0.3s ease", "&:hover": { transform: "translateY(-1px)" } }}>
+                              <Box sx={{ color: statusColor, mb: 0.5 }}>
+                                {pending
+                                  ? <Box sx={{ width: 30, height: 30, margin: "0 auto", border: `3px solid ${tk.amber}`,
+                                      borderTop: "3px solid transparent", borderRadius: "50%",
+                                      animation: "spin 1s linear infinite",
+                                      "@keyframes spin": { "0%": { transform: "rotate(0deg)" }, "100%": { transform: "rotate(360deg)" } } }} />
+                                  : t.passed
+                                    ? <CheckCircleOutlined sx={{ fontSize: 30 }} />
+                                    : <CancelOutlined sx={{ fontSize: 30 }} />}
                               </Box>
                               <Typography color={colors.grey[100]} fontSize={fs.md} fontWeight={600}>{t.label}</Typography>
-                              <Typography color={t.passed ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700} mt={0.3}>
-                                {t.passed ? "PASSED" : "FAILED"}
+                              <Typography color={statusColor} fontSize={fs.sm} fontWeight={700} mt={0.3}>
+                                {pending ? "PENDING..." : t.passed ? "PASSED" : "FAILED"}
                               </Typography>
                             </Box>
                           </Grid>
-                        ))}
+                          );
+                        })}
                       </Grid>
                     </Box>
                   )}
@@ -3210,7 +3262,7 @@ export default function MeterProfile() {
                             ].map(c => (
                               <Box key={c.l} display="grid" gridTemplateColumns="1fr auto" alignItems="center" py={0.3}
                                 sx={{ "&:hover": { backgroundColor: tk.rowHover }, px: 0.5, borderRadius: "4px" }}>
-                                <Typography color={tk.textMuted} fontSize={fs.sm}>{c.l}: {c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}%` : "N/A"} {"\u2264"} 10.0%</Typography>
+                                <Typography color={tk.textMuted} fontSize={fs.sm}>{c.l}: {c.v != null ? `${Math.abs(Number(c.v)).toFixed(2)}%` : "N/A"} {"\u2264"} 5.0%</Typography>
                                 <Box display="flex" alignItems="center" gap={0.5}>
                                   {c.p ? <CheckCircleOutlined sx={{ color: tk.pass, fontSize: 14 }} /> : <CancelOutlined sx={{ color: tk.fail, fontSize: 14 }} />}
                                   <Typography color={c.p ? tk.pass : tk.fail} fontSize={fs.sm} fontWeight={700}>{c.p ? "PASS" : "FAIL"}</Typography>
@@ -3369,11 +3421,11 @@ export default function MeterProfile() {
                                           <TableRow key={si} sx={{ "&:hover": { backgroundColor: `${tk.rowHover} !important` } }}>
                                             <TableCell sx={{ ...tdSx(si), color: colors.grey[300], fontWeight: 600 }}>A{s.attempt}-S{s.sample_number}</TableCell>
                                             <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.voltage).toFixed(1)}</TableCell>
-                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.voltage_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.voltage_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.voltage_error) <= 5 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.voltage_error).toFixed(1)}%</TableCell>
                                             <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.current).toFixed(3)}</TableCell>
-                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.current_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.current_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.current_error) <= 5 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.current_error).toFixed(1)}%</TableCell>
                                             <TableCell sx={{ ...tdSx(si), color: tk.text }}>{Number(s.power).toFixed(0)}</TableCell>
-                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.power_error) <= 10 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.power_error).toFixed(1)}%</TableCell>
+                                            <TableCell sx={{ ...tdSx(si), color: Math.abs(s.power_error) <= 5 ? tk.pass : tk.fail, fontWeight: 600 }}>{Number(s.power_error).toFixed(1)}%</TableCell>
                                           </TableRow>
                                         ))}
                                       </TableBody>
@@ -3724,7 +3776,7 @@ export default function MeterProfile() {
                     })()}
 
                     {/* ── Commissioning Details Section ── */}
-                    {report.report_type === "commissioning" && (
+                    {(report.report_type === "commissioning" || report.report_type === "full_system") && (report.region || report.sim_number || report.owner_name || report.firmware_version) && (
                       <>
                         {/* Location & Installation */}
                         <Grid item xs={12} md={6}>
