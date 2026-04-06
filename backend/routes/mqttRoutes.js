@@ -554,13 +554,19 @@ router.get('/mqtt/dashboard-stats', authenticateToken, async (req, res) => {
          ) latest ON p.DRN = latest.DRN AND p.id = latest.maxId`,
         []
       ),
-      // 4. Today's total energy consumption
+      // 4. Today's total energy consumption (delta of active_energy per meter today)
       queryAll(
         `SELECT
-           ROUND(SUM(e.units), 2) as totalKwh,
-           COUNT(DISTINCT e.DRN) as metersReporting
-         FROM MeterCumulativeEnergyUsage e
-         WHERE DATE(e.date_time) = CURDATE()`,
+           ROUND(COALESCE(SUM(delta), 0), 2) as totalKwh,
+           COUNT(*) as metersReporting
+         FROM (
+           SELECT DRN,
+             CAST(MAX(active_energy) AS DECIMAL(12,2)) - CAST(MIN(active_energy) AS DECIMAL(12,2)) as delta
+           FROM MeterCumulativeEnergyUsage
+           WHERE DATE(date_time) = CURDATE()
+           GROUP BY DRN
+           HAVING delta > 0
+         ) d`,
         []
       ),
       // 5. Today's tokens (count + revenue from STSTokesInfo)

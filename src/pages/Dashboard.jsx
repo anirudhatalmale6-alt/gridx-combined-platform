@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Typography, useTheme, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Skeleton } from "@mui/material";
 import { tokens } from "../theme";
 import Header from "../components/Header";
@@ -88,6 +89,7 @@ const notifIcon = (type) => {
 export default function Dashboard() {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
+  const navigate = useNavigate();
 
   const [kpis, setKpis] = useState({
     totalMeters: 0, activeMeters: 0, inactiveMeters: 0, todayRevenue: 0,
@@ -133,18 +135,19 @@ export default function Dashboard() {
       }));
 
       // Hourly power chart from MQTT data
+      // hourlyPower[i] = avgPower in Watts for that hour; convert to kWh (W * 1h / 1000)
       if (Array.isArray(stats.hourlyPower)) {
         const chartData = stats.hourlyPower.map((val, i) => ({
           hour: `${i < 10 ? "0" + i : i}:00`,
-          kWh: Number(val) || 0,
+          kWh: Number(((Number(val) || 0) / 1000).toFixed(2)),
         }));
         setHourlyData(chartData);
         const vals = chartData.map((d) => d.kWh);
         const sum = vals.reduce((a, b) => a + b, 0);
         const avg = vals.length ? sum / vals.length : 0;
         setHourlyTotals({
-          averagePower: stats.power.avgPower || avg,
-          peakPower: stats.power.peakPower || Math.max(...vals),
+          averagePower: stats.power.avgPower || 0,
+          peakPower: stats.power.peakPower || 0,
         });
       }
 
@@ -166,11 +169,18 @@ export default function Dashboard() {
         setRecentTxns(txns);
       }
 
-      // Hourly token counts
+      // Hourly token counts — map to chart-compatible field names
       if (Array.isArray(stats.hourlyTokens)) {
         const hTokens = stats.hourlyTokens
-          .map((v, i) => (typeof v === "object" ? { hour: i, ...v } : { hour: i, count: 0, revenue: 0 }))
-          .filter((v) => v.count > 0);
+          .map((v, i) => {
+            const obj = typeof v === "object" ? v : { count: 0, revenue: 0 };
+            return {
+              label: `${i < 10 ? "0" + i : i}:00`,
+              tokens: obj.count || 0,
+              amount: obj.revenue || 0,
+            };
+          })
+          .filter((v) => v.tokens > 0);
         if (hTokens.length > 0) setHourlyTokenCounts(hTokens);
       }
 
@@ -186,7 +196,7 @@ export default function Dashboard() {
     const withTimeout = (promise, ms = 8000) =>
       Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
 
-    // Week trend
+    // Week trend — aggregated daily token data
     withTimeout(financeAPI.getPastWeekTokens()).then((val) => {
       if (Array.isArray(val)) {
         const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -194,9 +204,9 @@ export default function Dashboard() {
           const d = new Date(item.date || item.Date);
           return {
             day: dayNames[d.getDay()] || "?",
-            revenue: parseFloat(item.total_amount || item.amount || 0),
-            tokens: parseInt(item.token_count || item.count || 0, 10),
-            kWh: parseFloat(item.total_kwh || item.kwh || 0),
+            revenue: parseFloat(item.accepted_amount || item.total_amount || 0),
+            tokens: parseInt(item.accepted_count || item.token_count || 0, 10),
+            kWh: parseFloat(item.accepted_amount || item.total_amount || 0),
           };
         });
         if (trend.length > 0) setSalesTrend(trend);
@@ -347,9 +357,9 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={fmtCurrency(kpis.todayRevenue)}
-            subtitle="Today's Revenue"
-            progress="0.6"
+            title={`${fmt(kpis.todayRevenue)} kWh`}
+            subtitle="Today's Token kWh"
+            progress={kpis.todayRevenue > 0 ? String(Math.min(1, kpis.todayRevenue / 5000)) : "0"}
             increase={kpis.todayTokens ? `${fmt(kpis.todayTokens)} tokens` : ""}
             link="/"
             icon={
@@ -577,7 +587,7 @@ export default function Dashboard() {
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <SettingsInputCompositeIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem" }} />
                   <Box>
-                    <Typography variant="body2" color={colors.grey[300]}>Today's System Load</Typography>
+                    <Typography variant="body2" color={colors.grey[300]}>Today's Total Energy</Typography>
                     <Typography variant="h5" sx={{ color: colors.greenAccent[500], fontWeight: 700 }}>
                       {hourlySum.toFixed(2)} kWh
                     </Typography>
@@ -586,18 +596,18 @@ export default function Dashboard() {
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <ElectricalServicesIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem" }} />
                   <Box>
-                    <Typography variant="body2" color={colors.grey[300]}>Today's Average Power</Typography>
+                    <Typography variant="body2" color={colors.grey[300]}>Average Power</Typography>
                     <Typography variant="h5" sx={{ color: colors.greenAccent[500], fontWeight: 700 }}>
-                      {isNaN(hourlyTotals.averagePower) ? "0.00" : (hourlyTotals.averagePower / 1000).toFixed(2)} KW
+                      {isNaN(hourlyTotals.averagePower) ? "0.00" : hourlyTotals.averagePower.toFixed(1)} W
                     </Typography>
                   </Box>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <FlashOnIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem" }} />
                   <Box>
-                    <Typography variant="body2" color={colors.grey[300]}>Today's Peak Power</Typography>
+                    <Typography variant="body2" color={colors.grey[300]}>Peak Power</Typography>
                     <Typography variant="h5" sx={{ color: colors.greenAccent[500], fontWeight: 700 }}>
-                      {isNaN(hourlyTotals.peakPower) ? "0.00" : (hourlyTotals.peakPower / 1000).toFixed(2)} KW
+                      {isNaN(hourlyTotals.peakPower) ? "0.00" : hourlyTotals.peakPower.toFixed(1)} W
                     </Typography>
                   </Box>
                 </Box>
@@ -811,7 +821,16 @@ export default function Dashboard() {
           <Box height="calc(100% - 40px)">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
-                data={hourlyTokenCounts.length > 0 ? hourlyTokenCounts : salesTrend}
+                data={(() => {
+                  const src = hourlyTokenCounts.length > 0 ? hourlyTokenCounts : salesTrend;
+                  // Build cumulative totals
+                  let cumTokens = 0, cumKwh = 0;
+                  return src.map((item) => {
+                    cumTokens += (item.tokens || 0);
+                    cumKwh += (item.amount || item.kWh || 0);
+                    return { ...item, label: item.label || item.day || "", cumTokens, cumKwh };
+                  });
+                })()}
                 margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
               >
                 <defs>
@@ -848,12 +867,12 @@ export default function Dashboard() {
                     borderRadius: 4,
                     color: colors.grey[100],
                   }}
-                  formatter={(value, name) => [value, name]}
+                  formatter={(value, name) => [Number(value).toLocaleString(), name]}
                 />
                 <Area
                   yAxisId="left"
                   type="monotone"
-                  dataKey="tokens"
+                  dataKey="cumTokens"
                   stroke={colors.greenAccent[500]}
                   strokeWidth={2}
                   fill="url(#gradTokens)"
@@ -862,7 +881,7 @@ export default function Dashboard() {
                 <Area
                   yAxisId="right"
                   type="monotone"
-                  dataKey="amount"
+                  dataKey="cumKwh"
                   stroke={colors.blueAccent[500]}
                   strokeWidth={2}
                   fill="url(#gradAmount)"
@@ -898,12 +917,15 @@ export default function Dashboard() {
               borderBottom={
                 i < 9 ? `1px solid ${colors.grey[700]}` : "none"
               }
+              sx={{ cursor: "pointer", "&:hover": { bgcolor: "rgba(0,180,216,0.05)" } }}
+              onClick={() => navigate(`/meter/${txn.meterNo}`)}
             >
               <Box>
                 <Typography
                   variant="h6"
                   fontWeight="600"
-                  color={colors.grey[100]}
+                  color={colors.greenAccent[400]}
+                  sx={{ "&:hover": { textDecoration: "underline" } }}
                 >
                   {txn.customer}
                 </Typography>
@@ -915,14 +937,14 @@ export default function Dashboard() {
                 variant="h6"
                 fontWeight="bold"
                 color={
-                  txn.status === "Completed"
+                  txn.status === "Accepted"
                     ? colors.greenAccent[500]
-                    : txn.status === "Failed"
-                    ? colors.redAccent[500]
+                    : txn.status === "Rejected"
+                    ? colors.redAccent?.[500] || "#db4f4a"
                     : colors.yellowAccent?.[500] || colors.grey[100]
                 }
               >
-                {fmtCurrency(txn.amount)}
+                {txn.amount > 0 ? `${fmt(txn.amount)} kWh` : "0 kWh"}
               </Typography>
             </Box>
           ))}
@@ -937,10 +959,10 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={fmtCurrency(kpis.todayRevenue)}
-            subtitle="Total Units Purchased"
-            progress="0.65"
-            increase="+8.3%"
+            title={`${fmt(kpis.todayRevenue)} kWh`}
+            subtitle="Today's kWh Purchased"
+            progress={kpis.todayRevenue > 0 ? String(Math.min(1, kpis.todayRevenue / 5000)) : "0"}
+            increase={kpis.todayTokens ? `${fmt(kpis.todayTokens)} tokens accepted` : ""}
             link="/vending"
             icon={
               <ShoppingCartIcon
@@ -958,10 +980,10 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={`${fmt(kpis.avgConsumption)} kWh`}
-            subtitle="Units Available Balance"
-            progress="0.48"
-            increase="+2.1%"
+            title={`${Number(kpis.avgConsumption || 0).toFixed(1)} kWh`}
+            subtitle="Today's Energy Consumed"
+            progress={kpis.avgConsumption > 0 ? String(Math.min(1, kpis.avgConsumption / 5000)) : "0"}
+            increase="cumulative usage"
             link="/"
             icon={
               <AccountBalanceWalletOutlinedIcon
@@ -980,9 +1002,9 @@ export default function Dashboard() {
         >
           <StatBox
             title={fmt(kpis.todayTokens)}
-            subtitle="Total Energy Consumed"
-            progress="0.72"
-            increase="+5.7%"
+            subtitle="Tokens Processed Today"
+            progress={kpis.todayTokens > 0 ? String(Math.min(1, kpis.todayTokens / 100)) : "0"}
+            increase="accepted + rejected"
             link="/"
             icon={
               <PowerOutlinedIcon

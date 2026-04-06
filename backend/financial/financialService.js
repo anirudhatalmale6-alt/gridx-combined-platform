@@ -227,12 +227,17 @@ exports.getYearlyRevenueBySuburb = function(suburbs, callback) {
 //Past week tokens
 exports.getPastWeekTokens = function(callback) {
   const query = `
-    SELECT *
+    SELECT
+      DATE(date_time) as date,
+      COUNT(*) as token_count,
+      ROUND(COALESCE(SUM(token_amount), 0), 2) as total_amount,
+      ROUND(COALESCE(SUM(CASE WHEN display_msg = 'Accept' THEN token_amount ELSE 0 END), 0), 2) as accepted_amount,
+      SUM(CASE WHEN display_msg = 'Accept' THEN 1 ELSE 0 END) as accepted_count
     FROM STSTokesInfo
     WHERE date_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
       AND date_time <= NOW()
-      AND display_msg = 'Accept'
-    ORDER BY date_time DESC
+    GROUP BY DATE(date_time)
+    ORDER BY date ASC
   `;
 
   db.query(query, (err, results) => {
