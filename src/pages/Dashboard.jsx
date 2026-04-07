@@ -200,15 +200,15 @@ export default function Dashboard() {
       if (stats.kpis.offlineMeters > 0) {
         newNotifs.push({ id: ++nid, type: "warning", title: `${stats.kpis.offlineMeters} Meter${stats.kpis.offlineMeters > 1 ? "s" : ""} Offline`, message: `${stats.kpis.offlineMeters} meter${stats.kpis.offlineMeters > 1 ? "s have" : " has"} not reported data in over 5 minutes`, timestamp: new Date().toISOString() });
       }
-      // Tamper detection from health data
+      // Tamper detection from health data (also rebuilt in useEffect when meterHealthData loads)
       if (meterHealthData.length > 0) {
         const suspicious = meterHealthData.filter(m => m.status === "suspicious");
         const warning = meterHealthData.filter(m => m.status === "warning");
         suspicious.forEach(m => {
-          newNotifs.push({ id: ++nid, type: "error", title: `Tamper Alert: ${m.name || m.drn}`, message: `Health score ${m.healthScore}/100. Flags: ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+          newNotifs.push({ id: ++nid, type: "error", title: `Tamper Alert: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. Flags: ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
         });
         warning.forEach(m => {
-          newNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.name || m.drn}`, message: `Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+          newNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
         });
       }
       // Low voltage alerts
@@ -289,6 +289,27 @@ export default function Dashboard() {
       if (val?.data && Array.isArray(val.data)) setMeterHealthData(val.data);
     }).catch(() => {});
   }, []);
+
+  // Rebuild tamper/warning notifications when meterHealthData loads asynchronously
+  useEffect(() => {
+    if (meterHealthData.length === 0) return;
+    setNotifs(prev => {
+      // Remove old tamper/warning entries (they have drn field)
+      const filtered = prev.filter(n => !n.drn);
+      let nid = Math.max(0, ...prev.map(n => n.id || 0));
+      const suspicious = meterHealthData.filter(m => m.status === "suspicious");
+      const warning = meterHealthData.filter(m => m.status === "warning");
+      const healthNotifs = [];
+      suspicious.forEach(m => {
+        healthNotifs.push({ id: ++nid, type: "error", title: `Tamper Alert: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. Flags: ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+      });
+      warning.forEach(m => {
+        healthNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+      });
+      // Put health alerts at the top
+      return [...healthNotifs, ...filtered];
+    });
+  }, [meterHealthData]);
 
   useEffect(() => {
     // Initial load: fast MQTT stats first, then slow charts
@@ -775,9 +796,18 @@ export default function Dashboard() {
                    <InfoOutlinedIcon sx={{ color: colors.blueAccent[400], fontSize: 18 }} />}
                 </Box>
                 <Box flex={1}>
-                  <Typography variant="body2" fontWeight="700" color={colors.grey[100]} sx={{ fontSize: "12px", lineHeight: 1.3 }}>
-                    {notif.title}
-                  </Typography>
+                  <Box display="flex" alignItems="center" gap="6px">
+                    <Typography variant="body2" fontWeight="700" color={colors.grey[100]} sx={{ fontSize: "12px", lineHeight: 1.3 }}>
+                      {notif.title}
+                    </Typography>
+                    {notif.drn && (
+                      <Box sx={{ bgcolor: `${borderColor}20`, px: "5px", py: "1px", borderRadius: "4px", display: "inline-flex" }}>
+                        <Typography variant="caption" sx={{ fontSize: "9px", fontWeight: 700, color: borderColor, fontFamily: "monospace", letterSpacing: "0.5px" }}>
+                          {notif.drn}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
                   <Typography variant="caption" color={colors.grey[300]} sx={{ fontSize: "10px", lineHeight: 1.4, display: "block", mt: "2px" }}>
                     {notif.message && notif.message.length > 90 ? notif.message.substring(0, 90) + "..." : notif.message || ""}
                   </Typography>
