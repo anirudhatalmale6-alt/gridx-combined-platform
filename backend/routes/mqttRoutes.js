@@ -897,9 +897,9 @@ router.get('/mqtt/meters-health-summary', authenticateToken, async (req, res) =>
     const meters = await queryAll(
       `SELECT
          m.DRN,
-         m.meter_name,
-         m.suburb,
-         m.street_name,
+         CONCAT(m.Name, ' ', m.Surname) as meter_name,
+         m.Region as suburb,
+         m.StreetName as street_name,
          ls.last_seen,
          ls.message_count,
          ROUND(AVG(CAST(p.voltage AS DECIMAL(10,2))), 2) as avgVoltage,
