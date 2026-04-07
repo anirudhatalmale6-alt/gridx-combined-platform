@@ -308,6 +308,11 @@ export const relayEventsAPI = {
   getSummary: (drn, hours = 168) => get(`/mqtt/relay-events/${drn}/summary?hours=${hours}`),
 };
 
+// ===== MQTT ACTIVITY LOG =====
+export const mqttActivityAPI = {
+  getLog: (drn, limit = 20) => get(`/mqtt/activity-log/${drn}?limit=${limit}`),
+};
+
 // ===== METER REGISTRATION =====
 export const meterRegistrationAPI = {
   register: (data) => post('/meter-registration', data),

@@ -99,7 +99,9 @@ export default function Dashboard() {
   });
   const [salesTrend, setSalesTrend] = useState([]);
   const [recentTxns, setRecentTxns] = useState([]);
-  const [notifs, setNotifs] = useState([]);
+  const [notifs, setNotifs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("gridx_notifs") || "[]"); } catch (_) { return []; }
+  });
   const [areaPower, setAreaPower] = useState([]);
   const [areaRevenue, setAreaRevenue] = useState([]);
   const [hourlyData, setHourlyData] = useState([]);
@@ -196,37 +198,47 @@ export default function Dashboard() {
       // Build notifications from live data
       const newNotifs = [];
       let nid = 0;
+      const ts = new Date().toISOString();
       // Offline meters
       if (stats.kpis.offlineMeters > 0) {
-        newNotifs.push({ id: ++nid, type: "warning", title: `${stats.kpis.offlineMeters} Meter${stats.kpis.offlineMeters > 1 ? "s" : ""} Offline`, message: `${stats.kpis.offlineMeters} meter${stats.kpis.offlineMeters > 1 ? "s have" : " has"} not reported data in over 5 minutes`, timestamp: new Date().toISOString() });
+        newNotifs.push({ id: ++nid, type: "warning", title: `${stats.kpis.offlineMeters} Meter${stats.kpis.offlineMeters > 1 ? "s" : ""} Offline`, message: `${stats.kpis.offlineMeters} meter${stats.kpis.offlineMeters > 1 ? "s have" : " has"} not reported data in over 5 minutes`, timestamp: ts });
+      }
+      // Meters with no data (registered but never reported)
+      const noDataCount = (stats.kpis.totalMeters || 0) - (stats.kpis.totalTracked || 0);
+      if (noDataCount > 0) {
+        newNotifs.push({ id: ++nid, type: "error", title: `${noDataCount} Meter${noDataCount > 1 ? "s" : ""} — No Data`, message: `${noDataCount} registered meter${noDataCount > 1 ? "s have" : " has"} never sent any data`, timestamp: ts });
       }
       // Tamper detection from health data (also rebuilt in useEffect when meterHealthData loads)
       if (meterHealthData.length > 0) {
         const suspicious = meterHealthData.filter(m => m.status === "suspicious");
         const warning = meterHealthData.filter(m => m.status === "warning");
         suspicious.forEach(m => {
-          newNotifs.push({ id: ++nid, type: "error", title: `Tamper Alert: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. Flags: ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+          newNotifs.push({ id: ++nid, type: "error", title: `Tamper Alert: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. Flags: ${m.flags.join(", ")}`, timestamp: m.lastSeen || ts });
         });
         warning.forEach(m => {
-          newNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
+          newNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || ts });
         });
       }
       // Low voltage alerts
       if (stats.power.avgVoltage > 0 && stats.power.avgVoltage < 210) {
-        newNotifs.push({ id: ++nid, type: "warning", title: "Low System Voltage", message: `Average voltage ${stats.power.avgVoltage.toFixed(1)}V is below normal range (220-240V)`, timestamp: new Date().toISOString() });
+        newNotifs.push({ id: ++nid, type: "warning", title: "Low System Voltage", message: `Average voltage ${stats.power.avgVoltage.toFixed(1)}V is below normal range (220-240V)`, timestamp: ts });
       }
       // High power alert
       if (stats.power.peakPower > 4000) {
-        newNotifs.push({ id: ++nid, type: "info", title: "High Peak Power", message: `Peak power reached ${stats.power.peakPower.toFixed(0)}W across meters`, timestamp: new Date().toISOString() });
+        newNotifs.push({ id: ++nid, type: "info", title: "High Peak Power", message: `Peak power reached ${stats.power.peakPower.toFixed(0)}W across meters`, timestamp: ts });
       }
       // Success notifications
       if (stats.kpis.liveMeters > 0) {
-        newNotifs.push({ id: ++nid, type: "success", title: `${stats.kpis.liveMeters} Meter${stats.kpis.liveMeters > 1 ? "s" : ""} Online`, message: "Active MQTT connections reporting real-time data", timestamp: new Date().toISOString() });
+        newNotifs.push({ id: ++nid, type: "success", title: `${stats.kpis.liveMeters} Meter${stats.kpis.liveMeters > 1 ? "s" : ""} Online`, message: "Active MQTT connections reporting real-time data", timestamp: ts });
       }
       if (stats.tokens.todayCount > 0) {
-        newNotifs.push({ id: ++nid, type: "success", title: `${stats.tokens.todayCount} Tokens Today`, message: `${stats.tokens.todayRevenue.toFixed(1)} kWh purchased across all meters`, timestamp: new Date().toISOString() });
+        newNotifs.push({ id: ++nid, type: "success", title: `${stats.tokens.todayCount} Tokens Today`, message: `${stats.tokens.todayRevenue.toFixed(1)} kWh purchased across all meters`, timestamp: ts });
       }
-      if (newNotifs.length > 0) setNotifs(newNotifs);
+      // Persist and set
+      if (newNotifs.length > 0) {
+        try { localStorage.setItem("gridx_notifs", JSON.stringify(newNotifs)); } catch (_) {}
+        setNotifs(newNotifs);
+      }
 
       // Hourly energy consumption (kWh per hour)
       if (Array.isArray(stats.hourlyEnergy)) {
@@ -249,7 +261,7 @@ export default function Dashboard() {
     const withTimeout = (promise, ms = 8000) =>
       Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
 
-    // Week trend — aggregated daily token data
+    // Week trend — aggregated daily token data (Mon → Sun ordering)
     withTimeout(financeAPI.getPastWeekTokens()).then((val) => {
       if (Array.isArray(val)) {
         const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -257,11 +269,15 @@ export default function Dashboard() {
           const d = new Date(item.date || item.Date);
           return {
             day: dayNames[d.getDay()] || "?",
+            dayIdx: d.getDay(), // 0=Sun, 1=Mon, ..., 6=Sat
+            fullDate: d.toLocaleDateString("en-ZA", { day: "numeric", month: "short" }),
             revenue: parseFloat(item.accepted_amount || item.total_amount || 0),
             tokens: parseInt(item.accepted_count || item.token_count || 0, 10),
             kWh: parseFloat(item.accepted_amount || item.total_amount || 0),
           };
         });
+        // Sort Mon(1) → Sun(0): shift Sun to end
+        trend.sort((a, b) => ((a.dayIdx || 7) % 7 || 7) - ((b.dayIdx || 7) % 7 || 7));
         if (trend.length > 0) setSalesTrend(trend);
       }
     }).catch(() => {});
@@ -307,7 +323,9 @@ export default function Dashboard() {
         healthNotifs.push({ id: ++nid, type: "warning", title: `Warning: ${m.drn}`, drn: m.drn, message: `${m.name ? m.name + " — " : ""}Health score ${m.healthScore}/100. ${m.flags.join(", ")}`, timestamp: m.lastSeen || new Date().toISOString() });
       });
       // Put health alerts at the top
-      return [...healthNotifs, ...filtered];
+      const merged = [...healthNotifs, ...filtered];
+      try { localStorage.setItem("gridx_notifs", JSON.stringify(merged)); } catch (_) {}
+      return merged;
     });
   }, [meterHealthData]);
 
@@ -414,10 +432,10 @@ export default function Dashboard() {
           justifyContent="center"
         >
           <StatBox
-            title={`${kpis.avgPower ? kpis.avgPower.toFixed(1) : kpis.systemLoad + "%"}`}
-            subtitle={kpis.avgPower ? "Avg Power (W)" : "System Load"}
-            progress={String(Math.min(1, (kpis.avgPower || 0) / 5000))}
-            increase={kpis.peakPower ? `Peak: ${kpis.peakPower.toFixed(0)} W` : ""}
+            title={`${kpis.peakPower ? kpis.peakPower.toFixed(0) : "0"} W`}
+            subtitle="Current System Load"
+            progress={String(Math.min(1, (kpis.peakPower || 0) / 10000))}
+            increase={kpis.reportingMeters ? `${kpis.reportingMeters} meter${kpis.reportingMeters > 1 ? "s" : ""} reporting` : ""}
             link="/"
             icon={
               <BoltIcon
@@ -684,17 +702,29 @@ export default function Dashboard() {
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               Weekly Energy Trend
             </Typography>
-            <Box display="flex" gap="16px" alignItems="center">
-              <Box display="flex" alignItems="center" gap="6px" sx={{ bgcolor: "rgba(76,206,172,0.1)", px: 1.5, py: 0.5, borderRadius: "8px" }}>
-                <FlashOnIcon sx={{ color: colors.greenAccent[500], fontSize: 16 }} />
-                <Typography variant="body2" color={colors.greenAccent[400]} fontWeight="600">
-                  {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh this week
+            <Box display="flex" gap="10px" alignItems="center" flexWrap="wrap">
+              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(76,206,172,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
+                <FlashOnIcon sx={{ color: colors.greenAccent[500], fontSize: 14 }} />
+                <Typography variant="caption" color={colors.greenAccent[400]} fontWeight="600">
+                  Total: {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh
                 </Typography>
               </Box>
-              <Box display="flex" alignItems="center" gap="6px" sx={{ bgcolor: "rgba(111,66,193,0.1)", px: 1.5, py: 0.5, borderRadius: "8px" }}>
-                <ShoppingCartIcon sx={{ color: "#8b5cf6", fontSize: 16 }} />
-                <Typography variant="body2" color="#a78bfa" fontWeight="600">
-                  {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)} tokens processed
+              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(242,183,5,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
+                <TrendingUpIcon sx={{ color: "#f2b705", fontSize: 14 }} />
+                <Typography variant="caption" color="#f2b705" fontWeight="600">
+                  Peak: {salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh
+                </Typography>
+              </Box>
+              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(0,180,216,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
+                <BarChartIcon sx={{ color: "#00b4d8", fontSize: 14 }} />
+                <Typography variant="caption" color="#00b4d8" fontWeight="600">
+                  Avg: {salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / salesTrend.length).toFixed(1) : "0"} kWh
+                </Typography>
+              </Box>
+              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(111,66,193,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
+                <ShoppingCartIcon sx={{ color: "#8b5cf6", fontSize: 14 }} />
+                <Typography variant="caption" color="#a78bfa" fontWeight="600">
+                  {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)} tokens
                 </Typography>
               </Box>
             </Box>
@@ -712,7 +742,7 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.5} />
-                <XAxis dataKey="day" stroke={colors.grey[300]} tick={{ fontSize: 12, fontWeight: 600 }} />
+                <XAxis dataKey="day" stroke={colors.grey[300]} tick={{ fontSize: 11, fontWeight: 600 }} />
                 <YAxis
                   stroke={colors.grey[300]}
                   tick={{ fontSize: 11 }}
@@ -781,7 +811,9 @@ export default function Dashboard() {
                 py="8px"
                 px="8px"
                 mb="6px"
+                onClick={() => notif.drn ? navigate(`/meter/${notif.drn}`) : null}
                 sx={{
+                  cursor: notif.drn ? "pointer" : "default",
                   borderLeft: `3px solid ${borderColor}`,
                   borderRadius: "0 6px 6px 0",
                   bgcolor: `${borderColor}08`,

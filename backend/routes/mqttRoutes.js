@@ -891,6 +891,36 @@ router.get('/mqtt/relay-events/:drn/summary', authenticateToken, async (req, res
   }
 });
 
+// ===== MQTT Activity Logs (recent power/energy/relay readings for a meter) =====
+router.get('/mqtt/activity-log/:drn', authenticateToken, async (req, res) => {
+  const drn = req.params.drn;
+  const limit = parseInt(req.query.limit) || 20;
+  try {
+    const [power, energy, relays] = await Promise.allSettled([
+      queryAll(
+        `SELECT id, voltage, current, active_power, power_factor, temperature, frequency, date_time
+         FROM MeteringPower WHERE DRN = ? ORDER BY id DESC LIMIT ?`, [drn, limit]
+      ),
+      queryAll(
+        `SELECT id, active_energy, reactive_energy, units, tamper_state, date_time
+         FROM MeterCumulativeEnergyUsage WHERE DRN = ? ORDER BY id DESC LIMIT ?`, [drn, limit]
+      ),
+      queryAll(
+        `SELECT id, relay_index, entry_type, state, reason_text, created_at
+         FROM MeterRelayEvents WHERE DRN = ? ORDER BY id DESC LIMIT ?`, [drn, limit]
+      ),
+    ]);
+    res.json({
+      success: true,
+      power: power.status === 'fulfilled' ? power.value : [],
+      energy: energy.status === 'fulfilled' ? energy.value : [],
+      relays: relays.status === 'fulfilled' ? relays.value : [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== All Meters Health Summary (for scatter chart) =====
 router.get('/mqtt/meters-health-summary', authenticateToken, async (req, res) => {
   try {
