@@ -261,6 +261,58 @@ router.post('/mqtt/relay-logs/:drn/request', authenticateToken, (req, res) => {
   }
 });
 
+/**
+ * POST /mqtt/relay-logs/:drn/test
+ * Insert a test relay event directly into the database to validate the pipeline
+ * Also publishes via MQTT to test the full path
+ */
+router.post('/mqtt/relay-logs/:drn/test', authenticateToken, async (req, res) => {
+  try {
+    const drn = req.params.drn;
+    const now = Math.floor(Date.now() / 1000);
+    const testEvent = {
+      DRN: drn,
+      event_timestamp: now,
+      relay_index: req.body.relay_index != null ? req.body.relay_index : 1,
+      entry_type: req.body.entry_type != null ? req.body.entry_type : 0,
+      state: req.body.state != null ? req.body.state : 0,
+      control: 1,
+      reason: req.body.reason != null ? req.body.reason : 5,
+      reason_text: req.body.reason_text || 'Test event from dashboard',
+      trigger_val: 1,
+    };
+
+    // Direct DB insert
+    await new Promise((resolve, reject) => {
+      db.query('INSERT INTO MeterRelayEvents SET ?', testEvent, (err, result) => {
+        if (err) reject(err); else resolve(result);
+      });
+    });
+
+    // Also try MQTT self-publish to test the handler path
+    try {
+      const client = mqttHandler.getClient();
+      if (client && client.connected) {
+        const topic = `gx/${drn}/relay_log`;
+        const payload = JSON.stringify({ events: [{
+          timestamp: now, relay_index: testEvent.relay_index,
+          entry_type: testEvent.entry_type, state: testEvent.state,
+          control: testEvent.control, reason: testEvent.reason,
+          reason_text: 'MQTT self-test', trigger: 1,
+        }]});
+        client.publish(topic, payload, { qos: 0 });
+        console.log(`[MQTT] Test relay event published to ${topic}`);
+      }
+    } catch (mqttErr) {
+      console.error('[MQTT] Test self-publish error:', mqttErr.message);
+    }
+
+    res.json({ success: true, message: `Test relay event inserted for ${drn}`, event: testEvent });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════
 // LOAD CONTROL (mains + geyser via MQTT)
 // ═══════════════════════════════════════════════════════════════════════
