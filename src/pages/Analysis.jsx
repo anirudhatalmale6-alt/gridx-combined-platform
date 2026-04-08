@@ -220,6 +220,9 @@ export default function Analysis() {
 
   // ---- Fetch all data on mount ----
   useEffect(() => {
+    const withTimeout = (promise, ms = 15000) =>
+      Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+
     const fetchAll = async () => {
       try {
         const [
@@ -228,18 +231,18 @@ export default function Analysis() {
           revenueTimeRes, revenuePctRes, revenueWeeklyRes, revenueYearlyRes,
           suburbEnergyRes, suburbRevenueRes,
         ] = await Promise.allSettled([
-          meterAPI.getActiveInactive(),
-          meterAPI.getTotal(),
-          energyAPI.getTimePeriods(),
-          energyAPI.getPowerIncreaseOrDecrease(),
-          energyAPI.getWeekly(),
-          energyAPI.getMonthlyYearly(),
-          financeAPI.getTimePeriods(),
-          financeAPI.getTokenAmountIncreaseOrDecrease(),
-          financeAPI.getWeekly(),
-          financeAPI.getMonthlyYearly(),
-          energyAPI.getSuburbEnergy(ALL_SUBURBS),
-          financeAPI.getSuburbChartRevenue(ALL_SUBURBS),
+          withTimeout(meterAPI.getActiveInactive()),
+          withTimeout(meterAPI.getTotal()),
+          withTimeout(energyAPI.getTimePeriods()),
+          withTimeout(energyAPI.getPowerIncreaseOrDecrease()),
+          withTimeout(energyAPI.getWeekly()),
+          withTimeout(energyAPI.getMonthlyYearly()),
+          withTimeout(financeAPI.getTimePeriods()),
+          withTimeout(financeAPI.getTokenAmountIncreaseOrDecrease()),
+          withTimeout(financeAPI.getWeekly()),
+          withTimeout(financeAPI.getMonthlyYearly()),
+          withTimeout(energyAPI.getSuburbEnergy(ALL_SUBURBS), 25000),
+          withTimeout(financeAPI.getSuburbChartRevenue(ALL_SUBURBS), 25000),
         ]);
 
         if (activeInactiveRes.status === "fulfilled") {
