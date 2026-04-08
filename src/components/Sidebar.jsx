@@ -26,6 +26,8 @@ import HubIcon from "@mui/icons-material/Hub";
 import BuildIcon from "@mui/icons-material/Build";
 import SecurityIcon from "@mui/icons-material/Security";
 import GppBadIcon from "@mui/icons-material/GppBad";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import PhoneAndroidIcon from "@mui/icons-material/PhoneAndroid";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 
@@ -364,11 +366,11 @@ const Sidebar = () => {
           accentColor={colors.greenAccent[500]}
         />
         <NavItem
-          title="Meter Summary"
-          to="/meter-summary"
-          icon={<SpeedIcon />}
+          title="Tamper Detection"
+          to="/tamper-detection"
+          icon={<GppBadIcon />}
           isCollapsed={isCollapsed}
-          accentColor={colors.greenAccent[500]}
+          accentColor="#db4f4a"
         />
         <NavItem
           title="New System Node"
@@ -483,9 +485,9 @@ const Sidebar = () => {
           accentColor={colors.redAccent[500]}
         />
         <NavItem
-          title="Tamper Detection"
-          to="/tamper-detection"
-          icon={<GppBadIcon />}
+          title="Emergency Alerts"
+          to="/emergency-notifications"
+          icon={<WarningAmberIcon />}
           isCollapsed={isCollapsed}
           accentColor="#db4f4a"
         />
@@ -521,6 +523,13 @@ const Sidebar = () => {
           title="Manage Users"
           to="/users"
           icon={<PeopleOutlinedIcon />}
+          isCollapsed={isCollapsed}
+          accentColor={colors.redAccent[400]}
+        />
+        <NavItem
+          title="App Users"
+          to="/app-users"
+          icon={<PhoneAndroidIcon />}
           isCollapsed={isCollapsed}
           accentColor={colors.redAccent[400]}
         />

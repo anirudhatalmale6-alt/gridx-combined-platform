@@ -29,6 +29,8 @@ import Integrations from "./pages/Integrations";
 import Installers from "./pages/Installers";
 import TamperDetection from "./pages/TamperDetection";
 import VsmTesting from "./pages/VsmTesting";
+import EmergencyNotifications from "./pages/EmergencyNotifications";
+import AppUsers from "./pages/AppUsers";
 
 function App() {
   const [theme, colorMode] = useMode();
@@ -67,6 +69,8 @@ function App() {
               <Route path="installers" element={<Installers />} />
               <Route path="tamper-detection" element={<TamperDetection />} />
               <Route path="vsm-testing" element={<VsmTesting />} />
+              <Route path="emergency-notifications" element={<EmergencyNotifications />} />
+              <Route path="app-users" element={<AppUsers />} />
             </Route>
           </Routes>
         </AuthProvider>

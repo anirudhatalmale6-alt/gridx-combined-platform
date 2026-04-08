@@ -29,6 +29,8 @@ import SettingsInputCompositeIcon from "@mui/icons-material/SettingsInputComposi
 import ElectricalServicesIcon from "@mui/icons-material/ElectricalServices";
 import FlashOnIcon from "@mui/icons-material/FlashOn";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import BoltOutlinedIcon from "@mui/icons-material/BoltOutlined";
+import ConfirmationNumberOutlinedIcon from "@mui/icons-material/ConfirmationNumberOutlined";
 import Timeline from "@mui/lab/Timeline";
 import TimelineDot from "@mui/lab/TimelineDot";
 import TimelineContent from "@mui/lab/TimelineContent";
@@ -725,18 +727,35 @@ export default function Dashboard() {
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               Weekly Energy Trend
             </Typography>
-            <Box display="flex" gap="4px" alignItems="center" flexWrap="wrap">
-              {[
-                { label: "Total Energy", value: `${salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh`, color: colors.greenAccent[500], bg: "rgba(76,206,172,0.1)" },
-                { label: "Peak", value: `${salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh`, color: "#f2b705", bg: "rgba(242,183,5,0.1)" },
-                { label: "Average", value: `${salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / Math.max(salesTrend.length, 1)).toFixed(1) : "0"} kWh`, color: "#00b4d8", bg: "rgba(0,180,216,0.1)" },
-                { label: "Tokens", value: `${salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)}`, color: "#a78bfa", bg: "rgba(111,66,193,0.1)" },
-              ].map((stat) => (
-                <Box key={stat.label} sx={{ bgcolor: stat.bg, px: 1.5, py: 0.6, borderRadius: "8px", textAlign: "center", minWidth: 80 }}>
-                  <Typography variant="caption" color={stat.color} fontWeight="bold" display="block" sx={{ fontSize: "0.82rem" }}>{stat.value}</Typography>
-                  <Typography variant="caption" color={colors.grey[400]} sx={{ fontSize: "0.62rem" }}>{stat.label}</Typography>
-                </Box>
-              ))}
+            <Box sx={{ display: "flex", justifyContent: "space-around", bgcolor: colors.primary[500], borderRadius: "8px", p: 1.5, minWidth: 440 }}>
+              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <BoltOutlinedIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
+                <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
+                  {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh
+                </Typography>
+                <Typography variant="caption" color={colors.grey[300]}>Total Energy</Typography>
+              </Box>
+              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <TrendingUpIcon sx={{ color: "#f2b705", fontSize: "1.8rem", mb: 0.5 }} />
+                <Typography variant="h5" fontWeight="bold" color="#f2b705">
+                  {salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh
+                </Typography>
+                <Typography variant="caption" color={colors.grey[300]}>Peak</Typography>
+              </Box>
+              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <BarChartIcon sx={{ color: "#00b4d8", fontSize: "1.8rem", mb: 0.5 }} />
+                <Typography variant="h5" fontWeight="bold" color="#00b4d8">
+                  {salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / Math.max(salesTrend.length, 1)).toFixed(1) : "0"} kWh
+                </Typography>
+                <Typography variant="caption" color={colors.grey[300]}>Average</Typography>
+              </Box>
+              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <ConfirmationNumberOutlinedIcon sx={{ color: "#a78bfa", fontSize: "1.8rem", mb: 0.5 }} />
+                <Typography variant="h5" fontWeight="bold" color="#a78bfa">
+                  {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)}
+                </Typography>
+                <Typography variant="caption" color={colors.grey[300]}>Tokens</Typography>
+              </Box>
             </Box>
           </Box>
           <Box height="calc(100% - 55px)">
@@ -1022,102 +1041,80 @@ export default function Dashboard() {
           />
         </Box>
 
-        {/* ROW 5: Recent Transactions Table */}
+        {/* ROW 5: Recent Token Entries — MeterProfile Token History style */}
         <Box
           gridColumn="span 12"
           gridRow="span 4"
           backgroundColor={colors.primary[400]}
-          p="15px"
-          overflow="auto"
+          overflow="hidden"
+          sx={{ display: "flex", flexDirection: "column" }}
         >
-          <Typography
-            variant="h5"
-            fontWeight="600"
-            color={colors.grey[100]}
-            mb="15px"
-          >
-            Recent Token Entries
-          </Typography>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  {["Date/Time", "Meter (DRN)", "Token ID", "Amount (kWh)", "Channel", "Status"].map(
-                    (col) => (
-                      <TableCell
-                        key={col}
-                        sx={{
-                          color: colors.greenAccent[500],
-                          fontWeight: 600,
-                          fontSize: "12px",
-                          borderBottom: `2px solid ${colors.grey[700]}`,
-                          backgroundColor: colors.primary[400],
-                        }}
-                      >
-                        {col}
-                      </TableCell>
-                    )
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {recentTxns.filter((txn) => txn.status === "Accepted").map((txn) => (
-                  <TableRow
+          <Box sx={{ px: 2.5, pt: 2, pb: 1 }}>
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold">
+              Recent Token Entries
+            </Typography>
+          </Box>
+          <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+          <Box sx={{ flex: 1, overflowY: "auto", px: 0.5, "&::-webkit-scrollbar": { width: 4 }, "&::-webkit-scrollbar-thumb": { bgcolor: colors.grey[700], borderRadius: 2 } }}>
+            {recentTxns.filter((txn) => txn.status === "Accepted").length > 0 ? (
+              recentTxns.filter((txn) => txn.status === "Accepted").map((txn, idx, arr) => {
+                const amt = parseFloat(txn.amount || 0);
+                const avatarColor = amt >= 150 ? colors.greenAccent[600] : amt >= 50 ? (colors.blueAccent?.[500] || "#6870fa") : (colors.redAccent?.[400] || "#db4f4a");
+                return (
+                  <Box
                     key={txn.id}
+                    component={Link}
+                    to={`/meter/${txn.meterNo}`}
                     sx={{
-                      "&:hover": {
-                        backgroundColor: `${colors.primary[500]} !important`,
-                      },
-                      "& td": {
-                        borderBottom: `1px solid ${colors.grey[700]}`,
-                        color: colors.grey[100],
-                        fontSize: "12px",
-                        py: 1.2,
-                      },
+                      display: "flex", alignItems: "center", py: 1.5, px: 2, textDecoration: "none",
+                      borderBottom: idx < arr.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                      "&:hover": { bgcolor: "rgba(0,180,216,0.05)" },
                     }}
                   >
-                    <TableCell>{formatTime(txn.time)}</TableCell>
-                    <TableCell sx={{ fontFamily: "monospace", fontSize: "11px !important" }}>
-                      {txn.meterNo}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: "monospace", fontSize: "10px !important" }}>
-                      {txn.token}
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>
-                      {txn.amount > 0 ? `${txn.amount} kWh` : "-"}
-                    </TableCell>
-                    <TableCell>{txn.channel}</TableCell>
-                    <TableCell>
-                      <Box
-                        sx={{
-                          display: "inline-block",
-                          px: 1,
-                          py: 0.3,
-                          borderRadius: "4px",
-                          backgroundColor:
-                            txn.status === "Accepted"
-                              ? "rgba(76,206,172,0.15)"
-                              : txn.status === "Rejected"
-                              ? "rgba(219,79,74,0.15)"
-                              : "rgba(242,183,5,0.15)",
-                          color:
-                            txn.status === "Accepted"
-                              ? colors.greenAccent[500]
-                              : txn.status === "Rejected"
-                              ? "#db4f4a"
-                              : "#f2b705",
-                          fontWeight: 600,
-                          fontSize: "11px",
-                        }}
-                      >
-                        {txn.status}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                    <Box sx={{
+                      width: 40, height: 40, borderRadius: "50%", bgcolor: colors.grey[800],
+                      display: "flex", alignItems: "center", justifyContent: "center", mr: 2, flexShrink: 0,
+                    }}>
+                      <ConfirmationNumberOutlinedIcon sx={{ color: avatarColor, fontSize: 20 }} />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" color={colors.grey[100]} noWrap>
+                        DRN: {txn.meterNo}
+                      </Typography>
+                      <Typography variant="caption" color={colors.grey[400]}>
+                        {txn.time ? format(new Date(txn.time), "dd MMM yyyy p") : "-"}
+                      </Typography>
+                      <Typography variant="caption" display="block" color={colors.grey[500]} sx={{ fontSize: "10px", fontFamily: "monospace" }} noWrap>
+                        {txn.token}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ textAlign: "right", flexShrink: 0, ml: 1 }}>
+                      <Typography variant="subtitle2" color={colors.grey[100]} noWrap>
+                        {amt > 0 ? `${amt.toFixed(1)} kWh` : "-"}
+                      </Typography>
+                      <Typography variant="body2" color={colors.greenAccent[500]} fontWeight="bold">
+                        N$ {amt.toFixed(2)}
+                      </Typography>
+                      <Typography variant="caption" color={colors.grey[400]}>{txn.channel}</Typography>
+                    </Box>
+                  </Box>
+                );
+              })
+            ) : (
+              <Typography color="rgba(255,255,255,0.35)" sx={{ textAlign: "center", py: 4 }}>
+                No recent token entries.
+              </Typography>
+            )}
+          </Box>
+          <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+          <Box sx={{ display: "flex", justifyContent: "space-between", px: 2.5, py: 1.5 }}>
+            <Typography variant="subtitle2" color={colors.grey[100]}>
+              Total: N$ {recentTxns.filter(t => t.status === "Accepted").reduce((s, t) => s + parseFloat(t.amount || 0), 0).toFixed(2)}
+            </Typography>
+            <Typography variant="subtitle2" color={colors.grey[100]}>
+              {recentTxns.filter(t => t.status === "Accepted").length} tokens
+            </Typography>
+          </Box>
         </Box>
 
         {/* ROW 6: Meter Status Scatter (Recharts) — click navigates to meter profile */}
