@@ -403,18 +403,14 @@ function handleRelayLogBin(drn, buf) {
 
   console.log(`[MQTT] Relay event from ${drn}: idx=${relay_index} state=${state} ctrl=${control} reason=${reason} '${rt.value}'`);
 
-  // Insert into MeterRelayEvents
-  db.query('INSERT INTO MeterRelayEvents SET ?', {
-    DRN: drn,
-    event_timestamp: timestamp,
-    relay_index: relay_index,
-    entry_type: entry_type,
-    state: state,
-    control: control,
-    reason: reason,
-    reason_text: rt.value,
-    trigger_val: trigger,
-  }, (err) => { if (err) console.error('[MQTT] Relay event insert error:', err.message); });
+  // Insert into meter_relay_events (the table the web API reads from)
+  db.query(
+    `INSERT INTO meter_relay_events
+       (drn, relay_index, entry_type, state, control, reason_code, reason_text, trigger_type, meter_timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?))`,
+    [drn, relay_index, entry_type, state, control, reason, rt.value, trigger, timestamp],
+    (err) => { if (err) console.error('[MQTT] Relay event insert error:', err.message); }
+  );
 
   // Update MeterLoadControl for immediate state visibility
   // relay_index: 0 = mains, 1 = geyser
@@ -708,17 +704,24 @@ function handleRelayLogJson(drn, data) {
   console.log(`[MQTT] Relay log from ${drn}: ${events.length} events`);
 
   for (const evt of events) {
-    db.query('INSERT INTO MeterRelayEvents SET ?', {
-      DRN: drn,
-      event_timestamp: evt.timestamp || 0,
-      relay_index: evt.relay_index != null ? evt.relay_index : 0,
-      entry_type: evt.entry_type != null ? evt.entry_type : 0,
-      state: evt.state != null ? evt.state : 0,
-      control: evt.control != null ? evt.control : 0,
-      reason: evt.reason != null ? evt.reason : 0,
-      reason_text: evt.reason_text || '',
-      trigger_val: evt.trigger != null ? evt.trigger : 0,
-    }, (err) => { if (err) console.error('[MQTT] Relay event insert error:', err.message); });
+    const ts = evt.timestamp || Math.floor(Date.now() / 1000);
+    db.query(
+      `INSERT INTO meter_relay_events
+         (drn, relay_index, entry_type, state, control, reason_code, reason_text, trigger_type, meter_timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, FROM_UNIXTIME(?))`,
+      [
+        drn,
+        evt.relay_index != null ? evt.relay_index : 0,
+        evt.entry_type != null ? evt.entry_type : 0,
+        evt.state != null ? evt.state : 0,
+        evt.control != null ? evt.control : 0,
+        evt.reason != null ? evt.reason : 0,
+        evt.reason_text || '',
+        evt.trigger != null ? evt.trigger : 0,
+        ts,
+      ],
+      (err) => { if (err) console.error('[MQTT] Relay event insert error:', err.message); }
+    );
   }
 
   // Also update MeterLoadControl from the latest relay events for immediate state visibility
