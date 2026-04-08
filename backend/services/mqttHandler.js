@@ -262,14 +262,14 @@ function handleMessage(topic, buf) {
     (err) => { if (err) console.error('[MQTT] MeterLastSeen update error:', err.message); }
   );
 
-  // JSON-only topics (ack, health, relay_log, auth_numbers, energy_usage, emergency)
-  if (['ack', 'health', 'relay_log', 'auth_numbers', 'energy_usage', 'emergency'].includes(type)) {
+  // JSON-only topics (ack, health, auth_numbers, energy_usage, emergency)
+  // Note: relay_log moved to binary path (0x06)
+  if (['ack', 'health', 'auth_numbers', 'energy_usage', 'emergency'].includes(type)) {
     try {
       const data = JSON.parse(buf.toString());
       switch (type) {
         case 'ack':          handleAckJson(drn, data); break;
         case 'health':       handleHealthJson(drn, data); break;
-        case 'relay_log':    handleRelayLogJson(drn, data); break;
         case 'auth_numbers': handleAuthNumbersJson(drn, data); break;
         case 'energy_usage': handleEnergyUsageJson(drn, data); break;
         case 'emergency':    handleEmergencyJson(drn, data); break;
@@ -282,16 +282,17 @@ function handleMessage(topic, buf) {
 
   const firstByte = buf[0];
 
-  // Binary payloads start with type byte 0x01-0x05
-  if (firstByte >= 0x01 && firstByte <= 0x05) {
+  // Binary payloads start with type byte 0x01-0x06
+  if (firstByte >= 0x01 && firstByte <= 0x06) {
     console.log(`[MQTT] ${type} from ${drn} (binary, ${buf.length}B)`);
     switch (type) {
-      case 'power':    handlePowerBin(drn, buf); break;
-      case 'energy':   handleEnergyBin(drn, buf); break;
-      case 'cellular': handleCellularBin(drn, buf); break;
-      case 'load':     handleLoadBin(drn, buf); break;
-      case 'token':    handleTokenBin(drn, buf); break;
-      default:         console.warn(`[MQTT] Unknown type: ${type}`);
+      case 'power':     handlePowerBin(drn, buf); break;
+      case 'energy':    handleEnergyBin(drn, buf); break;
+      case 'cellular':  handleCellularBin(drn, buf); break;
+      case 'load':      handleLoadBin(drn, buf); break;
+      case 'token':     handleTokenBin(drn, buf); break;
+      case 'relay_log': handleRelayLogBin(drn, buf); break;
+      default:          console.warn(`[MQTT] Unknown type: ${type}`);
     }
     return;
   }
@@ -384,6 +385,58 @@ function handleTokenBin(drn, buf) {
     display_msg: msg.value, display_auth_result: auth, display_token_result: tres,
     display_validation_result: vres, token_time: ttime, token_amount: amt,
   }, (err) => { if (err) console.error('[MQTT] Token insert error:', err.message); });
+}
+
+function handleRelayLogBin(drn, buf) {
+  // Binary format: [0x06][u32 timestamp LE][u8 relay_index][u8 entry_type]
+  //                [u8 state][u8 control][u8 reason][u8 trigger][lstr reason_text]
+  if (buf.length < 12) return console.error('[MQTT] Relay log packet too short:', buf.length);
+  let off = 1;
+  const timestamp = buf.readUInt32LE(off); off += 4;
+  const relay_index = buf.readUInt8(off++);
+  const entry_type = buf.readUInt8(off++);
+  const state = buf.readUInt8(off++);
+  const control = buf.readUInt8(off++);
+  const reason = buf.readUInt8(off++);
+  const trigger = buf.readUInt8(off++);
+  const rt = readLStr(buf, off);
+
+  console.log(`[MQTT] Relay event from ${drn}: idx=${relay_index} state=${state} ctrl=${control} reason=${reason} '${rt.value}'`);
+
+  // Insert into MeterRelayEvents
+  db.query('INSERT INTO MeterRelayEvents SET ?', {
+    DRN: drn,
+    event_timestamp: timestamp,
+    relay_index: relay_index,
+    entry_type: entry_type,
+    state: state,
+    control: control,
+    reason: reason,
+    reason_text: rt.value,
+    trigger_val: trigger,
+  }, (err) => { if (err) console.error('[MQTT] Relay event insert error:', err.message); });
+
+  // Update MeterLoadControl for immediate state visibility
+  // relay_index: 0 = mains, 1 = geyser
+  db.query(
+    'SELECT geyser_state, geyser_control, mains_state, mains_control FROM MeterLoadControl WHERE DRN = ? ORDER BY date_time DESC LIMIT 1',
+    [drn],
+    (err, rows) => {
+      const prev = (!err && rows && rows.length > 0) ? rows[0] : { geyser_state: 0, geyser_control: 0, mains_state: 0, mains_control: 0 };
+      const isMains = relay_index === 0;
+      const isGeyser = relay_index === 1;
+      db.query('INSERT INTO MeterLoadControl SET ?', {
+        DRN: drn,
+        geyser_state:   isGeyser ? state : prev.geyser_state,
+        geyser_control: isGeyser ? control : prev.geyser_control,
+        mains_state:    isMains ? state : prev.mains_state,
+        mains_control:  isMains ? control : prev.mains_control,
+      }, (err2) => {
+        if (err2) console.error('[MQTT] Relay LoadControl insert error:', err2.message);
+        else console.log(`[MQTT] Relay log updated MeterLoadControl for ${drn}`);
+      });
+    }
+  );
 }
 
 // ==================== JSON Handlers (new MQTT topics) ====================
