@@ -165,6 +165,9 @@ export const energyAPI = {
   getSuburbWeeklyPower: (suburbs) => post('/search-by-weekly-power', { suburbs }),
   getSuburbMonthlyPower: (suburbs) => post('/search-by-monthly-power', { suburbs }),
   getSuburbHourlyEnergy: (suburbs) => post('/getSuburbHourlyEnergy', { suburbs }),
+  getSuburbEnergy: (suburbs) => post('/getSuburbEnergy', { suburbs }),
+  getPowerIncreaseOrDecrease: () => get('/powerIncreaseOrDecrease'),
+  getSuburbPowerIncreaseOrDecrease: (suburbs) => post('/suburbAdvancedPowerIncreaseOrDecrease', { suburbs }),
   getHourlyByDrn: (drn) => get(`/getHourlyDataByDrn/${drn}`),
 };
 
@@ -179,6 +182,9 @@ export const financeAPI = {
   getSuburbYearly: (suburbs) => post('/finance/suburbYearlyRevenue', { suburbs }),
   getPastWeekTokens: () => get('/finance/pastWeekTokens'),
   getEnergyOverview: () => get('/finance/energy-overview'),
+  getSuburbChartRevenue: (suburbs) => post('/finance/getSuburbChartRevenue', { suburbs }),
+  getTokenAmountIncreaseOrDecrease: () => get('/tokenAmountIncreaseOrDecrease'),
+  getSuburbRevenueIncreaseOrDecrease: (suburbs) => post('/suburbRevenueIncreaseOrDecrease', { suburbs }),
 };
 
 // ===== TOKENS =====

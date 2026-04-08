@@ -274,24 +274,26 @@ export default function Dashboard() {
     const withTimeout = (promise, ms = 8000) =>
       Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
 
-    // Week trend — aggregated daily token data (Mon → Sun ordering)
+    // Week trend — current + previous week energy (Mon → Sun)
+    withTimeout(energyAPI.getWeekly()).then((val) => {
+      if (val) {
+        const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const current = Array.isArray(val.currentweek) ? val.currentweek : [];
+        const previous = Array.isArray(val.lastweek) ? val.lastweek : [];
+        const trend = dayNames.map((day, i) => ({
+          day,
+          kWh: Number(current[i]) || 0,
+          prevKWh: Number(previous[i]) || 0,
+          tokens: 0,
+        }));
+        if (trend.length > 0) setSalesTrend(trend);
+      }
+    }).catch(() => {});
+    // Also fetch token counts for the summary
     withTimeout(financeAPI.getPastWeekTokens()).then((val) => {
       if (Array.isArray(val)) {
-        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        const trend = val.map((item) => {
-          const d = new Date(item.date || item.Date);
-          return {
-            day: dayNames[d.getDay()] || "?",
-            dayIdx: d.getDay(), // 0=Sun, 1=Mon, ..., 6=Sat
-            fullDate: d.toLocaleDateString("en-ZA", { day: "numeric", month: "short" }),
-            revenue: parseFloat(item.accepted_amount || item.total_amount || 0),
-            tokens: parseInt(item.accepted_count || item.token_count || 0, 10),
-            kWh: parseFloat(item.accepted_amount || item.total_amount || 0),
-          };
-        });
-        // Sort Mon(1) → Sun(0): shift Sun to end
-        trend.sort((a, b) => ((a.dayIdx || 7) % 7 || 7) - ((b.dayIdx || 7) % 7 || 7));
-        if (trend.length > 0) setSalesTrend(trend);
+        const totalTokens = val.reduce((s, item) => s + parseInt(item.accepted_count || item.token_count || 0, 10), 0);
+        setSalesTrend(prev => prev.map((d, i) => ({ ...d, tokens: i === 0 ? totalTokens : d.tokens })));
       }
     }).catch(() => {});
 
@@ -313,10 +315,11 @@ export default function Dashboard() {
       }
     }).catch(() => {});
 
-    // Hourly revenue for bar chart
+    // Hourly revenue for bar chart — ensure always 24 entries
     withTimeout(financeAPI.getHourlyRevenue()).then((val) => {
       if (val?.revenues && Array.isArray(val.revenues)) {
-        setHourlyRevenue(val.revenues.map(v => Number(v) || 0));
+        const padded = Array.from({ length: 24 }, (_, i) => Number(val.revenues[i]) || 0);
+        setHourlyRevenue(padded);
       }
     }).catch(() => {});
 
@@ -722,70 +725,33 @@ export default function Dashboard() {
             <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
               Weekly Energy Trend
             </Typography>
-            <Box display="flex" gap="10px" alignItems="center" flexWrap="wrap">
-              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(76,206,172,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
-                <FlashOnIcon sx={{ color: colors.greenAccent[500], fontSize: 14 }} />
-                <Typography variant="caption" color={colors.greenAccent[400]} fontWeight="600">
-                  Total: {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh
-                </Typography>
-              </Box>
-              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(242,183,5,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
-                <TrendingUpIcon sx={{ color: "#f2b705", fontSize: 14 }} />
-                <Typography variant="caption" color="#f2b705" fontWeight="600">
-                  Peak: {salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh
-                </Typography>
-              </Box>
-              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(0,180,216,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
-                <BarChartIcon sx={{ color: "#00b4d8", fontSize: 14 }} />
-                <Typography variant="caption" color="#00b4d8" fontWeight="600">
-                  Avg: {salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / salesTrend.length).toFixed(1) : "0"} kWh
-                </Typography>
-              </Box>
-              <Box display="flex" alignItems="center" gap="5px" sx={{ bgcolor: "rgba(111,66,193,0.1)", px: 1.2, py: 0.4, borderRadius: "8px" }}>
-                <ShoppingCartIcon sx={{ color: "#8b5cf6", fontSize: 14 }} />
-                <Typography variant="caption" color="#a78bfa" fontWeight="600">
-                  {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)} tokens
-                </Typography>
-              </Box>
+            <Box display="flex" gap="4px" alignItems="center" flexWrap="wrap">
+              {[
+                { label: "Total Energy", value: `${salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh`, color: colors.greenAccent[500], bg: "rgba(76,206,172,0.1)" },
+                { label: "Peak", value: `${salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh`, color: "#f2b705", bg: "rgba(242,183,5,0.1)" },
+                { label: "Average", value: `${salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / Math.max(salesTrend.length, 1)).toFixed(1) : "0"} kWh`, color: "#00b4d8", bg: "rgba(0,180,216,0.1)" },
+                { label: "Tokens", value: `${salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)}`, color: "#a78bfa", bg: "rgba(111,66,193,0.1)" },
+              ].map((stat) => (
+                <Box key={stat.label} sx={{ bgcolor: stat.bg, px: 1.5, py: 0.6, borderRadius: "8px", textAlign: "center", minWidth: 80 }}>
+                  <Typography variant="caption" color={stat.color} fontWeight="bold" display="block" sx={{ fontSize: "0.82rem" }}>{stat.value}</Typography>
+                  <Typography variant="caption" color={colors.grey[400]} sx={{ fontSize: "0.62rem" }}>{stat.label}</Typography>
+                </Box>
+              ))}
             </Box>
           </Box>
-          <Box height="calc(100% - 45px)">
+          <Box height="calc(100% - 55px)">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={salesTrend}
-                margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="gradEnergyBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={colors.greenAccent[500]} stopOpacity={0.9} />
-                    <stop offset="100%" stopColor={colors.greenAccent[500]} stopOpacity={0.4} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.5} />
+              <BarChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.4} />
                 <XAxis dataKey="day" stroke={colors.grey[300]} tick={{ fontSize: 11, fontWeight: 600 }} />
-                <YAxis
-                  stroke={colors.grey[300]}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `${v} kWh`}
-                />
+                <YAxis stroke={colors.grey[300]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}`} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.primary[400],
-                    border: `1px solid ${colors.greenAccent[500]}40`,
-                    borderRadius: 8,
-                    color: colors.grey[100],
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                  }}
-                  formatter={(value) => [`${Number(value).toFixed(1)} kWh`, "Energy"]}
-                  cursor={{ fill: "rgba(76,206,172,0.08)" }}
+                  contentStyle={{ backgroundColor: colors.primary[400], border: `1px solid ${colors.grey[700]}`, borderRadius: 8, color: colors.grey[100] }}
+                  formatter={(value, name) => [`${Number(value).toFixed(1)} kWh`, name]}
                 />
-                <Bar
-                  dataKey="kWh"
-                  fill="url(#gradEnergyBar)"
-                  name="Energy (kWh)"
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={50}
-                />
+                <Legend wrapperStyle={{ fontSize: "0.72rem" }} />
+                <Bar dataKey="prevKWh" fill="#F08080" name="Previous Week" radius={[4, 4, 0, 0]} barSize={14} />
+                <Bar dataKey="kWh" fill="#3498db" name="Current Week" radius={[4, 4, 0, 0]} barSize={14} />
               </BarChart>
             </ResponsiveContainer>
           </Box>
