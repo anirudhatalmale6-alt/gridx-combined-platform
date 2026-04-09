@@ -4568,93 +4568,47 @@ export default function MeterProfile() {
               </Box>
             </Box>
 
-            {relayLoading && <LinearProgress sx={{ mb: 2 }} />}
+            {relayLoading && <LinearProgress sx={{ mb: 1 }} />}
 
-            {/* Summary charts */}
-            {pieData.length > 0 && (
-              <Grid container spacing={2} mb={2}>
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, p: 2, border: `1px solid ${colors.primary[600]}` }}>
-                    <Typography variant="subtitle2" color={colors.grey[300]} mb={1}>Event Reasons (Last 7 Days)</Typography>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} >
-                          {pieData.map((_, i) => <Cell key={i} fill={REASON_COLORS[i % REASON_COLORS.length]} />)}
-                        </Pie>
-                        <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ backgroundColor: colors.primary[500], borderRadius: 2, p: 2, border: `1px solid ${colors.primary[600]}` }}>
-                    <Typography variant="subtitle2" color={colors.grey[300]} mb={1}>Event Breakdown</Typography>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={relaySummary?.byRelay ? relaySummary.byRelay.map(r => ({ name: r.name, count: (r.state || 0) + (r.control || 0) })) : (() => {
-                        const bd = relaySummary?.breakdown || relaySummary?.summary || [];
-                        return [
-                          { name: "Mains", count: bd.filter(s => s.relay_index === 0).reduce((sum, s) => sum + (s.count || s.event_count || 0), 0) },
-                          { name: "Geyser", count: bd.filter(s => s.relay_index === 1).reduce((sum, s) => sum + (s.count || s.event_count || 0), 0) },
-                        ];
-                      })()}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={colors.primary[600]} />
-                        <XAxis dataKey="name" tick={{ fill: colors.grey[400] }} />
-                        <YAxis tick={{ fill: colors.grey[400] }} />
-                        <RechartsTooltip contentStyle={{ backgroundColor: colors.primary[400], border: "none", color: colors.grey[100] }} />
-                        <Bar dataKey="count" fill="#4cceac" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Grid>
-              </Grid>
-            )}
-
-            {/* Events table */}
-            <TableContainer sx={{ backgroundColor: colors.primary[500], borderRadius: 2, border: `1px solid ${colors.primary[600]}` }}>
+            {/* Engineering-style events table */}
+            <TableContainer sx={{ backgroundColor: colors.primary[500], borderRadius: 1, border: `1px solid ${colors.primary[600]}`, "& .MuiTableCell-root": { fontFamily: "'Source Code Pro', 'Roboto Mono', monospace", py: 0.75, px: 1.5 } }}>
               <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    {["Time", "Relay", "Type", "Action", "Reason", "Detail"].map((h) => (
-                      <TableCell key={h} sx={{ color: colors.grey[300], fontWeight: 600, borderBottom: `1px solid ${colors.primary[600]}` }}>{h}</TableCell>
+                  <TableRow sx={{ backgroundColor: "rgba(0,0,0,0.3)" }}>
+                    {["#", "TIMESTAMP", "RELAY", "EVENT", "STATE", "REASON CODE", "DESCRIPTION"].map((h) => (
+                      <TableCell key={h} sx={{ color: colors.grey[400], fontWeight: 700, fontSize: 10, letterSpacing: "0.08em", borderBottom: `2px solid ${colors.primary[600]}`, textTransform: "uppercase" }}>{h}</TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {relayEvents.length === 0 && !relayLoading ? (
-                    <TableRow><TableCell colSpan={6} align="center"><Typography color={colors.grey[400]} py={3}>No relay events recorded yet</Typography></TableCell></TableRow>
-                  ) : relayEvents.map((evt, i) => (
-                    <TableRow key={evt.id || i} sx={{ "&:hover": { backgroundColor: colors.primary[600] }, "& td": { borderBottom: `1px solid ${colors.primary[600]}` } }}>
-                      <TableCell sx={{ color: colors.grey[100], fontSize: 12, whiteSpace: "nowrap" }}>{fmtTime(evt.meter_timestamp || evt.received_at)}</TableCell>
+                    <TableRow><TableCell colSpan={7} align="center"><Typography color={colors.grey[500]} py={3} fontFamily="monospace" fontSize={12}>-- NO RELAY EVENTS RECORDED --</Typography></TableCell></TableRow>
+                  ) : relayEvents.map((evt, i) => {
+                    const isMains = Number(evt.relay_index) === 0;
+                    const isState = Number(evt.entry_type) === 0;
+                    const stateVal = isState ? Number(evt.state) : Number(evt.control);
+                    const stateLabel = isState ? (stateVal ? "ON" : "OFF") : (stateVal ? "ENABLED" : "DISABLED");
+                    const stateColor = stateVal ? "#4cceac" : "#f44336";
+                    return (
+                    <TableRow key={evt.id || i} sx={{
+                      "&:hover": { backgroundColor: "rgba(76,206,172,0.06)" },
+                      "& td": { borderBottom: `1px solid rgba(255,255,255,0.05)` },
+                      borderLeft: `3px solid ${isMains ? "#4cceac" : "#f4a261"}`,
+                    }}>
+                      <TableCell sx={{ color: colors.grey[500], fontSize: 10, width: 30 }}>{evt.id || (relayPage * relayRowsPerPage + i + 1)}</TableCell>
+                      <TableCell sx={{ color: colors.grey[200], fontSize: 11, whiteSpace: "nowrap" }}>{fmtTime(evt.meter_timestamp || evt.received_at)}</TableCell>
+                      <TableCell sx={{ fontSize: 11, fontWeight: 600, color: isMains ? "#4cceac" : "#f4a261" }}>{isMains ? "MAINS" : "GEYSER"}</TableCell>
+                      <TableCell sx={{ fontSize: 11, color: colors.grey[300] }}>{isState ? "STATE" : "CTRL"}</TableCell>
                       <TableCell>
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                          {evt.relay_index === 0 ? <PowerOutlined sx={{ fontSize: 16, color: "#4cceac" }} /> : <HotTub sx={{ fontSize: 16, color: "#f4a261" }} />}
-                          <Typography variant="body2" color={colors.grey[100]} fontWeight={500}>{evt.relay_name || (evt.relay_index === 0 ? "Mains" : "Geyser")}</Typography>
+                        <Box component="span" sx={{ color: stateColor, fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: stateColor, display: "inline-block" }} />
+                          {stateLabel}
                         </Box>
                       </TableCell>
-                      <TableCell>
-                        <Chip label={evt.entry_type === 0 ? "State" : "Control"} size="small" variant="outlined"
-                          sx={{ color: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", borderColor: evt.entry_type === 0 ? "#4cceac" : "#ab47bc", fontSize: 11 }} />
-                      </TableCell>
-                      <TableCell>
-                        {evt.entry_type === 0 ? (
-                          <Chip icon={evt.state ? <ToggleOn /> : <ToggleOff />} label={evt.state ? "ON" : "OFF"} size="small"
-                            sx={{ backgroundColor: evt.state ? "#1b5e20" : "#b71c1c", color: "#fff", fontWeight: 600 }} />
-                        ) : (
-                          <Chip icon={evt.control ? <ToggleOn /> : <ToggleOff />} label={evt.control ? "ENABLED" : "DISABLED"} size="small"
-                            sx={{ backgroundColor: evt.control ? "#0d47a1" : "#4a148c", color: "#fff", fontWeight: 600 }} />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={evt.reason_name || REASON_LABELS[evt.reason_code] || "Unknown"} size="small"
-                          sx={{ backgroundColor: REASON_COLORS[evt.reason_code] || "#868dfb", color: "#fff", fontSize: 11, fontWeight: 500 }} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color={colors.grey[200]} sx={{ fontSize: 12, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {evt.reason_text || "-"}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                      <TableCell sx={{ color: colors.grey[400], fontSize: 11 }}>{evt.reason_name || REASON_LABELS[evt.reason_code] || `0x${(Number(evt.reason_code) || 0).toString(16).padStart(2, "0").toUpperCase()}`}</TableCell>
+                      <TableCell sx={{ color: colors.grey[300], fontSize: 11, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{evt.reason_text || "-"}</TableCell>
+                    </TableRow>);
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
