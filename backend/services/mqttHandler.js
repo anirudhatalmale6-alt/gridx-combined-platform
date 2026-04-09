@@ -160,6 +160,23 @@ function ensureTables() {
     INDEX idx_drn (DRN)
   )`, (err) => { if (err) console.error('[MQTT] MeterRelayEvents table error:', err.message); });
 
+  // New relay events table used by the MQTT handler and web API
+  db.query(`CREATE TABLE IF NOT EXISTS meter_relay_events (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    drn VARCHAR(20) NOT NULL,
+    relay_index TINYINT DEFAULT 0,
+    entry_type TINYINT DEFAULT 0,
+    state TINYINT,
+    control TINYINT,
+    reason_code TINYINT DEFAULT 0,
+    reason_text VARCHAR(255) DEFAULT '',
+    trigger_type TINYINT DEFAULT 0,
+    meter_timestamp DATETIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_drn (drn),
+    INDEX idx_meter_timestamp (meter_timestamp)
+  )`, (err) => { if (err) console.error('[MQTT] meter_relay_events table error:', err.message); });
+
   db.query(`CREATE TABLE IF NOT EXISTS CreditTransfers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     source_drn VARCHAR(50) NOT NULL,

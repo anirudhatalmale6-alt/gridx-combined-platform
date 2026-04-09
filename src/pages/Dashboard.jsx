@@ -101,6 +101,78 @@ const notifIcon = (type) => {
   }
 };
 
+// Helper to get notification icon by type string
+const getNotifIcon = (type, colors) => {
+  if (type === "error") return <ErrorOutlineIcon sx={{ color: "#db4f4a", fontSize: 18 }} />;
+  if (type === "warning") return <WarningAmberIcon sx={{ color: "#f2b705", fontSize: 18 }} />;
+  if (type === "success") return <CheckCircleOutlineIcon sx={{ color: colors.greenAccent[500], fontSize: 18 }} />;
+  return <InfoOutlinedIcon sx={{ color: colors.blueAccent[400], fontSize: 18 }} />;
+};
+
+// Expandable notification group component
+function NotifGroup({ groupKey, items, borderColor, colors, navigate }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <Box mb="6px">
+      {/* Group header — clickable */}
+      <Box
+        display="flex" gap="10px" py="8px" px="8px"
+        onClick={() => setExpanded((p) => !p)}
+        sx={{
+          cursor: "pointer", borderLeft: `3px solid ${borderColor}`, borderRadius: "0 6px 6px 0",
+          bgcolor: `${borderColor}12`, transition: "all 0.2s",
+          "&:hover": { bgcolor: `${borderColor}20` },
+        }}
+      >
+        <Box mt="2px" sx={{ minWidth: 20 }}>{getNotifIcon(items[0].type, colors)}</Box>
+        <Box flex={1}>
+          <Box display="flex" alignItems="center" gap="6px">
+            <Typography variant="body2" fontWeight="700" color={colors.grey[100]} sx={{ fontSize: "12px" }}>
+              {groupKey}
+            </Typography>
+            <Box sx={{ bgcolor: `${borderColor}25`, px: "6px", py: "1px", borderRadius: "10px" }}>
+              <Typography variant="caption" sx={{ fontSize: "10px", fontWeight: 700, color: borderColor }}>{items.length}</Typography>
+            </Box>
+            <Typography variant="caption" color={colors.grey[400]} sx={{ fontSize: "10px", ml: "auto" }}>
+              {expanded ? "▲ collapse" : "▼ expand"}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+      {/* Expanded items */}
+      {expanded && items.map((notif) => (
+        <Box
+          key={notif.id}
+          display="flex" gap="10px" py="6px" px="8px" ml="12px"
+          onClick={() => notif.drn ? navigate(`/meter/${notif.drn}`) : null}
+          sx={{
+            cursor: notif.drn ? "pointer" : "default",
+            borderLeft: `2px solid ${borderColor}40`, borderRadius: "0 4px 4px 0",
+            bgcolor: `${borderColor}06`, transition: "all 0.2s",
+            "&:hover": { bgcolor: `${borderColor}12`, transform: "translateX(2px)" },
+          }}
+        >
+          <Box flex={1}>
+            <Box display="flex" alignItems="center" gap="6px">
+              <Typography variant="body2" fontWeight="600" color={colors.grey[100]} sx={{ fontSize: "11px" }}>
+                {notif.title}
+              </Typography>
+              {notif.drn && (
+                <Box sx={{ bgcolor: `${borderColor}20`, px: "4px", py: "1px", borderRadius: "3px" }}>
+                  <Typography variant="caption" sx={{ fontSize: "8px", fontWeight: 700, color: borderColor, fontFamily: "monospace" }}>{notif.drn}</Typography>
+                </Box>
+              )}
+            </Box>
+            <Typography variant="caption" color={colors.grey[300]} sx={{ fontSize: "9px", lineHeight: 1.3, display: "block", mt: "1px" }}>
+              {notif.message && notif.message.length > 80 ? notif.message.substring(0, 80) + "..." : notif.message || ""}
+            </Typography>
+          </Box>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 export default function Dashboard() {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
@@ -723,42 +795,41 @@ export default function Dashboard() {
           backgroundColor={colors.primary[400]}
           p="15px"
         >
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb="10px">
-            <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
-              Weekly Energy Trend
-            </Typography>
-            <Box sx={{ display: "flex", justifyContent: "space-around", bgcolor: colors.primary[500], borderRadius: "8px", p: 1.5, minWidth: 440 }}>
-              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <BoltOutlinedIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
-                <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
-                  {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh
-                </Typography>
-                <Typography variant="caption" color={colors.grey[300]}>Total Energy</Typography>
-              </Box>
-              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <TrendingUpIcon sx={{ color: "#f2b705", fontSize: "1.8rem", mb: 0.5 }} />
-                <Typography variant="h5" fontWeight="bold" color="#f2b705">
-                  {salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh
-                </Typography>
-                <Typography variant="caption" color={colors.grey[300]}>Peak</Typography>
-              </Box>
-              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <BarChartIcon sx={{ color: "#00b4d8", fontSize: "1.8rem", mb: 0.5 }} />
-                <Typography variant="h5" fontWeight="bold" color="#00b4d8">
-                  {salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / Math.max(salesTrend.length, 1)).toFixed(1) : "0"} kWh
-                </Typography>
-                <Typography variant="caption" color={colors.grey[300]}>Average</Typography>
-              </Box>
-              <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <ConfirmationNumberOutlinedIcon sx={{ color: "#a78bfa", fontSize: "1.8rem", mb: 0.5 }} />
-                <Typography variant="h5" fontWeight="bold" color="#a78bfa">
-                  {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)}
-                </Typography>
-                <Typography variant="caption" color={colors.grey[300]}>Tokens</Typography>
-              </Box>
+          <Typography variant="h5" fontWeight="600" color={colors.grey[100]} mb="10px">
+            Weekly Energy Trend
+          </Typography>
+          {/* Stat boxes — full width, matching Hourly Revenue Analytics style */}
+          <Box sx={{ display: "flex", justifyContent: "space-around", bgcolor: colors.primary[500], borderRadius: "8px", p: 1.5, mb: 1.5 }}>
+            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <BoltOutlinedIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
+              <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
+                {salesTrend.reduce((s, d) => s + (d.kWh || 0), 0).toFixed(1)} kWh
+              </Typography>
+              <Typography variant="caption" color={colors.grey[300]}>Total Energy</Typography>
+            </Box>
+            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <TrendingUpIcon sx={{ color: "#f2b705", fontSize: "1.8rem", mb: 0.5 }} />
+              <Typography variant="h5" fontWeight="bold" color="#f2b705">
+                {salesTrend.length > 0 ? Math.max(...salesTrend.map(d => d.kWh || 0)).toFixed(1) : "0"} kWh
+              </Typography>
+              <Typography variant="caption" color={colors.grey[300]}>Peak</Typography>
+            </Box>
+            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <BarChartIcon sx={{ color: "#00b4d8", fontSize: "1.8rem", mb: 0.5 }} />
+              <Typography variant="h5" fontWeight="bold" color="#00b4d8">
+                {salesTrend.length > 0 ? (salesTrend.reduce((s, d) => s + (d.kWh || 0), 0) / Math.max(salesTrend.length, 1)).toFixed(1) : "0"} kWh
+              </Typography>
+              <Typography variant="caption" color={colors.grey[300]}>Average</Typography>
+            </Box>
+            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <ConfirmationNumberOutlinedIcon sx={{ color: "#a78bfa", fontSize: "1.8rem", mb: 0.5 }} />
+              <Typography variant="h5" fontWeight="bold" color="#a78bfa">
+                {salesTrend.reduce((s, d) => s + (d.tokens || 0), 0)}
+              </Typography>
+              <Typography variant="caption" color={colors.grey[300]}>Tokens</Typography>
             </Box>
           </Box>
-          <Box height="calc(100% - 55px)">
+          <Box height="calc(100% - 120px)">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.4} />
@@ -806,52 +877,50 @@ export default function Dashboard() {
               <Typography variant="body2" color={colors.grey[300]}>All systems nominal</Typography>
             </Box>
           )}
-          {notifs.slice(0, 10).map((notif, i) => {
-            const borderColor = notif.type === "error" ? "#db4f4a" : notif.type === "warning" ? "#f2b705" : notif.type === "success" ? colors.greenAccent[500] : colors.blueAccent[400];
-            return (
-              <Box
-                key={notif.id}
-                display="flex"
-                gap="10px"
-                py="8px"
-                px="8px"
-                mb="6px"
-                onClick={() => notif.drn ? navigate(`/meter/${notif.drn}`) : null}
-                sx={{
-                  cursor: notif.drn ? "pointer" : "default",
-                  borderLeft: `3px solid ${borderColor}`,
-                  borderRadius: "0 6px 6px 0",
-                  bgcolor: `${borderColor}08`,
-                  transition: "all 0.2s",
-                  "&:hover": { bgcolor: `${borderColor}15`, transform: "translateX(2px)" },
-                }}
-              >
-                <Box mt="2px" sx={{ minWidth: 20 }}>
-                  {notif.type === "error" ? <ErrorOutlineIcon sx={{ color: "#db4f4a", fontSize: 18 }} /> :
-                   notif.type === "warning" ? <WarningAmberIcon sx={{ color: "#f2b705", fontSize: 18 }} /> :
-                   notif.type === "success" ? <CheckCircleOutlineIcon sx={{ color: colors.greenAccent[500], fontSize: 18 }} /> :
-                   <InfoOutlinedIcon sx={{ color: colors.blueAccent[400], fontSize: 18 }} />}
-                </Box>
-                <Box flex={1}>
-                  <Box display="flex" alignItems="center" gap="6px">
-                    <Typography variant="body2" fontWeight="700" color={colors.grey[100]} sx={{ fontSize: "12px", lineHeight: 1.3 }}>
-                      {notif.title}
-                    </Typography>
-                    {notif.drn && (
-                      <Box sx={{ bgcolor: `${borderColor}20`, px: "5px", py: "1px", borderRadius: "4px", display: "inline-flex" }}>
-                        <Typography variant="caption" sx={{ fontSize: "9px", fontWeight: 700, color: borderColor, fontFamily: "monospace", letterSpacing: "0.5px" }}>
-                          {notif.drn}
-                        </Typography>
+          {(() => {
+            // Group notifications by title prefix (e.g. "Tamper Alert", "Warning")
+            const groups = [];
+            const seen = new Map();
+            notifs.forEach((n) => {
+              const key = n.title?.replace(/:.*$/, "").trim() || "Other";
+              if (!seen.has(key)) { seen.set(key, []); groups.push(key); }
+              seen.get(key).push(n);
+            });
+            return groups.map((groupKey) => {
+              const items = seen.get(groupKey);
+              if (items.length === 1) {
+                // Single notification — render directly
+                const notif = items[0];
+                const borderColor = notif.type === "error" ? "#db4f4a" : notif.type === "warning" ? "#f2b705" : notif.type === "success" ? colors.greenAccent[500] : colors.blueAccent[400];
+                return (
+                  <Box key={notif.id} display="flex" gap="10px" py="8px" px="8px" mb="6px"
+                    onClick={() => notif.drn ? navigate(`/meter/${notif.drn}`) : null}
+                    sx={{ cursor: notif.drn ? "pointer" : "default", borderLeft: `3px solid ${borderColor}`, borderRadius: "0 6px 6px 0", bgcolor: `${borderColor}08`, transition: "all 0.2s", "&:hover": { bgcolor: `${borderColor}15`, transform: "translateX(2px)" } }}>
+                    <Box mt="2px" sx={{ minWidth: 20 }}>{getNotifIcon(notif.type, colors)}</Box>
+                    <Box flex={1}>
+                      <Box display="flex" alignItems="center" gap="6px">
+                        <Typography variant="body2" fontWeight="700" color={colors.grey[100]} sx={{ fontSize: "12px", lineHeight: 1.3 }}>{notif.title}</Typography>
+                        {notif.drn && (
+                          <Box sx={{ bgcolor: `${borderColor}20`, px: "5px", py: "1px", borderRadius: "4px" }}>
+                            <Typography variant="caption" sx={{ fontSize: "9px", fontWeight: 700, color: borderColor, fontFamily: "monospace" }}>{notif.drn}</Typography>
+                          </Box>
+                        )}
                       </Box>
-                    )}
+                      <Typography variant="caption" color={colors.grey[300]} sx={{ fontSize: "10px", lineHeight: 1.4, display: "block", mt: "2px" }}>
+                        {notif.message && notif.message.length > 90 ? notif.message.substring(0, 90) + "..." : notif.message || ""}
+                      </Typography>
+                    </Box>
                   </Box>
-                  <Typography variant="caption" color={colors.grey[300]} sx={{ fontSize: "10px", lineHeight: 1.4, display: "block", mt: "2px" }}>
-                    {notif.message && notif.message.length > 90 ? notif.message.substring(0, 90) + "..." : notif.message || ""}
-                  </Typography>
-                </Box>
-              </Box>
-            );
-          })}
+                );
+              }
+              // Multiple notifications — render as expandable group
+              const sample = items[0];
+              const borderColor = sample.type === "error" ? "#db4f4a" : sample.type === "warning" ? "#f2b705" : sample.type === "success" ? colors.greenAccent[500] : colors.blueAccent[400];
+              return (
+                <NotifGroup key={groupKey} groupKey={groupKey} items={items} borderColor={borderColor} colors={colors} navigate={navigate} />
+              );
+            });
+          })()}
         </Box>
 
         {/* ROW 3: Hourly Revenue Analytics (span 9) + Token Transaction Timeline (span 3) */}
@@ -905,7 +974,7 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.4} vertical={false} />
-                <XAxis dataKey="hour" stroke={colors.grey[300]} tick={{ fontSize: 10 }} interval={2} />
+                <XAxis dataKey="hour" stroke={colors.grey[300]} tick={{ fontSize: 9, angle: -45, textAnchor: "end" }} interval={0} height={50} />
                 <YAxis stroke={colors.grey[300]} tick={{ fontSize: 10 }} tickFormatter={(v) => `N$${v}`} />
                 <Tooltip
                   contentStyle={{
