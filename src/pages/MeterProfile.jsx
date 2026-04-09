@@ -4353,7 +4353,7 @@ export default function MeterProfile() {
             const scoreColor = score >= 80 ? "#00e676" : score >= 50 ? "#ffab00" : "#ff1744";
             const scoreBg = score >= 80 ? "rgba(0,230,118,0.08)" : score >= 50 ? "rgba(255,171,0,0.08)" : "rgba(255,23,68,0.08)";
             const scoreLabel = score >= 80 ? "GOOD" : score >= 50 ? "WARNING" : "CRITICAL";
-            const scoreGlow = score >= 80 ? "0 0 40px rgba(0,230,118,0.3)" : score >= 50 ? "0 0 40px rgba(255,171,0,0.3)" : "0 0 40px rgba(255,23,68,0.3)";
+            // Color coding preserved, no glow effects
             return (
               <Box>
                 {/* Header */}
@@ -4374,18 +4374,15 @@ export default function MeterProfile() {
                       background: `linear-gradient(145deg, ${colors.primary[400]} 0%, ${colors.primary[500]} 100%)`,
                       borderRadius: 3, p: 4, textAlign: "center",
                       border: `1px solid ${scoreColor}33`,
-                      boxShadow: scoreGlow,
                       position: "relative", overflow: "hidden",
                     }}>
-                      {/* Subtle radial glow behind the gauge */}
-                      <Box sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 200, height: 200, borderRadius: "50%", background: `radial-gradient(circle, ${scoreColor}15 0%, transparent 70%)` }} />
                       <Box sx={{ position: "relative", display: "inline-flex", mb: 2 }}>
                         {/* Track ring */}
                         <CircularProgress variant="determinate" value={100} size={160} thickness={5} sx={{ color: colors.primary[600], position: "absolute" }} />
                         {/* Score ring */}
-                        <CircularProgress variant="determinate" value={score} size={160} thickness={5} sx={{ color: scoreColor, "& .MuiCircularProgress-circle": { strokeLinecap: "round", filter: `drop-shadow(0 0 6px ${scoreColor})` } }} />
+                        <CircularProgress variant="determinate" value={score} size={160} thickness={5} sx={{ color: scoreColor, "& .MuiCircularProgress-circle": { strokeLinecap: "round" } }} />
                         <Box sx={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
-                          <Typography variant="h2" fontWeight="900" color={scoreColor} sx={{ lineHeight: 1, textShadow: `0 0 20px ${scoreColor}55` }}>{score}</Typography>
+                          <Typography variant="h2" fontWeight="900" color={scoreColor} sx={{ lineHeight: 1 }}>{score}</Typography>
                           <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>/ 100</Typography>
                         </Box>
                       </Box>
@@ -4432,7 +4429,7 @@ export default function MeterProfile() {
                             borderRadius: 2, p: 2,
                             border: `1px solid ${stat.color}30`,
                             transition: "all 0.2s ease",
-                            "&:hover": { border: `1px solid ${stat.color}60`, transform: "translateY(-2px)", boxShadow: `0 4px 20px ${stat.color}15` },
+                            "&:hover": { border: `1px solid ${stat.color}60`, transform: "translateY(-2px)" },
                           }}>
                             <Box display="flex" alignItems="center" gap={1} mb={1}>
                               <Box sx={{ color: stat.color, opacity: 0.7 }}>{stat.icon}</Box>
@@ -4466,7 +4463,7 @@ export default function MeterProfile() {
                             }}>
                               {hasError && <Box sx={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, backgroundColor: err.color, opacity: 0.8 }} />}
                               <Typography variant="caption" color={colors.grey[400]} fontWeight={600}>{err.label}</Typography>
-                              <Typography variant="h4" fontWeight="900" color={hasError ? err.color : colors.grey[500]} sx={{ textShadow: hasError ? `0 0 10px ${err.color}40` : "none" }}>{err.value ?? 0}</Typography>
+                              <Typography variant="h4" fontWeight="900" color={hasError ? err.color : colors.grey[500]}>{err.value ?? 0}</Typography>
                             </Box>
                           </Grid>
                         );
@@ -4509,7 +4506,7 @@ export default function MeterProfile() {
 
                 {healthData.created_at && (
                   <Box mt={2} display="flex" alignItems="center" gap={1}>
-                    <Box sx={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#00e676", boxShadow: "0 0 8px rgba(0,230,118,0.5)" }} />
+                    <Box sx={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#00e676" }} />
                     <Typography variant="caption" color={colors.grey[400]}>
                       Last updated: {new Date(healthData.created_at).toLocaleString("en-ZA")}
                     </Typography>

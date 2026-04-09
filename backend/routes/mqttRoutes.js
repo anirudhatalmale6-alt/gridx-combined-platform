@@ -367,7 +367,21 @@ router.post('/mqtt/credit-transfer/:drn', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'watt_hours must be between 1 and 50000' });
     }
 
+    if (drn === target_meter) {
+      return res.status(400).json({ error: 'Cannot transfer to the same meter' });
+    }
+
     const whInt = parseInt(watt_hours);
+
+    // Validate target meter exists in the system
+    db.query('SELECT DRN FROM MeterProfileReal WHERE DRN = ?', [target_meter], (err, rows) => {
+      if (err) {
+        console.error('[CreditTransfer] Target meter lookup error:', err.message);
+        return res.status(500).json({ error: 'Failed to validate target meter' });
+      }
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: `Target meter ${target_meter} not found in the system` });
+      }
 
     // Create a transfer record in the database
     db.query('INSERT INTO CreditTransfers SET ?', {
@@ -397,7 +411,8 @@ router.post('/mqtt/credit-transfer/:drn', authenticateToken, (req, res) => {
         target_meter,
         watt_hours: whInt,
       });
-    });
+    }); // end INSERT
+    }); // end target meter validation
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
