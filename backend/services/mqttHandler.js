@@ -20,6 +20,9 @@ const db = require('../config/db');
 
 let mqttClient = null;
 
+const fs = require('fs');
+const path = require('path');
+
 const TOPICS = [
   'gx/+/power',
   'gx/+/energy',
@@ -32,7 +35,129 @@ const TOPICS = [
   'gx/+/auth_numbers',
   'gx/+/energy_usage',
   'gx/+/emergency',
+  'gx/+/ota/req',
 ];
+
+// ==================== MQTT OTA State ====================
+
+const FIRMWARE_DIR = path.join(__dirname, '..', 'hardware', 'files', 'Data');
+let firmwareCache = null;  // { path, data, size, mtime }
+
+function loadFirmware(firmwarePath) {
+  try {
+    const stat = fs.statSync(firmwarePath);
+    if (firmwareCache && firmwareCache.path === firmwarePath && firmwareCache.mtime === stat.mtimeMs) {
+      return firmwareCache;
+    }
+    const data = fs.readFileSync(firmwarePath);
+    firmwareCache = { path: firmwarePath, data, size: data.length, mtime: stat.mtimeMs };
+    console.log(`[OTA] Firmware loaded: ${firmwarePath} (${data.length} bytes)`);
+    return firmwareCache;
+  } catch (err) {
+    console.error(`[OTA] Failed to load firmware: ${err.message}`);
+    return null;
+  }
+}
+
+function getFirmwareInfo() {
+  const infoPath = path.join(FIRMWARE_DIR, 'fw_latest.json');
+  try {
+    const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
+    return info;
+  } catch (err) {
+    console.error(`[OTA] Failed to read fw_latest.json: ${err.message}`);
+    return null;
+  }
+}
+
+function handleOtaRequest(drn, buf) {
+  let msg;
+  try {
+    msg = JSON.parse(buf.toString());
+  } catch (e) {
+    console.error(`[OTA] Invalid JSON from ${drn}:`, buf.toString());
+    return;
+  }
+
+  const action = msg.action;
+
+  if (action === 'chunk') {
+    const offset = msg.offset || 0;
+    const requestedSize = msg.size || 1024;
+
+    // Load firmware binary
+    const fwInfo = getFirmwareInfo();
+    if (!fwInfo) {
+      console.error(`[OTA] No firmware info available for chunk request from ${drn}`);
+      return;
+    }
+
+    // Determine firmware file path from URL or use default
+    const fwPath = path.join(FIRMWARE_DIR, 'firmware.bin');
+    const fw = loadFirmware(fwPath);
+    if (!fw) {
+      console.error(`[OTA] Cannot serve chunk: firmware not loaded`);
+      return;
+    }
+
+    const remaining = fw.size - offset;
+    if (remaining <= 0) {
+      console.log(`[OTA] ${drn}: requested offset ${offset} beyond firmware size ${fw.size}`);
+      return;
+    }
+    const chunkSize = Math.min(requestedSize, remaining);
+
+    // Build binary response: [4 bytes offset BE][4 bytes length BE][data]
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(offset, 0);
+    header.writeUInt32BE(chunkSize, 4);
+    const chunkData = fw.data.slice(offset, offset + chunkSize);
+    const response = Buffer.concat([header, chunkData]);
+
+    const dataTopic = `gx/${drn}/ota/data`;
+    mqttClient.publish(dataTopic, response, { qos: 1 }, (err) => {
+      if (err) {
+        console.error(`[OTA] Publish failed for ${drn} offset ${offset}:`, err.message);
+        return;
+      }
+      const progress = Math.round(((offset + chunkSize) / fw.size) * 100);
+      if (progress % 5 === 0 || offset === 0 || offset + chunkSize >= fw.size) {
+        console.log(`[OTA] ${drn}: chunk offset=${offset} size=${chunkSize} progress=${progress}%`);
+      }
+    });
+
+  } else if (action === 'complete') {
+    console.log(`[OTA] ${drn}: OTA completed successfully!`);
+  } else if (action === 'error') {
+    console.error(`[OTA] ${drn}: OTA error: ${msg.detail || 'unknown'}`);
+  }
+}
+
+function startMqttOta(drn, hash) {
+  const fwInfo = getFirmwareInfo();
+  if (!fwInfo) {
+    throw new Error('No firmware info available (fw_latest.json)');
+  }
+
+  const fwPath = path.join(FIRMWARE_DIR, 'firmware.bin');
+  const fw = loadFirmware(fwPath);
+  if (!fw) {
+    throw new Error('Failed to load firmware binary');
+  }
+
+  const cmd = {
+    type: 'ota_mqtt',
+    action: 'start',
+    version: fwInfo.version,
+    size: fw.size,
+    hash: hash || fwInfo.hash,
+    chunk_size: 1024,
+  };
+
+  publishCommand(drn, cmd, 1);
+  console.log(`[OTA] MQTT OTA start command sent to ${drn}: v${fwInfo.version}, ${fw.size} bytes`);
+  return cmd;
+}
 
 // ==================== Binary Parser Helpers ====================
 
@@ -265,10 +390,18 @@ async function init() {
 
 function handleMessage(topic, buf) {
   const parts = topic.split('/');
-  if (parts.length !== 3 || parts[0] !== 'gx') return;
+  if (parts.length < 3 || parts[0] !== 'gx') return;
 
   const drn = parts[1];
   const type = parts[2];
+
+  // Handle OTA chunk requests: gx/{drn}/ota/req
+  if (type === 'ota' && parts[3] === 'req') {
+    handleOtaRequest(drn, buf);
+    return;
+  }
+
+  if (parts.length !== 3) return;
 
   // Update last-seen timestamp for live/offline tracking
   db.query(
@@ -895,4 +1028,4 @@ function getClient() {
   return mqttClient;
 }
 
-module.exports = { init, publishCommand, getClient };
+module.exports = { init, publishCommand, getClient, startMqttOta, getFirmwareInfo };
