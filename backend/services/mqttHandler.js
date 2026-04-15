@@ -126,6 +126,32 @@ function handleOtaRequest(drn, buf) {
       }
     });
 
+  } else if (action === 'check') {
+    // Device is requesting an OTA check — send start command if update available
+    console.log(`[OTA] ${drn}: OTA check requested`);
+    const fwInfo = getFirmwareInfo();
+    if (!fwInfo) {
+      console.error(`[OTA] No firmware info available for check from ${drn}`);
+      return;
+    }
+    const fwPath = path.join(FIRMWARE_DIR, 'firmware.bin');
+    const fw = loadFirmware(fwPath);
+    if (!fw) {
+      console.error(`[OTA] Cannot check: firmware not loaded`);
+      return;
+    }
+
+    // Always send OTA start — device-side version comparison decides whether to apply
+    console.log(`[OTA] Sending OTA start to ${drn}: v${fwInfo.version}, ${fw.size} bytes`);
+    publishCommand(drn, {
+      type: 'ota_mqtt',
+      action: 'start',
+      version: fwInfo.version,
+      size: fw.size,
+      hash: fwInfo.hash,
+      chunk_size: 1024,
+    }, 1);
+
   } else if (action === 'complete') {
     console.log(`[OTA] ${drn}: OTA completed successfully!`);
   } else if (action === 'error') {
