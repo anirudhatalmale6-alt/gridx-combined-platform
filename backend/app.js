@@ -118,6 +118,7 @@ const meterHealthRoutes = require('./meter/meterHealthRoutes');
 const apiRouter = express.Router();
 
 // Public routes
+apiRouter.use('/files', hwFilesRoute); // Firmware OTA (before global auth middleware)
 apiRouter.use('/meter-registration', meterRegistrationRoutes);
 const commissionReportPublicRoutes = require('./meterProfile/commissionReportPublicRoutes');
 apiRouter.use('/commission-report', commissionReportPublicRoutes);
