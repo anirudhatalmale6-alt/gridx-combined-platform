@@ -1082,8 +1082,10 @@ function handleJsonMessage(drn, type, data) {
       } else if (typeof data === 'object' && !Array.isArray(data)) {
         record = { DRN: drn, ...data };
       } else return;
+      console.log(`[MQTT] Token from ${drn}: id=${record.token_id}, method=${record.submission_Method}, amount=${record.token_amount}`);
       db.query('INSERT INTO STSTokesInfo SET ?', record, (err) => {
         if (err) console.error('[MQTT] Token insert error:', err.message);
+        else console.log(`[MQTT] Token stored for ${drn}: ${record.token_id}`);
       });
       break;
     }
