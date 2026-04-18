@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const db = require('../config/db');
 
 // In-memory store for pending meter validations
 // Key: DRN, Value: { token, status, createdAt, type }
@@ -111,39 +112,78 @@ const checkValidation = (req, res) => {
       return res.status(400).json({ error: 'DRN is required' });
     }
 
+    // First check pending validations (for registration/password recovery flow)
     const pending = pendingValidations[drn];
 
-    if (!pending) {
-      return res.status(404).json({
-        status: 'not_found',
-        message: 'No validation request found for this meter'
-      });
+    if (pending) {
+      // Check expiry
+      if (Date.now() - pending.createdAt > 5 * 60 * 1000) {
+        delete pendingValidations[drn];
+        return res.status(410).json({
+          status: 'expired',
+          message: 'Validation request has expired'
+        });
+      }
+
+      const response = {
+        valid: true,
+        status: pending.status,
+        type: pending.type,
+        drn: drn
+      };
+
+      // Clean up after confirmed validation is checked
+      if (pending.status === 'confirmed') {
+        setTimeout(() => {
+          if (pendingValidations[drn] && pendingValidations[drn].status === 'confirmed') {
+            delete pendingValidations[drn];
+          }
+        }, 30000);
+      }
+
+      return res.status(200).json(response);
     }
 
-    // Check expiry
-    if (Date.now() - pending.createdAt > 5 * 60 * 1000) {
-      delete pendingValidations[drn];
-      return res.status(410).json({
-        status: 'expired',
-        message: 'Validation request has expired'
-      });
-    }
-
-    res.status(200).json({
-      status: pending.status,
-      type: pending.type,
-      drn: drn
-    });
-
-    // Clean up after confirmed validation is checked
-    if (pending.status === 'confirmed') {
-      // Keep it for 30 more seconds in case of retry
-      setTimeout(() => {
-        if (pendingValidations[drn] && pendingValidations[drn].status === 'confirmed') {
-          delete pendingValidations[drn];
+    // No pending validation — check if meter exists in database
+    // (used by credit transfer to verify target meter exists)
+    db.query(
+      'SELECT DRN FROM MeterProfileReal WHERE DRN = ?',
+      [drn],
+      (err, rows) => {
+        if (err) {
+          console.error('[MeterValidation] DB lookup error:', err.message);
+          return res.status(500).json({ error: 'Failed to validate meter' });
         }
-      }, 30000);
-    }
+
+        if (rows && rows.length > 0) {
+          return res.status(200).json({
+            valid: true,
+            status: 'registered',
+            drn: drn
+          });
+        }
+
+        // Fallback: check meters table
+        db.query(
+          'SELECT DRN FROM meters WHERE DRN = ?',
+          [drn],
+          (err2, rows2) => {
+            if (!err2 && rows2 && rows2.length > 0) {
+              return res.status(200).json({
+                valid: true,
+                status: 'registered',
+                drn: drn
+              });
+            }
+
+            return res.status(404).json({
+              status: 'not_found',
+              message: 'Meter not found in the system'
+            });
+          }
+        );
+      }
+    );
   } catch (error) {
     console.error('Error checking meter validation:', error);
     res.status(500).json({ error: 'Internal server error' });
