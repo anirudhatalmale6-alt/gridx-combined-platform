@@ -348,6 +348,13 @@ export const mqttAPI = {
   testPublish: (drn) => post('/mqtt/test-publish', { drn }),
   getLiveStatus: (threshold) => get(`/mqtt/live-status${threshold ? '?threshold=' + threshold : ''}`),
   getDashboardStats: () => get('/mqtt/dashboard-stats'),
+  // Credit transfers
+  listTransfers: (params) => {
+    const q = new URLSearchParams(params || {}).toString();
+    return get(`/mqtt/credit-transfers${q ? '?' + q : ''}`);
+  },
+  transferCredit: (drn, data) => post(`/mqtt/credit-transfer/${drn}`, data),
+  getTransferStatus: (drn, id) => get(`/mqtt/credit-transfer/${drn}/status/${id}`),
 };
 
 // ===== SUBURB ENERGY =====

@@ -334,7 +334,7 @@ function ensureTables() {
     target_drn VARCHAR(50) NOT NULL,
     watt_hours INT NOT NULL,
     token VARCHAR(255),
-    status ENUM('pending','token_generated','forwarded','completed','failed') DEFAULT 'pending',
+    status ENUM('pending','token_generated','forwarded','completing','completed','failed') DEFAULT 'pending',
     source_ack_at TIMESTAMP NULL,
     target_ack_at TIMESTAMP NULL,
     error_detail VARCHAR(255),
@@ -727,12 +727,44 @@ function handleAckJson(drn, data) {
   if (data.type === 'credit_accept') {
     if (data.status === 'ok') {
       console.log(`[MQTT] Credit accept ACK: target=${drn} applied credit successfully`);
+
+      // Find the transfer record to get source_drn and watt_hours
       db.query(
-        'UPDATE CreditTransfers SET status = ?, target_ack_at = NOW() WHERE target_drn = ? AND status IN (?, ?) ORDER BY created_at DESC LIMIT 1',
-        ['completed', drn, 'token_generated', 'forwarded'],
-        (err) => {
-          if (err) console.error('[MQTT] CreditTransfer complete update error:', err.message);
-          else console.log(`[MQTT] Credit transfer to ${drn} marked COMPLETED`);
+        'SELECT id, source_drn, watt_hours FROM CreditTransfers WHERE target_drn = ? AND status IN (?, ?) ORDER BY created_at DESC LIMIT 1',
+        [drn, 'token_generated', 'forwarded'],
+        (err, rows) => {
+          if (err) {
+            console.error('[MQTT] CreditTransfer lookup error:', err.message);
+            return;
+          }
+          if (!rows || rows.length === 0) {
+            console.error('[MQTT] No matching transfer record found for target:', drn);
+            return;
+          }
+
+          const transfer = rows[0];
+          const sourceDrn = transfer.source_drn;
+          const wattHours = transfer.watt_hours;
+
+          // Update status to 'completing' (waiting for source deduction)
+          db.query(
+            'UPDATE CreditTransfers SET status = ?, target_ack_at = NOW() WHERE id = ?',
+            ['completing', transfer.id],
+            (err) => { if (err) console.error('[MQTT] CreditTransfer completing update error:', err.message); }
+          );
+
+          // Send credit_deduct command to source meter
+          try {
+            publishCommand(sourceDrn, {
+              type: 'credit_deduct',
+              watt_hours: wattHours,
+              target_meter: drn,
+              transfer_id: transfer.id,
+            }, 1);
+            console.log(`[MQTT] Sent credit_deduct to source ${sourceDrn}: ${wattHours} Wh`);
+          } catch (pubErr) {
+            console.error(`[MQTT] Failed to send credit_deduct to ${sourceDrn}:`, pubErr.message);
+          }
         }
       );
     } else {
@@ -740,6 +772,28 @@ function handleAckJson(drn, data) {
       db.query(
         'UPDATE CreditTransfers SET status = ?, error_detail = ?, target_ack_at = NOW() WHERE target_drn = ? AND status IN (?, ?) ORDER BY created_at DESC LIMIT 1',
         ['failed', 'Target meter rejected: ' + (data.detail || 'unknown'), drn, 'token_generated', 'forwarded'],
+        (err) => { if (err) console.error('[MQTT] CreditTransfer fail update error:', err.message); }
+      );
+    }
+  }
+
+  // On credit_deduct ACK from source meter — credit was deducted, transfer is complete
+  if (data.type === 'credit_deduct') {
+    if (data.status === 'ok') {
+      console.log(`[MQTT] Credit deduct ACK: source=${drn} deducted successfully`);
+      db.query(
+        'UPDATE CreditTransfers SET status = ? WHERE source_drn = ? AND status = ? ORDER BY created_at DESC LIMIT 1',
+        ['completed', drn, 'completing'],
+        (err) => {
+          if (err) console.error('[MQTT] CreditTransfer complete update error:', err.message);
+          else console.log(`[MQTT] Credit transfer from ${drn} marked COMPLETED`);
+        }
+      );
+    } else {
+      console.error(`[MQTT] Credit deduct failed on source ${drn}: ${data.detail || 'unknown'}`);
+      db.query(
+        'UPDATE CreditTransfers SET status = ?, error_detail = ? WHERE source_drn = ? AND status = ? ORDER BY created_at DESC LIMIT 1',
+        ['failed', 'Source deduction failed: ' + (data.detail || 'unknown'), drn, 'completing'],
         (err) => { if (err) console.error('[MQTT] CreditTransfer fail update error:', err.message); }
       );
     }
