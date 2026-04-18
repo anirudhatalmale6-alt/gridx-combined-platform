@@ -255,14 +255,24 @@ router.post('/meterHeaterState/update/:id', authenticateToken, async (req, res) 
 // POST /meterResetBLE/update/:id — reset BLE PIN
 router.post('/meterResetBLE/update/:id', authenticateToken, async (req, res) => {
   try {
-    const { state, processed } = req.body;
+    const { state, processed, reason, user } = req.body;
     const DRN = req.params.id;
-    const userName = req.user ? (req.user.Email || 'Admin') : 'Admin';
+    const userName = user || (req.user ? (req.user.Email || 'Admin') : 'Admin');
+    const actionReason = reason || 'BLE PIN reset via platform';
+
+    // Send MQTT command to meter
+    try {
+      mqttHandler.publishCommand(DRN, { type: 'reset_ble' }, 1);
+      console.log(`[ResetBLE] MQTT command sent to ${DRN}`);
+    } catch (e) {
+      console.error(`[ResetBLE] MQTT publish failed for ${DRN}:`, e.message);
+    }
+
     await new Promise((resolve, reject) => {
       db.query(
         `INSERT INTO BLEReset (DRN, user, processed, reason)
          VALUES (?, ?, ?, ?)`,
-        [DRN, userName, processed != null ? processed : 0, 'BLE PIN reset via platform'],
+        [DRN, userName, processed != null ? processed : 0, actionReason],
         (err, result) => err ? reject(err) : resolve(result)
       );
     });
@@ -275,14 +285,24 @@ router.post('/meterResetBLE/update/:id', authenticateToken, async (req, res) => 
 // POST /meterResetAuthNumber/update/:id — clear authorized numbers
 router.post('/meterResetAuthNumber/update/:id', authenticateToken, async (req, res) => {
   try {
-    const { state, processed } = req.body;
+    const { state, processed, reason, user } = req.body;
     const DRN = req.params.id;
-    const userName = req.user ? (req.user.Email || 'Admin') : 'Admin';
+    const userName = user || (req.user ? (req.user.Email || 'Admin') : 'Admin');
+    const actionReason = reason || 'Auth numbers cleared via platform';
+
+    // Send MQTT command to meter
+    try {
+      mqttHandler.publishCommand(DRN, { type: 'clear_auth_numbers' }, 1);
+      console.log(`[ClearAuth] MQTT command sent to ${DRN}`);
+    } catch (e) {
+      console.error(`[ClearAuth] MQTT publish failed for ${DRN}:`, e.message);
+    }
+
     await new Promise((resolve, reject) => {
       db.query(
         `INSERT INTO ResetAuthNumbers (DRN, user, processed, reason)
          VALUES (?, ?, ?, ?)`,
-        [DRN, userName, processed != null ? processed : 0, 'Auth numbers cleared via platform'],
+        [DRN, userName, processed != null ? processed : 0, actionReason],
         (err, result) => err ? reject(err) : resolve(result)
       );
     });
@@ -295,14 +315,24 @@ router.post('/meterResetAuthNumber/update/:id', authenticateToken, async (req, r
 // POST /meterReset/update/:id — restart meter
 router.post('/meterReset/update/:id', authenticateToken, async (req, res) => {
   try {
-    const { state, processed } = req.body;
+    const { state, processed, reason, user } = req.body;
     const DRN = req.params.id;
-    const userName = req.user ? (req.user.Email || 'Admin') : 'Admin';
+    const userName = user || (req.user ? (req.user.Email || 'Admin') : 'Admin');
+    const actionReason = reason || 'Meter restart via platform';
+
+    // Send MQTT command to meter
+    try {
+      mqttHandler.publishCommand(DRN, { type: 'restart' }, 1);
+      console.log(`[Restart] MQTT command sent to ${DRN}`);
+    } catch (e) {
+      console.error(`[Restart] MQTT publish failed for ${DRN}:`, e.message);
+    }
+
     await new Promise((resolve, reject) => {
       db.query(
         `INSERT INTO \`Reset\` (DRN, user, processed, reason)
          VALUES (?, ?, ?, ?)`,
-        [DRN, userName, processed != null ? processed : 0, 'Meter restart via platform'],
+        [DRN, userName, processed != null ? processed : 0, actionReason],
         (err, result) => err ? reject(err) : resolve(result)
       );
     });
