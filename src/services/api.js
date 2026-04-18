@@ -221,9 +221,9 @@ export const settingsAPI = {
 
 // ===== METER CONFIGURATION =====
 export const meterConfigAPI = {
-  resetBLE: (drn) => post(`/meterResetBLE/update/${drn}`, { state: 1, processed: 0 }),
-  resetAuthNumbers: (drn) => post(`/meterResetAuthNumber/update/${drn}`, { state: 1, processed: 0 }),
-  resetMeter: (drn) => post(`/meterReset/update/${drn}`, { state: 1, processed: 0 }),
+  resetBLE: (drn, reason, user) => post(`/meterResetBLE/update/${drn}`, { state: 1, processed: 0, reason: reason || 'Web UI', user: user || 'Admin' }),
+  resetAuthNumbers: (drn, reason, user) => post(`/meterResetAuthNumber/update/${drn}`, { state: 1, processed: 0, reason: reason || 'Web UI', user: user || 'Admin' }),
+  resetMeter: (drn, reason, user) => post(`/meterReset/update/${drn}`, { state: 1, processed: 0, reason: reason || 'Web UI', user: user || 'Admin' }),
   // Relay controls
   setMainsControl: (drn, state) => post(`/meterMainsControl/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),
   setHeaterControl: (drn, state) => post(`/meterHeaterControl/update/${drn}`, { state, processed: 0, reason: 'Web UI' }),

@@ -284,6 +284,18 @@ const LOAD_REASONS = [
   "Others",
 ];
 
+const DEVICE_ACTION_REASONS = [
+  "Routine maintenance",
+  "Troubleshooting",
+  "Firmware update",
+  "Tamper investigation",
+  "Customer request",
+  "Field service",
+  "System reset",
+  "Test",
+  "Other",
+];
+
 /* ================================================================ */
 /* MeterProfile Page                                                */
 /* ================================================================ */
@@ -342,6 +354,7 @@ export default function MeterProfile() {
     action: "",
   });
   const [commandLoading, setCommandLoading] = useState(false);
+  const [deviceActionReason, setDeviceActionReason] = useState("Routine maintenance");
   /* ---------- Config tab input state ---------- */
   const [authorizedNumbers, setAuthorizedNumbers] = useState([]);
   const [configSmsNumber, setConfigSmsNumber] = useState("");
@@ -691,17 +704,19 @@ export default function MeterProfile() {
   const handleConfigAction = async (actionType, payload) => {
     setCommandLoading(true);
     try {
+      const reason = payload?.reason || "Web UI";
+      const userName = user?.Email || user?.name || "Admin";
       switch (actionType) {
         case "reset_ble":
-          await meterConfigAPI.resetBLE(drn);
+          await meterConfigAPI.resetBLE(drn, reason, userName);
           setSnackbar({ open: true, message: "Reset BLE PIN command sent", severity: "success" });
           break;
         case "clear_auth":
-          await meterConfigAPI.resetAuthNumbers(drn);
+          await meterConfigAPI.resetAuthNumbers(drn, reason, userName);
           setSnackbar({ open: true, message: "Clear Authorized Numbers command sent", severity: "success" });
           break;
         case "restart_meter":
-          await meterConfigAPI.resetMeter(drn);
+          await meterConfigAPI.resetMeter(drn, reason, userName);
           setSnackbar({ open: true, message: "Restart Meter command sent", severity: "success" });
           break;
         case "mains_on":
@@ -4670,6 +4685,22 @@ export default function MeterProfile() {
                     WARNING: Setting an incorrect URL will prevent the meter from communicating with the server.
                   </>
                 )}
+                {(confirmDialog.action === "reset_ble" || confirmDialog.action === "clear_auth" || confirmDialog.action === "restart_meter") && (
+                  <FormControl fullWidth size="small" sx={{ mt: 2.5 }}>
+                    <InputLabel sx={{ color: colors.grey[400] }}>Reason</InputLabel>
+                    <Select
+                      value={deviceActionReason}
+                      onChange={(e) => setDeviceActionReason(e.target.value)}
+                      label="Reason"
+                    >
+                      {DEVICE_ACTION_REASONS.map((r) => (
+                        <MenuItem key={r} value={r}>
+                          {r}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
               </>
             ) : (
               <>
@@ -4708,6 +4739,8 @@ export default function MeterProfile() {
                 setConfirmDialog({ open: false, type: "", action: "" });
                 if (action === "set_base_url") {
                   handleConfigAction(action, { url: configBaseUrl });
+                } else if (action === "reset_ble" || action === "clear_auth" || action === "restart_meter") {
+                  handleConfigAction(action, { reason: deviceActionReason });
                 } else {
                   handleConfigAction(action);
                 }
