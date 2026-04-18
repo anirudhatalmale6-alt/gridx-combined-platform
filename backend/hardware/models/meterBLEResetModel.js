@@ -4,9 +4,9 @@ const connection = require("../service/hwDatabase.js");
 
 const Calibration= function (meterDrn, cmd) {
   this.DRN = meterDrn;
-  this.user = cmd.user;
+  this.user = cmd.user || 'Admin';
   this.processed = cmd.processed;
-  this.reason = cmd.reason;
+  this.reason = cmd.reason || 'Web UI';
 }; 
 
 Calibration.create = (data, result) => {
