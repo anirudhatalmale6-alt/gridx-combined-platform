@@ -601,11 +601,15 @@ function handleTokenBin(drn, buf) {
   const ttime = buf.readUInt32LE(off); off += 4;
   const amt = buf.readFloatLE(off);
 
+  console.log(`[MQTT] Token from ${drn} (binary): id=${tid.value}, method=${method}, amount=${amt}, cls=${cls}`);
   db.query('INSERT INTO STSTokesInfo SET ?', {
     DRN: drn, token_id: tid.value, token_cls: cls, submission_Method: method,
     display_msg: msg.value, display_auth_result: auth, display_token_result: tres,
     display_validation_result: vres, token_time: ttime, token_amount: amt,
-  }, (err) => { if (err) console.error('[MQTT] Token insert error:', err.message); });
+  }, (err) => {
+    if (err) console.error('[MQTT] Token insert error:', err.message);
+    else console.log(`[MQTT] Token stored for ${drn}: ${tid.value}`);
+  });
 }
 
 function handleRelayLogBin(drn, buf) {
