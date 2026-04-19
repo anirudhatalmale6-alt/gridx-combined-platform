@@ -315,11 +315,11 @@ router.post('/generate-bill', authenticateToken, async (req, res) => {
 
     // Get tariff config for fixed charge and VAT
     const tariffConfig = await query('SELECT * FROM TariffConfig LIMIT 1').catch(() => []);
-    const vatRate = tariffConfig[0]?.vatRate || 15.00;
-    const fixedCharge = tariffConfig[0]?.fixedCharge || 8.50;
+    const vatRate = Number(tariffConfig[0]?.vatRate) || 15.00;
+    const fixedCharge = Number(tariffConfig[0]?.fixedCharge) || 8.50;
 
     // Calculate bill
-    const energyCharge = totalKwh * tariffRate;
+    const energyCharge = Number(totalKwh) * Number(tariffRate);
     const subtotal = energyCharge + fixedCharge;
     const vatAmount = subtotal * (vatRate / 100);
     const totalAmount = subtotal + vatAmount;
@@ -454,9 +454,9 @@ router.post('/switch-mode', authenticateToken, async (req, res) => {
           tariffRate = rates[2] || 2.80;
         }
         const tariffConfig = await query('SELECT * FROM TariffConfig LIMIT 1').catch(() => []);
-        const vatRate = tariffConfig[0]?.vatRate || 15.00;
-        const fixedCharge = tariffConfig[0]?.fixedCharge || 8.50;
-        const energyCharge = finalKwh * tariffRate;
+        const vatRate = Number(tariffConfig[0]?.vatRate) || 15.00;
+        const fixedCharge = Number(tariffConfig[0]?.fixedCharge) || 8.50;
+        const energyCharge = Number(finalKwh) * Number(tariffRate);
         const subtotal = energyCharge + fixedCharge;
         const vatAmount = subtotal * (vatRate / 100);
         const totalAmount = subtotal + vatAmount;
