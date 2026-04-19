@@ -2139,14 +2139,14 @@ export default function MeterProfile() {
                 <InfoRow label="Credit Days" value={billingConfig?.billing_credit_days || "14 Days"} />
                 <InfoRow label="Turn-off Amount" value={billingConfig?.turn_off_max_amount ? `N$ ${billingConfig.turn_off_max_amount}` : "Not set"} />
                 <InfoRow label="Turn-on Amount" value={billingConfig?.turn_on_max_amount ? `N$ ${billingConfig.turn_on_max_amount}` : "Not set"} />
-                <InfoRow label="Notifications" value={(billingConfig?.notification_types || "SMS,Push").replace(/,/g, ", ")} />
+                <InfoRow label="Notifications" value={Array.isArray(billingConfig?.notification_types) ? billingConfig.notification_types.join(", ") : String(billingConfig?.notification_types || "SMS, Push").replace(/,/g, ", ")} />
               </>
             ) : (
               <>
                 <InfoRow label="Credit Option" value={billingConfig?.credit_option || "Standard"} />
                 <InfoRow label="Notification Frequency" value={billingConfig?.notification_frequency || "Daily"} />
                 <InfoRow label="Auto Credit Updates" value={billingConfig?.automatic_credit_updates ? "Enabled" : "Disabled"} />
-                <InfoRow label="Notifications" value={(billingConfig?.notification_types || "SMS,Push").replace(/,/g, ", ")} />
+                <InfoRow label="Notifications" value={Array.isArray(billingConfig?.notification_types) ? billingConfig.notification_types.join(", ") : String(billingConfig?.notification_types || "SMS, Push").replace(/,/g, ", ")} />
               </>
             )}
           </Box>
