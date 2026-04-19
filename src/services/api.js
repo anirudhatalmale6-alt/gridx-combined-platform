@@ -82,6 +82,7 @@ export const authAPI = {
   updateAdmin: (id, data) => post(`/AdminUpdate/${id}`, data),
   updateUser: (id, data) => post(`/UserUpdate/${id}`, data),
   deleteAdmin: (id) => del(`/deleteAdmin/${id}`),
+  deleteUser: (id) => del(`/deleteUser/${id}`),
   updateAdminStatus: (id) => post(`/updateStatus/${id}`),
   resetPassword: (id, Password) => post(`/resetPassword/${id}`, { Password }),
   unlockAccount: (id) => post(`/unlockAccount/${id}`),

@@ -31,7 +31,7 @@ import TamperDetection from "./pages/TamperDetection";
 import VsmTesting from "./pages/VsmTesting";
 import EmergencyNotifications from "./pages/EmergencyNotifications";
 import AppUsers from "./pages/AppUsers";
-import FirmwareOTA from "./pages/FirmwareOTA";
+// FirmwareOTA removed
 
 function App() {
   const [theme, colorMode] = useMode();
@@ -72,7 +72,6 @@ function App() {
               <Route path="vsm-testing" element={<VsmTesting />} />
               <Route path="emergency-notifications" element={<EmergencyNotifications />} />
               <Route path="app-users" element={<AppUsers />} />
-              <Route path="firmware-ota" element={<FirmwareOTA />} />
             </Route>
           </Routes>
         </AuthProvider>

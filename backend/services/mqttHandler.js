@@ -376,6 +376,17 @@ function ensureTables() {
     INDEX idx_drn (DRN),
     INDEX idx_status (status)
   )`, (err) => { if (err) console.error('[MQTT] MeterCalibrationLog table error:', err.message); });
+
+  db.query(`CREATE TABLE IF NOT EXISTS SuburbDailyEnergy (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    suburb VARCHAR(100) NOT NULL,
+    energy_date DATE NOT NULL,
+    consumption_wh DECIMAL(14, 2) DEFAULT 0,
+    meter_count INT DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_suburb_date (suburb, energy_date),
+    INDEX idx_date (energy_date)
+  )`, (err) => { if (err) console.error('[MQTT] SuburbDailyEnergy table error:', err.message); });
 }
 
 // ==================== Init ====================
@@ -502,6 +513,37 @@ function handlePowerBin(drn, buf) {
   }, (err) => { if (err) console.error('[MQTT] Power insert error:', err.message); });
 }
 
+function updateSuburbDailyEnergy(drn) {
+  const query = `
+    INSERT INTO SuburbDailyEnergy (suburb, energy_date, consumption_wh, meter_count)
+    SELECT
+      mli.LocationName,
+      CURDATE(),
+      COALESCE(
+        SUM(COALESCE(last_r.final_power, 0) - COALESCE(first_r.initial_power, 0)),
+        0
+      ),
+      COUNT(DISTINCT mli.DRN)
+    FROM MeterLocationInfoTable mli
+    LEFT JOIN (
+      SELECT DRN, MIN(CAST(active_energy AS DECIMAL(10,2))) AS initial_power
+      FROM MeterCumulativeEnergyUsage WHERE DATE(date_time) = CURDATE() GROUP BY DRN
+    ) first_r ON first_r.DRN = mli.DRN
+    LEFT JOIN (
+      SELECT DRN, MAX(CAST(active_energy AS DECIMAL(10,2))) AS final_power
+      FROM MeterCumulativeEnergyUsage WHERE DATE(date_time) = CURDATE() GROUP BY DRN
+    ) last_r ON last_r.DRN = mli.DRN
+    WHERE mli.LocationName = (SELECT LocationName FROM MeterLocationInfoTable WHERE DRN = ? LIMIT 1)
+    GROUP BY mli.LocationName
+    ON DUPLICATE KEY UPDATE
+      consumption_wh = VALUES(consumption_wh),
+      meter_count = VALUES(meter_count)
+  `;
+  db.query(query, [drn], (err) => {
+    if (err) console.error('[MQTT] SuburbDailyEnergy update error:', err.message);
+  });
+}
+
 function handleEnergyBin(drn, buf) {
   if (buf.length < 23) return console.error('[MQTT] Energy packet too short:', buf.length);
   db.query('INSERT INTO MeterCumulativeEnergyUsage SET ?', {
@@ -514,7 +556,10 @@ function handleEnergyBin(drn, buf) {
     meter_reset:     buf.readUInt8(18),
     record_time:     buf.readUInt32LE(19),
     source: 1,
-  }, (err) => { if (err) console.error('[MQTT] Energy insert error:', err.message); });
+  }, (err) => {
+    if (err) console.error('[MQTT] Energy insert error:', err.message);
+    else updateSuburbDailyEnergy(drn);
+  });
 }
 
 function handleCellularBin(drn, buf) {
@@ -1054,7 +1099,10 @@ function handleJsonMessage(drn, type, data) {
         DRN: drn, active_energy: data[0], reactive_energy: data[1], units: data[2],
         tamper_state: data[3], tamp_time: data[4], meter_reset: data[5],
         record_time: data[6], source: 1,
-      }, (err) => { if (err) console.error('[MQTT] Energy insert error:', err.message); });
+      }, (err) => {
+        if (err) console.error('[MQTT] Energy insert error:', err.message);
+        else updateSuburbDailyEnergy(drn);
+      });
       break;
     }
     case 'cellular': {
