@@ -489,6 +489,15 @@ export const integrationAPI = {
   getWebhookLog: () => get('/integration/webhook-log'),
 };
 
+// ===== NET METERING =====
+export const netMeteringAPI = {
+  getLatest: (drn) => get(`/mqtt/net-energy/${drn}`),
+  getSummary: (drn) => get(`/mqtt/net-energy/${drn}/summary`),
+  getHistory: (drn, limit = 30) => get(`/mqtt/net-energy/${drn}/history?limit=${limit}`),
+  getDashboard: () => get('/mqtt/net-energy/dashboard'),
+  getActiveMeters: () => get('/mqtt/net-energy/active-meters'),
+};
+
 // ===== NON-GRIDX CUSTOMERS =====
 export const nonGridxAPI = {
   getCustomers: (params) => {
@@ -526,4 +535,5 @@ export default {
   vending: vendingAPI,
   integration: integrationAPI,
   nonGridx: nonGridxAPI,
+  netMetering: netMeteringAPI,
 };

@@ -21,6 +21,7 @@ import TuneIcon from "@mui/icons-material/Tune";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import SpeedIcon from "@mui/icons-material/Speed";
+import SolarPowerIcon from "@mui/icons-material/SolarPower";
 import ElectricMeterOutlinedIcon from "@mui/icons-material/ElectricMeterOutlined";
 import HubIcon from "@mui/icons-material/Hub";
 import BuildIcon from "@mui/icons-material/Build";
@@ -497,6 +498,13 @@ const Sidebar = () => {
           icon={<InsertChartIcon />}
           isCollapsed={isCollapsed}
           accentColor={colors.blueAccent[500]}
+        />
+        <NavItem
+          title="Net Metering"
+          to="/net-metering"
+          icon={<SolarPowerIcon />}
+          isCollapsed={isCollapsed}
+          accentColor="#4caf50"
         />
 
         {/* Administration */}

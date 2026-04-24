@@ -31,6 +31,7 @@ import TamperDetection from "./pages/TamperDetection";
 import VsmTesting from "./pages/VsmTesting";
 import EmergencyNotifications from "./pages/EmergencyNotifications";
 import AppUsers from "./pages/AppUsers";
+import NetMetering from "./pages/NetMetering";
 // FirmwareOTA removed
 
 function App() {
@@ -73,6 +74,7 @@ function App() {
               <Route path="vsm-testing" element={<VsmTesting />} />
               <Route path="emergency-notifications" element={<EmergencyNotifications />} />
               <Route path="app-users" element={<AppUsers />} />
+              <Route path="net-metering" element={<NetMetering />} />
             </Route>
           </Routes>
         </AuthProvider>

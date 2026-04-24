@@ -1137,7 +1137,81 @@ router.get('/mqtt/tou-config/:drn', authenticateToken, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Net Energy (Net Metering)
+// Net Energy — System-wide endpoints (must be before :drn routes)
+// ═══════════════════════════════════════════════════════════════════════
+
+router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => {
+  try {
+    const totals = await queryOne(
+      `SELECT
+        COUNT(DISTINCT DRN) as total_meters,
+        SUM(import_energy_wh) as total_import,
+        SUM(export_energy_wh) as total_export,
+        SUM(export_energy_wh) - SUM(import_energy_wh) as net_energy
+       FROM MeterNetEnergy`
+    );
+
+    const hourly = await queryAll(
+      `SELECT HOUR(created_at) as hour,
+        SUM(import_energy_wh) as \`import\`,
+        SUM(export_energy_wh) as \`export\`
+       FROM MeterNetEnergy
+       WHERE created_at >= CURDATE()
+       GROUP BY HOUR(created_at)
+       ORDER BY hour`
+    );
+
+    const daily = await queryAll(
+      `SELECT DATE(created_at) as date,
+        DATE_FORMAT(created_at, '%b %d') as label,
+        SUM(import_energy_wh) as \`import\`,
+        SUM(export_energy_wh) as \`export\`
+       FROM MeterNetEnergy
+       WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+       GROUP BY DATE(created_at)
+       ORDER BY date`
+    );
+
+    const hourlyArr = Array.from({ length: 24 }, (_, i) => {
+      const h = hourly.find(r => r.hour === i);
+      return { hour: i, import: h ? h.import : 0, export: h ? h.export : 0 };
+    });
+
+    const peakExport = hourlyArr.reduce((max, h) => h.export > max.export ? h : max, { hour: 0, export: 0 });
+    const peakImport = hourlyArr.reduce((max, h) => h.import > max.import ? h : max, { hour: 0, import: 0 });
+
+    res.json({
+      success: true,
+      data: {
+        total_meters: totals?.total_meters || 0,
+        total_import: totals?.total_import || 0,
+        total_export: totals?.total_export || 0,
+        net_energy: totals?.net_energy || 0,
+        hourly: hourlyArr,
+        daily: daily,
+        peak_export_hour: peakExport.hour,
+        peak_import_hour: peakImport.hour,
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/mqtt/net-energy/active-meters', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT DRN,
+        SUM(import_energy_wh) as total_import,
+        SUM(export_energy_wh) as total_export,
+        MAX(created_at) as last_reading
+       FROM MeterNetEnergy
+       GROUP BY DRN
+       ORDER BY last_reading DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Net Energy — Per-meter endpoints
 // ═══════════════════════════════════════════════════════════════════════
 
 router.get('/mqtt/net-energy/:drn', authenticateToken, async (req, res) => {
