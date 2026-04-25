@@ -154,6 +154,178 @@ function generateHourlyData() {
   }));
 }
 
+/* ---- Net Metering Tab Component ---- */
+function NetMeteringTab({ drn, isDark, colors }) {
+  const [nmData, setNmData] = useState(null);
+  const [nmHistory, setNmHistory] = useState([]);
+  const [nmLoading, setNmLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchNm = async () => {
+      setNmLoading(true);
+      try {
+        const [summaryRes, historyRes] = await Promise.allSettled([
+          netMeteringAPI.getSummary(drn),
+          netMeteringAPI.getHistory(drn, 30),
+        ]);
+        if (summaryRes.status === "fulfilled" && summaryRes.value?.data) setNmData(summaryRes.value.data);
+        if (historyRes.status === "fulfilled" && historyRes.value?.data) setNmHistory(historyRes.value.data);
+      } catch (e) {
+        console.error("Net metering fetch error:", e);
+      } finally {
+        setNmLoading(false);
+      }
+    };
+    fetchNm();
+  }, [drn]);
+
+  const totalImport = nmData?.total_import || 0;
+  const totalExport = nmData?.total_export || 0;
+  const netVal = totalExport - totalImport;
+  const tariffRate = 2.50;
+
+  const chartData = (nmHistory || []).map((h, i) => ({
+    label: h?.label || h?.date || `#${i+1}`,
+    import: (h?.import_energy || h?.import || 0) / 1000,
+    export: (h?.export_energy || h?.export || 0) / 1000,
+    net: ((h?.export_energy || h?.export || 0) - (h?.import_energy || h?.import || 0)) / 1000,
+  }));
+
+  if (nmLoading) return (
+    <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+      <CircularProgress sx={{ color: "#4caf50" }} />
+    </Box>
+  );
+
+  return (
+    <Box>
+      <Box sx={{
+        p: 2.5, borderRadius: "16px", mb: 3,
+        background: netVal >= 0
+          ? "linear-gradient(135deg, #1b5e20, #2e7d32)"
+          : "linear-gradient(135deg, #b71c1c, #c62828)",
+      }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+          <SolarPowerOutlined sx={{ color: "#fff", fontSize: 22 }} />
+          <Typography sx={{ fontSize: "16px", fontWeight: 700, color: "#fff" }}>
+            Net Metering — {drn}
+          </Typography>
+        </Box>
+        <Typography sx={{ fontSize: "12px", color: "rgba(255,255,255,0.8)" }}>
+          {netVal >= 0 ? "This meter has a net energy surplus — exporting more than importing." : "This meter has a net energy deficit — importing more than exporting."}
+        </Typography>
+      </Box>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#4caf50", textTransform: "uppercase" }}>Total Export</Typography>
+            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalExport / 1000).toFixed(2)}</Typography>
+            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#f44336", textTransform: "uppercase" }}>Total Import</Typography>
+            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalImport / 1000).toFixed(2)}</Typography>
+            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: colors.blueAccent[400], textTransform: "uppercase" }}>Net Balance</Typography>
+            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: netVal >= 0 ? "#4caf50" : "#f44336", mt: 0.5 }}>{netVal >= 0 ? "+" : ""}{(netVal / 1000).toFixed(2)}</Typography>
+            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh net</Typography>
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#ff9800", textTransform: "uppercase" }}>Est. Credit Value</Typography>
+            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>N$ {((totalExport / 1000) * tariffRate).toFixed(2)}</Typography>
+            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>@ N$ {tariffRate}/kWh</Typography>
+          </Box>
+        </Grid>
+      </Grid>
+
+      <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+        <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>
+          Energy History
+        </Typography>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData.length ? chartData : [{label:"No data", import:0, export:0}]}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
+            <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
+            <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
+            <Area type="monotone" dataKey="export" stroke="#4caf50" fill="#4caf5030" name="Export (kWh)" />
+            <Area type="monotone" dataKey="import" stroke="#f44336" fill="#f4433630" name="Import (kWh)" />
+            <Legend wrapperStyle={{ fontSize: "11px" }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Box>
+
+      <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+        <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 1 }}>
+          Net Energy Flow
+        </Typography>
+        <Typography sx={{ fontSize: "11px", color: colors.grey[400], mb: 2 }}>
+          Positive = surplus (export &gt; import), Negative = deficit
+        </Typography>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData.length ? chartData : [{label:"No data", net:0}]}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
+            <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
+            <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
+            <Bar dataKey="net" name="Net (kWh)" radius={[4, 4, 0, 0]}>
+              {chartData.map((entry, idx) => (
+                <Cell key={idx} fill={entry.net >= 0 ? "#4caf50" : "#f44336"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </Box>
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Self-Sufficiency</Typography>
+            {[
+              { label: "Self-Consumption", pct: totalExport + totalImport > 0 ? ((totalImport / (totalExport + totalImport)) * 100) : 0, color: colors.greenAccent[500] },
+              { label: "Grid Independence", pct: totalExport + totalImport > 0 ? ((totalExport / (totalExport + totalImport)) * 100) : 0, color: colors.blueAccent[500] },
+            ].map((m) => (
+              <Box key={m.label} sx={{ mb: 2 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: "4px" }}>
+                  <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{m.label}</Typography>
+                  <Typography sx={{ fontSize: "12px", fontWeight: 700, color: m.color }}>{m.pct.toFixed(0)}%</Typography>
+                </Box>
+                <Box sx={{ height: 6, borderRadius: 3, bgcolor: `${m.color}20` }}>
+                  <Box sx={{ height: "100%", borderRadius: 3, bgcolor: m.color, width: `${Math.min(m.pct, 100)}%`, transition: "width 1s ease" }} />
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
+            <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Billing Summary</Typography>
+            {[
+              { label: "Export Credits", value: `N$ ${((totalExport / 1000) * tariffRate).toFixed(2)}`, color: "#4caf50" },
+              { label: "Import Cost", value: `N$ ${((totalImport / 1000) * tariffRate).toFixed(2)}`, color: "#f44336" },
+              { label: "Net Credit/Debit", value: `N$ ${((netVal / 1000) * tariffRate).toFixed(2)}`, color: netVal >= 0 ? "#4caf50" : "#f44336" },
+            ].map((r) => (
+              <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: `1px solid ${colors.grey[700]}` }}>
+                <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{r.label}</Typography>
+                <Typography sx={{ fontSize: "13px", fontWeight: 700, color: r.color }}>{r.value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+
 /* ---- small components ---- */
 function InfoRow({ label, value, color, mono }) {
   const theme = useTheme();
@@ -4639,181 +4811,7 @@ export default function MeterProfile() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TAB 11: Net Metering                                              */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {tab === 10 && (() => {
-        const [nmData, setNmData] = React.useState(null);
-        const [nmHistory, setNmHistory] = React.useState([]);
-        const [nmLoading, setNmLoading] = React.useState(true);
-
-        React.useEffect(() => {
-          const fetchNm = async () => {
-            setNmLoading(true);
-            try {
-              const [summaryRes, historyRes] = await Promise.allSettled([
-                netMeteringAPI.getSummary(drn),
-                netMeteringAPI.getHistory(drn, 30),
-              ]);
-              if (summaryRes.status === "fulfilled" && summaryRes.value?.data) setNmData(summaryRes.value.data);
-              if (historyRes.status === "fulfilled" && historyRes.value?.data) setNmHistory(historyRes.value.data);
-            } catch (e) {
-              console.error("Net metering fetch error:", e);
-            } finally {
-              setNmLoading(false);
-            }
-          };
-          fetchNm();
-        }, []);
-
-        const totalImport = nmData?.total_import || 0;
-        const totalExport = nmData?.total_export || 0;
-        const netVal = totalExport - totalImport;
-        const tariffRate = 2.50;
-
-        const chartData = (nmHistory || []).map((h, i) => ({
-          label: h?.label || h?.date || `#${i+1}`,
-          import: (h?.import_energy || h?.import || 0) / 1000,
-          export: (h?.export_energy || h?.export || 0) / 1000,
-          net: ((h?.export_energy || h?.export || 0) - (h?.import_energy || h?.import || 0)) / 1000,
-        }));
-
-        if (nmLoading) return (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-            <CircularProgress sx={{ color: "#4caf50" }} />
-          </Box>
-        );
-
-        return (
-          <Box>
-            {/* Status Header */}
-            <Box sx={{
-              p: 2.5, borderRadius: "16px", mb: 3,
-              background: netVal >= 0
-                ? "linear-gradient(135deg, #1b5e20, #2e7d32)"
-                : "linear-gradient(135deg, #b71c1c, #c62828)",
-            }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                <SolarPowerOutlined sx={{ color: "#fff", fontSize: 22 }} />
-                <Typography sx={{ fontSize: "16px", fontWeight: 700, color: "#fff" }}>
-                  Net Metering — {drn}
-                </Typography>
-              </Box>
-              <Typography sx={{ fontSize: "12px", color: "rgba(255,255,255,0.8)" }}>
-                {netVal >= 0 ? "This meter has a net energy surplus — exporting more than importing." : "This meter has a net energy deficit — importing more than exporting."}
-              </Typography>
-            </Box>
-
-            {/* KPI Cards */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#4caf50", textTransform: "uppercase" }}>Total Export</Typography>
-                  <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalExport / 1000).toFixed(2)}</Typography>
-                  <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#f44336", textTransform: "uppercase" }}>Total Import</Typography>
-                  <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalImport / 1000).toFixed(2)}</Typography>
-                  <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "10px", fontWeight: 600, color: colors.blueAccent[400], textTransform: "uppercase" }}>Net Balance</Typography>
-                  <Typography sx={{ fontSize: "24px", fontWeight: 800, color: netVal >= 0 ? "#4caf50" : "#f44336", mt: 0.5 }}>{netVal >= 0 ? "+" : ""}{(netVal / 1000).toFixed(2)}</Typography>
-                  <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh net</Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#ff9800", textTransform: "uppercase" }}>Est. Credit Value</Typography>
-                  <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>N$ {((totalExport / 1000) * tariffRate).toFixed(2)}</Typography>
-                  <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>@ N$ {tariffRate}/kWh</Typography>
-                </Box>
-              </Grid>
-            </Grid>
-
-            {/* History Chart */}
-            <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-              <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>
-                Energy History
-              </Typography>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData.length ? chartData : [{label:"No data", import:0, export:0}]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
-                  <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
-                  <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
-                  <Area type="monotone" dataKey="export" stroke="#4caf50" fill="#4caf5030" name="Export (kWh)" />
-                  <Area type="monotone" dataKey="import" stroke="#f44336" fill="#f4433630" name="Import (kWh)" />
-                  <Legend wrapperStyle={{ fontSize: "11px" }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </Box>
-
-            {/* Net Flow Chart */}
-            <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-              <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 1 }}>
-                Net Energy Flow
-              </Typography>
-              <Typography sx={{ fontSize: "11px", color: colors.grey[400], mb: 2 }}>
-                Positive = surplus (export &gt; import), Negative = deficit
-              </Typography>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData.length ? chartData : [{label:"No data", net:0}]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
-                  <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
-                  <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
-                  <Bar dataKey="net" name="Net (kWh)" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.net >= 0 ? "#4caf50" : "#f44336"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Box>
-
-            {/* Efficiency Metrics */}
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Self-Sufficiency</Typography>
-                  {[
-                    { label: "Self-Consumption", pct: totalExport + totalImport > 0 ? ((totalImport / (totalExport + totalImport)) * 100) : 0, color: colors.greenAccent[500] },
-                    { label: "Grid Independence", pct: totalExport + totalImport > 0 ? ((totalExport / (totalExport + totalImport)) * 100) : 0, color: colors.blueAccent[500] },
-                  ].map((m) => (
-                    <Box key={m.label} sx={{ mb: 2 }}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", mb: "4px" }}>
-                        <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{m.label}</Typography>
-                        <Typography sx={{ fontSize: "12px", fontWeight: 700, color: m.color }}>{m.pct.toFixed(0)}%</Typography>
-                      </Box>
-                      <Box sx={{ height: 6, borderRadius: 3, bgcolor: `${m.color}20` }}>
-                        <Box sx={{ height: "100%", borderRadius: 3, bgcolor: m.color, width: `${Math.min(m.pct, 100)}%`, transition: "width 1s ease" }} />
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-                  <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Billing Summary</Typography>
-                  {[
-                    { label: "Export Credits", value: `N$ ${((totalExport / 1000) * tariffRate).toFixed(2)}`, color: "#4caf50" },
-                    { label: "Import Cost", value: `N$ ${((totalImport / 1000) * tariffRate).toFixed(2)}`, color: "#f44336" },
-                    { label: "Net Credit/Debit", value: `N$ ${((netVal / 1000) * tariffRate).toFixed(2)}`, color: netVal >= 0 ? "#4caf50" : "#f44336" },
-                  ].map((r) => (
-                    <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: `1px solid ${colors.grey[700]}` }}>
-                      <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{r.label}</Typography>
-                      <Typography sx={{ fontSize: "13px", fontWeight: 700, color: r.color }}>{r.value}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Grid>
-            </Grid>
-          </Box>
-        );
-      })()}
+      {tab === 10 && <NetMeteringTab drn={drn} isDark={isDark} colors={colors} />}
 
       {/* ---- Confirmation Dialog ---- */}
       <Dialog
