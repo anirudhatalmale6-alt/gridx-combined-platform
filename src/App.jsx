@@ -18,7 +18,6 @@ import Map from "./pages/Map";
 import MeterProfile from "./pages/MeterProfile";
 import MeterProfiles from "./pages/MeterProfiles";
 import MeterSummary from "./pages/MeterSummary";
-import Topology from "./pages/Topology";
 import Analysis from "./pages/Analysis";
 import Billing from "./pages/Billing";
 import Notifications from "./pages/Notifications";
@@ -60,7 +59,6 @@ function App() {
               <Route path="meter/:drn" element={<MeterProfile />} />
               <Route path="meter-profiles" element={<MeterProfiles />} />
               <Route path="meter-summary" element={<MeterSummary />} />
-              <Route path="topology" element={<Topology />} />
               <Route path="analysis" element={<Analysis />} />
               <Route path="billing" element={<Billing />} />
               <Route path="notifications" element={<Notifications />} />

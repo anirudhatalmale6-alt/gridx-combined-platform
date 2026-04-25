@@ -5,7 +5,6 @@ import { tokens } from "../theme";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
-import AppsIcon from "@mui/icons-material/Apps";
 import NotificationImportantIcon from "@mui/icons-material/NotificationImportant";
 import AddHomeWorkIcon from "@mui/icons-material/AddHomeWork";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -353,11 +352,11 @@ const Sidebar = () => {
           accentColor={colors.blueAccent[500]}
         />
         <NavItem
-          title="Grid Topology"
-          to="/topology"
-          icon={<AppsIcon />}
+          title="Net Metering"
+          to="/net-metering"
+          icon={<SolarPowerIcon />}
           isCollapsed={isCollapsed}
-          accentColor={colors.greenAccent[500]}
+          accentColor="#4caf50"
         />
         <NavItem
           title="Meter Profiles"
@@ -499,14 +498,6 @@ const Sidebar = () => {
           isCollapsed={isCollapsed}
           accentColor={colors.blueAccent[500]}
         />
-        <NavItem
-          title="Net Metering"
-          to="/net-metering"
-          icon={<SolarPowerIcon />}
-          isCollapsed={isCollapsed}
-          accentColor="#4caf50"
-        />
-
         {/* Administration */}
         <SectionHeader
           title="Admin"
