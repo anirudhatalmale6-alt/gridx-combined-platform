@@ -1142,34 +1142,55 @@ router.get('/mqtt/tou-config/:drn', authenticateToken, async (req, res) => {
 
 router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => {
   try {
+    // Values in MeterNetEnergy are cumulative snapshots — use MAX per meter
     const totals = await queryOne(
       `SELECT
-        COUNT(DISTINCT DRN) as total_meters,
-        SUM(import_energy_wh) as total_import,
-        SUM(export_energy_wh) as total_export,
-        SUM(export_energy_wh) - SUM(import_energy_wh) as net_energy
-       FROM MeterNetEnergy`
+        COUNT(*) as total_meters,
+        SUM(max_import) as total_import,
+        SUM(max_export) as total_export,
+        SUM(max_import) - SUM(max_export) as net_energy
+       FROM (
+         SELECT DRN,
+           MAX(import_energy_wh) as max_import,
+           MAX(export_energy_wh) as max_export
+         FROM MeterNetEnergy
+         GROUP BY DRN
+       ) per_meter`
     );
 
+    // Hourly deltas for today: MAX-MIN per meter per hour
     const hourly = await queryAll(
-      `SELECT HOUR(created_at) as hour,
-        SUM(import_energy_wh) as \`import\`,
-        SUM(export_energy_wh) as \`export\`
-       FROM MeterNetEnergy
-       WHERE created_at >= CURDATE()
-       GROUP BY HOUR(created_at)
-       ORDER BY hour`
+      `SELECT hr as hour,
+        SUM(delta_import) as \`import\`,
+        SUM(delta_export) as \`export\`
+       FROM (
+         SELECT DRN, HOUR(created_at) as hr,
+           MAX(import_energy_wh) - MIN(import_energy_wh) as delta_import,
+           MAX(export_energy_wh) - MIN(export_energy_wh) as delta_export
+         FROM MeterNetEnergy
+         WHERE created_at >= CURDATE()
+         GROUP BY DRN, HOUR(created_at)
+       ) per_meter_hour
+       GROUP BY hr
+       ORDER BY hr`
     );
 
+    // Daily deltas for last 30 days: MAX-MIN per meter per day
     const daily = await queryAll(
-      `SELECT DATE(created_at) as date,
-        DATE_FORMAT(created_at, '%b %d') as label,
-        SUM(import_energy_wh) as \`import\`,
-        SUM(export_energy_wh) as \`export\`
-       FROM MeterNetEnergy
-       WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-       GROUP BY DATE(created_at)
-       ORDER BY date`
+      `SELECT d as date,
+        DATE_FORMAT(d, '%b %d') as label,
+        SUM(delta_import) as \`import\`,
+        SUM(delta_export) as \`export\`
+       FROM (
+         SELECT DRN, DATE(created_at) as d,
+           MAX(import_energy_wh) - MIN(import_energy_wh) as delta_import,
+           MAX(export_energy_wh) - MIN(export_energy_wh) as delta_export
+         FROM MeterNetEnergy
+         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         GROUP BY DRN, DATE(created_at)
+       ) per_meter_day
+       GROUP BY d
+       ORDER BY d`
     );
 
     const hourlyArr = Array.from({ length: 24 }, (_, i) => {
@@ -1180,6 +1201,10 @@ router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => 
     const peakExport = hourlyArr.reduce((max, h) => h.export > max.export ? h : max, { hour: 0, export: 0 });
     const peakImport = hourlyArr.reduce((max, h) => h.import > max.import ? h : max, { hour: 0, import: 0 });
 
+    // Today's totals from hourly data
+    const todayImport = hourlyArr.reduce((sum, h) => sum + h.import, 0);
+    const todayExport = hourlyArr.reduce((sum, h) => sum + h.export, 0);
+
     res.json({
       success: true,
       data: {
@@ -1187,6 +1212,8 @@ router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => 
         total_import: totals?.total_import || 0,
         total_export: totals?.total_export || 0,
         net_energy: totals?.net_energy || 0,
+        today_import: todayImport,
+        today_export: todayExport,
         hourly: hourlyArr,
         daily: daily,
         peak_export_hour: peakExport.hour,
@@ -1199,13 +1226,41 @@ router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => 
 router.get('/mqtt/net-energy/active-meters', authenticateToken, async (req, res) => {
   try {
     const rows = await queryAll(
-      `SELECT DRN,
-        SUM(import_energy_wh) as total_import,
-        SUM(export_energy_wh) as total_export,
-        MAX(created_at) as last_reading
-       FROM MeterNetEnergy
-       GROUP BY DRN
-       ORDER BY last_reading DESC`
+      `SELECT
+        ne.DRN,
+        COALESCE(CONCAT(mpr.Name, ' ', mpr.Surname), ne.DRN) as customer_name,
+        mpr.City as location,
+        ne.import_energy_wh as total_import,
+        ne.export_energy_wh as total_export,
+        ne.import_energy_wh - ne.export_energy_wh as net_balance,
+        ne.net_energy_wh,
+        ne.created_at as last_reading,
+        p.active_power as live_power,
+        p.voltage,
+        p.current_val as current_a,
+        CASE WHEN p.active_power IS NOT NULL AND p.active_power < 0 THEN 'EXPORT'
+             WHEN p.active_power IS NOT NULL AND p.active_power > 0 THEN 'IMPORT'
+             ELSE 'IDLE' END as power_direction,
+        CASE WHEN ne.created_at >= NOW() - INTERVAL 10 MINUTE THEN 'Online'
+             ELSE 'Offline' END as status
+       FROM (
+         SELECT n1.*
+         FROM MeterNetEnergy n1
+         INNER JOIN (
+           SELECT DRN, MAX(created_at) as max_time
+           FROM MeterNetEnergy GROUP BY DRN
+         ) n2 ON n1.DRN = n2.DRN AND n1.created_at = n2.max_time
+       ) ne
+       LEFT JOIN MeterProfileReal mpr ON ne.DRN = mpr.DRN
+       LEFT JOIN (
+         SELECT p1.*
+         FROM MeteringPower p1
+         INNER JOIN (
+           SELECT DRN, MAX(date_time) as max_time
+           FROM MeteringPower GROUP BY DRN
+         ) p2 ON p1.DRN = p2.DRN AND p1.date_time = p2.max_time
+       ) p ON ne.DRN = p.DRN
+       ORDER BY ne.created_at DESC`
     );
     res.json({ success: true, data: rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1239,9 +1294,9 @@ router.get('/mqtt/net-energy/:drn/summary', authenticateToken, async (req, res) 
   try {
     const row = await queryOne(
       `SELECT
-        SUM(import_energy_wh) as total_import_wh,
-        SUM(export_energy_wh) as total_export_wh,
-        SUM(import_energy_wh) - SUM(export_energy_wh) as total_net_wh,
+        MAX(import_energy_wh) as total_import_wh,
+        MAX(export_energy_wh) as total_export_wh,
+        MAX(import_energy_wh) - MAX(export_energy_wh) as total_net_wh,
         COUNT(*) as reading_count,
         MIN(created_at) as first_reading,
         MAX(created_at) as last_reading
