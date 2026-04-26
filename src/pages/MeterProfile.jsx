@@ -107,7 +107,7 @@ import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
-import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, energyAPI, meterConfigAPI, mqttActivityAPI, billingAPI, postpaidAPI, netMeteringAPI } from "../services/api";
+import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, energyAPI, meterConfigAPI, mqttActivityAPI, billingAPI, postpaidAPI, netMeteringAPI, vendingAPI } from "../services/api";
 import {
   meters as mockMeters,
   transactions,
@@ -556,6 +556,12 @@ export default function MeterProfile() {
   const [meterTariffRates, setMeterTariffRates] = useState(null);
   const [modeHistory, setModeHistory] = useState([]);
   const [postpaidBillsForMeter, setPostpaidBillsForMeter] = useState([]);
+  const [tariffInfo, setTariffInfo] = useState(null);
+  const [tariffHistoryData, setTariffHistoryData] = useState([]);
+  const [allTariffGroups, setAllTariffGroups] = useState([]);
+  const [changeTariffOpen, setChangeTariffOpen] = useState(false);
+  const [changeTariffTarget, setChangeTariffTarget] = useState("");
+  const [changeTariffLoading, setChangeTariffLoading] = useState(false);
 
   /* ---------- Fetch all data on mount ---------- */
   useEffect(() => {
@@ -620,6 +626,17 @@ export default function MeterProfile() {
         if (trRes.status === "fulfilled" && trRes.value?.rates) setMeterTariffRates(trRes.value.rates);
         if (mhRes.status === "fulfilled" && mhRes.value?.history) setModeHistory(mhRes.value.history);
         if (pbRes.status === "fulfilled" && pbRes.value?.bills) setPostpaidBillsForMeter(pbRes.value.bills);
+      } catch (e) { /* ignore */ }
+
+      try {
+        const [tiRes, thRes, tgRes] = await Promise.allSettled([
+          vendingAPI.getTariffInfo(drn),
+          vendingAPI.getTariffHistory(drn),
+          vendingAPI.getTariffGroups(),
+        ]);
+        if (tiRes.status === "fulfilled" && tiRes.value?.success) setTariffInfo(tiRes.value.data);
+        if (thRes.status === "fulfilled" && thRes.value?.data) setTariffHistoryData(thRes.value.data);
+        if (tgRes.status === "fulfilled" && tgRes.value?.data) setAllTariffGroups(tgRes.value.data);
       } catch (e) { /* ignore */ }
 
       setLoading(false);
@@ -833,6 +850,24 @@ export default function MeterProfile() {
     });
     return result;
   }, [dailyPower]);
+
+  /* ---------- Tariff change handler ---------- */
+  const handleChangeMeterTariff = async () => {
+    if (!changeTariffTarget) return;
+    setChangeTariffLoading(true);
+    try {
+      const res = await vendingAPI.assignTariff(drn, changeTariffTarget, "Changed from meter profile");
+      setSnackbar({ open: true, message: `Tariff changed to ${changeTariffTarget} — MQTT: ${res.mqttStatus || "sent"}`, severity: "success" });
+      setChangeTariffOpen(false);
+      setChangeTariffTarget("");
+      const [tiRes, thRes] = await Promise.allSettled([vendingAPI.getTariffInfo(drn), vendingAPI.getTariffHistory(drn)]);
+      if (tiRes.status === "fulfilled" && tiRes.value?.success) setTariffInfo(tiRes.value.data);
+      if (thRes.status === "fulfilled" && thRes.value?.data) setTariffHistoryData(thRes.value.data);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to change tariff", severity: "error" });
+    }
+    setChangeTariffLoading(false);
+  };
 
   /* ---------- Load Control handlers ---------- */
   const handleLoadControlClick = (type, action) => {
@@ -2510,6 +2545,63 @@ export default function MeterProfile() {
         {/* ---- Sub-tab 3: Tariff Rates ---- */}
         {billingSubTab === 3 && (
         <Box display="grid" gridTemplateColumns="repeat(12, 1fr)" gridAutoRows="140px" gap="5px">
+          {/* Tariff Assignment Info Card */}
+          <Box gridColumn="span 12" gridRow="span 2" backgroundColor={colors.primary[400]} p="20px" borderRadius="4px" overflow="auto">
+            <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb="12px">
+              <Box>
+                <Typography variant="h6" color={colors.grey[100]} fontWeight="bold">Tariff Assignment</Typography>
+                <Typography variant="caption" color={colors.grey[400]}>Current tariff group and live rate for this meter</Typography>
+              </Box>
+              <Button size="small" variant="contained" onClick={() => { setChangeTariffOpen(true); setChangeTariffTarget(""); }}
+                sx={{ backgroundColor: colors.blueAccent[500], color: "#000", fontWeight: 600, textTransform: "none" }}>
+                Change Tariff
+              </Button>
+            </Box>
+            <Box display="flex" gap="16px" flexWrap="wrap">
+              <Box flex="1" minWidth="180px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Tariff Group</Typography>
+                <Typography variant="h5" color={colors.greenAccent[500]} fontWeight="bold">{tariffInfo?.tariffGroup?.name || tariff?.name || "Not assigned"}</Typography>
+              </Box>
+              <Box flex="1" minWidth="140px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Type</Typography>
+                <Typography variant="body1" color={colors.grey[100]} fontWeight="600">
+                  {(tariffInfo?.tariffGroup?.type || tariff?.type) === "TOU" ? "Time-of-Use" : (tariffInfo?.tariffGroup?.type || tariff?.type) === "Block" ? "Block/Tiered" : (tariffInfo?.tariffGroup?.type || tariff?.type) || "Flat"}
+                </Typography>
+              </Box>
+              <Box flex="1" minWidth="140px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Billing Mode</Typography>
+                <Chip size="small" label={(tariffInfo?.tariffGroup?.billingType || billingConfig?.mode || "prepaid").toUpperCase()}
+                  sx={{ mt: "4px", backgroundColor: (tariffInfo?.tariffGroup?.billingType || billingConfig?.mode) === "postpaid" ? "#f2b70522" : "#4cceac22",
+                    color: (tariffInfo?.tariffGroup?.billingType || billingConfig?.mode) === "postpaid" ? "#f2b705" : "#4cceac", fontWeight: 700 }} />
+              </Box>
+              <Box flex="1" minWidth="140px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Current Live Rate</Typography>
+                <Typography variant="h5" color="#f2b705" fontWeight="bold">
+                  N$ {tariffInfo?.currentRate != null ? Number(tariffInfo.currentRate).toFixed(2) : tariff?.blocks?.[0]?.rate ? Number(tariff.blocks[0].rate).toFixed(2) : "—"}/kWh
+                </Typography>
+              </Box>
+              {tariffInfo?.tariffGroup?.type === "TOU" && tariffInfo?.currentPeriod && (
+                <Box flex="1" minWidth="140px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                  <Typography variant="caption" color={colors.grey[400]}>TOU Period</Typography>
+                  <Chip size="small" label={tariffInfo.currentPeriod.toUpperCase()}
+                    sx={{ mt: "4px", fontWeight: 700,
+                      backgroundColor: tariffInfo.currentPeriod === "peak" ? "#db4f4a22" : tariffInfo.currentPeriod === "standard" ? "#f2b70522" : "#4cceac22",
+                      color: tariffInfo.currentPeriod === "peak" ? "#db4f4a" : tariffInfo.currentPeriod === "standard" ? "#f2b705" : "#4cceac" }} />
+                  {tariffInfo.nextPeriodChange && (
+                    <Typography variant="caption" color={colors.grey[400]} display="block" mt="4px">Next: {tariffInfo.nextPeriodChange.period} in {tariffInfo.nextPeriodChange.hoursUntil}h</Typography>
+                  )}
+                </Box>
+              )}
+              <Box flex="1" minWidth="140px" backgroundColor={colors.primary[500]} p="14px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Effective Date</Typography>
+                <Typography variant="body2" color={colors.grey[100]} fontWeight="600">
+                  {tariffInfo?.tariffGroup?.effectiveDate ? new Date(tariffInfo.tariffGroup.effectiveDate).toLocaleDateString("en-ZA") : "N/A"}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Meter Tariff Rate Table */}
           <Box gridColumn="span 6" gridRow="span 3" backgroundColor={colors.primary[400]} p="20px" borderRadius="4px" overflow="auto">
             <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>Meter Tariff Rate Table</Typography>
             <Typography variant="caption" color={colors.grey[400]} display="block" mb={1}>10-slot tariff rates configured on this meter</Typography>
@@ -2537,31 +2629,77 @@ export default function MeterProfile() {
               <Typography color={colors.grey[500]} sx={{ textAlign: "center", py: 4 }}>Using default tariff rates</Typography>
             )}
           </Box>
+
+          {/* Tariff Change History */}
           <Box gridColumn="span 6" gridRow="span 3" backgroundColor={colors.primary[400]} p="20px" borderRadius="4px" overflow="auto">
-            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>Tariff Structure</Typography>
-            <Typography variant="body2" color={colors.grey[400]} mb={1.5} fontSize="0.78rem">{tariff?.description || ""}</Typography>
-            {tariff?.blocks && (
+            <Typography variant="h6" color={colors.grey[100]} fontWeight="bold" mb={1}>Tariff Change History</Typography>
+            {tariffHistoryData.length > 0 ? (
               <TableContainer><Table size="small">
                 <TableHead><TableRow>
-                  {["Block", "Range", "Rate (N$/kWh)"].map((col) => (
-                    <TableCell key={col} align={col.includes("Rate") ? "right" : "left"}
-                      sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>{col}</TableCell>
+                  {["Date", "From", "To", "MQTT"].map(col => (
+                    <TableCell key={col} sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>{col}</TableCell>
                   ))}
                 </TableRow></TableHead>
                 <TableBody>
-                  {tariff.blocks.map((b) => (
-                    <TableRow key={b.name}>
-                      <TableCell sx={{ color: colors.grey[100], fontSize: "0.8rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{b.name}</TableCell>
-                      <TableCell sx={{ color: colors.grey[100], fontSize: "0.8rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{b.range}</TableCell>
-                      <TableCell align="right" sx={{ color: "#f2b705", fontWeight: 600, fontSize: "0.8rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{Number(b.rate).toFixed(2)}</TableCell>
+                  {tariffHistoryData.slice(0, 15).map((h, idx) => (
+                    <TableRow key={idx} hover>
+                      <TableCell sx={{ color: colors.grey[100], fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                        {new Date(h.created_at).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </TableCell>
+                      <TableCell sx={{ color: "#db4f4a", fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{h.previousTariff}</TableCell>
+                      <TableCell sx={{ color: colors.greenAccent[500], fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{h.newTariff}</TableCell>
+                      <TableCell sx={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                        <Chip size="small" label={h.mqttStatus || "—"}
+                          sx={{ fontSize: "0.6rem", height: 20,
+                            backgroundColor: h.mqttStatus === "sent" ? "#4cceac22" : "#f2b70522",
+                            color: h.mqttStatus === "sent" ? "#4cceac" : "#f2b705", fontWeight: 600 }} />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table></TableContainer>
+            ) : (
+              <Typography color={colors.grey[500]} sx={{ textAlign: "center", py: 4 }}>No tariff changes recorded</Typography>
             )}
           </Box>
         </Box>
         )}
+
+        {/* Change Tariff Dialog */}
+        <Dialog open={changeTariffOpen} onClose={() => setChangeTariffOpen(false)} maxWidth="sm" fullWidth
+          PaperProps={{ sx: { backgroundColor: colors.primary[400], backgroundImage: "none" } }}>
+          <DialogTitle sx={{ color: colors.grey[100], fontWeight: 700 }}>Change Tariff — {drn}</DialogTitle>
+          <DialogContent>
+            <Box display="flex" flexDirection="column" gap="16px" mt="10px">
+              <Box backgroundColor={colors.primary[500]} p="12px" borderRadius="4px">
+                <Typography variant="caption" color={colors.grey[400]}>Current Tariff</Typography>
+                <Typography variant="body1" color={colors.grey[100]} fontWeight="600">{tariffInfo?.tariffGroup?.name || tariff?.name || "Not assigned"}</Typography>
+              </Box>
+              <FormControl fullWidth size="small">
+                <InputLabel>New Tariff Group</InputLabel>
+                <Select label="New Tariff Group" value={changeTariffTarget} onChange={(e) => setChangeTariffTarget(e.target.value)}>
+                  {allTariffGroups.filter(g => g.name !== (tariffInfo?.tariffGroup?.name || tariff?.name)).map((g) => (
+                    <MenuItem key={g.id} value={g.name}>{g.name} ({g.type})</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {changeTariffTarget && (
+                <Alert severity="info" sx={{ backgroundColor: "#1e3a5f", color: colors.grey[100] }}>
+                  This will update the tariff and push new rates via MQTT to the meter.
+                </Alert>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ p: "16px" }}>
+            <Button onClick={() => setChangeTariffOpen(false)} sx={{ color: colors.grey[300] }}>Cancel</Button>
+            <Button variant="contained" disabled={!changeTariffTarget || changeTariffLoading}
+              onClick={handleChangeMeterTariff}
+              startIcon={changeTariffLoading ? <CircularProgress size={14} sx={{ color: "#000" }} /> : <SendOutlined />}
+              sx={{ backgroundColor: colors.greenAccent[500], color: "#000", fontWeight: 600 }}>
+              Assign & Push
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* ---- Sub-tab 4: Mode History ---- */}
         {billingSubTab === 4 && (

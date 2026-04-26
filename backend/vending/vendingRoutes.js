@@ -2475,4 +2475,172 @@ router.get('/dashboard', authenticateToken, function(req, res) {
 });
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TARIFF ASSIGNMENT & HISTORY
+// ═══════════════════════════════════════════════════════════════════════════
+
+db.query(`CREATE TABLE IF NOT EXISTS MeterTariffHistory (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  DRN VARCHAR(50) NOT NULL,
+  previousTariff VARCHAR(100),
+  newTariff VARCHAR(100) NOT NULL,
+  changedBy VARCHAR(100),
+  reason VARCHAR(255),
+  mqttStatus ENUM('pending','sent','confirmed','failed') DEFAULT 'sent',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_drn (DRN),
+  INDEX idx_created (created_at)
+)`, function() {});
+
+// Get meters assigned to a tariff group
+router.get('/tariffs/groups/:id/meters', authenticateToken, function(req, res) {
+  var groupId = req.params.id;
+  db.query('SELECT name FROM TariffGroups WHERE id = ?', [groupId], function(err, gRows) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!gRows || gRows.length === 0) return res.status(404).json({ error: 'Group not found' });
+    var groupName = gRows[0].name;
+
+    db.query(
+      `SELECT m.DRN, m.Name, m.Surname, m.City, m.tariff_type, m.account_type,
+              COALESCE(vc.tariffGroup, m.tariff_type) as assignedTariff,
+              COALESCE(vc.arrears, 0) as arrears,
+              ls.last_seen, ls.credit_remaining,
+              CASE WHEN ls.last_seen > DATE_SUB(NOW(), INTERVAL 10 MINUTE) THEN 'Online' ELSE 'Offline' END as status
+       FROM MeterProfileReal m
+       LEFT JOIN VendingCustomers vc ON vc.meterNo = m.DRN
+       LEFT JOIN (
+         SELECT DRN, MAX(created_at) as last_seen, credit_remaining
+         FROM MeterEnergy
+         GROUP BY DRN
+       ) ls ON ls.DRN = m.DRN
+       WHERE COALESCE(vc.tariffGroup, m.tariff_type) = ?
+       ORDER BY m.DRN`,
+      [groupName],
+      function(qErr, meters) {
+        if (qErr) return res.status(500).json({ error: qErr.message });
+        res.json({ success: true, groupName: groupName, data: meters || [] });
+      }
+    );
+  });
+});
+
+// Assign tariff to a meter + push via MQTT + log history
+router.post('/tariff-assign/:drn', authenticateToken, function(req, res) {
+  var drn = req.params.drn;
+  var newTariff = req.body.tariffGroup;
+  var reason = req.body.reason || 'Manual assignment';
+  if (!newTariff) return res.status(400).json({ error: 'tariffGroup is required' });
+
+  // Get current tariff
+  db.query(
+    'SELECT COALESCE(vc.tariffGroup, m.tariff_type, "Unassigned") as currentTariff FROM MeterProfileReal m LEFT JOIN VendingCustomers vc ON vc.meterNo = m.DRN WHERE m.DRN = ?',
+    [drn],
+    function(err, rows) {
+      var previousTariff = (rows && rows[0]) ? rows[0].currentTariff : 'Unassigned';
+
+      // Update in VendingCustomers (or MeterProfileReal)
+      db.query('UPDATE VendingCustomers SET tariffGroup = ? WHERE meterNo = ?', [newTariff, drn], function(vcErr, vcResult) {
+        if (vcErr || !vcResult || vcResult.affectedRows === 0) {
+          db.query('UPDATE MeterProfileReal SET tariff_type = ? WHERE DRN = ?', [newTariff, drn]);
+        }
+
+        // Log history
+        db.query(
+          'INSERT INTO MeterTariffHistory (DRN, previousTariff, newTariff, changedBy, reason, mqttStatus) VALUES (?, ?, ?, ?, ?, ?)',
+          [drn, previousTariff, newTariff, getOperatorName(req) || 'Admin', reason, 'pending']
+        );
+
+        // Push via MQTT
+        var mqttStatus = 'failed';
+        if (mqttHandler) {
+          db.query(
+            'SELECT tg.id, tg.type, tg.flatRate, tg.billingType, tb.rate, tb.period FROM TariffGroups tg LEFT JOIN TariffBlocks tb ON tb.tariffGroupId = tg.id WHERE tg.name = ? ORDER BY tb.sortOrder',
+            [newTariff],
+            function(tgErr, tgRows) {
+              if (tgErr || !tgRows || tgRows.length === 0) {
+                return res.json({ success: true, mqttStatus: 'no_tariff_config' });
+              }
+              var groupType = tgRows[0].type;
+              var command;
+
+              if (groupType === 'TOU') {
+                var rates = {};
+                tgRows.forEach(function(r) { if (r.period) rates[r.period] = parseFloat(r.rate); });
+                command = { type: 'tou_config', mode: 'tou', rates: rates, group: newTariff };
+                db.query('SELECT dayOfWeek, startHour, endHour, period FROM TariffTOUSchedule WHERE tariffGroupId = ? ORDER BY dayOfWeek, startHour', [tgRows[0].id], function(sErr, schedule) {
+                  if (!sErr && schedule && schedule.length > 0) command.schedule = schedule;
+                  pushAndRespond(command);
+                });
+              } else {
+                command = { type: 'tou_config', mode: 'flat', rate: parseFloat(tgRows[0].flatRate || tgRows[0].rate), group: newTariff };
+                pushAndRespond(command);
+              }
+
+              function pushAndRespond(cmd) {
+                try {
+                  mqttHandler.publishCommand(drn, cmd, 1);
+                  mqttStatus = 'sent';
+                } catch(e) { mqttStatus = 'failed'; }
+                db.query('UPDATE MeterTariffHistory SET mqttStatus = ? WHERE DRN = ? ORDER BY id DESC LIMIT 1', [mqttStatus, drn]);
+                logAudit('Tariff assigned: ' + drn + ' -> ' + newTariff, 'UPDATE', 'From: ' + previousTariff, getOperatorName(req), getOperatorId(req), req.ip);
+                res.json({ success: true, previousTariff: previousTariff, newTariff: newTariff, mqttStatus: mqttStatus });
+              }
+            }
+          );
+        } else {
+          res.json({ success: true, previousTariff: previousTariff, newTariff: newTariff, mqttStatus: 'mqtt_unavailable' });
+        }
+      });
+    }
+  );
+});
+
+// Bulk assign tariff to ALL meters
+router.post('/tariff-assign-bulk', authenticateToken, function(req, res) {
+  var newTariff = req.body.tariffGroup;
+  if (!newTariff) return res.status(400).json({ error: 'tariffGroup is required' });
+
+  db.query('SELECT DRN FROM MeterProfileReal', function(err, meters) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!meters || meters.length === 0) return res.json({ success: true, updated: 0 });
+
+    // Update all VendingCustomers
+    db.query('UPDATE VendingCustomers SET tariffGroup = ?', [newTariff]);
+    // Update all MeterProfileReal
+    db.query('UPDATE MeterProfileReal SET tariff_type = ?', [newTariff]);
+
+    var updated = meters.length;
+    // Log bulk assignment
+    db.query('INSERT INTO MeterTariffHistory (DRN, previousTariff, newTariff, changedBy, reason, mqttStatus) VALUES (?, ?, ?, ?, ?, ?)',
+      ['BULK_ALL', 'Various', newTariff, getOperatorName(req) || 'Admin', 'Bulk assignment to all meters', 'sent']);
+
+    // Push to all meters via MQTT
+    var pushed = 0;
+    if (mqttHandler) {
+      db.query('SELECT tg.type, tg.flatRate, tb.rate FROM TariffGroups tg LEFT JOIN TariffBlocks tb ON tb.tariffGroupId = tg.id WHERE tg.name = ? ORDER BY tb.sortOrder LIMIT 1', [newTariff], function(tgErr, tgRows) {
+        if (!tgErr && tgRows && tgRows.length > 0) {
+          var rate = parseFloat(tgRows[0].flatRate || tgRows[0].rate);
+          var mode = tgRows[0].type === 'TOU' ? 'tou' : 'flat';
+          meters.forEach(function(m) {
+            try { mqttHandler.publishCommand(m.DRN, { type: 'tou_config', mode: mode, rate: rate, group: newTariff }, 0); pushed++; } catch(e) {}
+          });
+        }
+        logAudit('Bulk tariff assignment: ' + newTariff + ' to ALL meters', 'UPDATE', 'Total: ' + updated + ', MQTT pushed: ' + pushed, getOperatorName(req), getOperatorId(req), req.ip);
+        res.json({ success: true, updated: updated, pushed: pushed });
+      });
+    } else {
+      res.json({ success: true, updated: updated, pushed: 0 });
+    }
+  });
+});
+
+// Get tariff history for a meter
+router.get('/tariff-history/:drn', authenticateToken, function(req, res) {
+  db.query('SELECT * FROM MeterTariffHistory WHERE DRN = ? ORDER BY created_at DESC LIMIT 50', [req.params.drn], function(err, results) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ success: true, data: results || [] });
+  });
+});
+
+
 module.exports = router;

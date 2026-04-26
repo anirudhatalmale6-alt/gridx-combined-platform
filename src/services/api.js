@@ -443,6 +443,11 @@ export const vendingAPI = {
   // Push tariff to meters
   pushTariffToMeter: (drn, tariffGroup) => post(`/vending/tariffs/push/${drn}`, { tariffGroup }),
   pushTariffToAll: (tariffGroup) => post('/vending/tariffs/push-all', { tariffGroup }),
+  getMetersByGroup: (groupId) => get(`/vending/tariffs/groups/${groupId}/meters`),
+  assignTariff: (drn, tariffGroup, reason) => post(`/vending/tariff-assign/${drn}`, { tariffGroup, reason }),
+  bulkAssignTariff: (tariffGroup) => post('/vending/tariff-assign-bulk', { tariffGroup }),
+  getTariffHistory: (drn) => get(`/vending/tariff-history/${drn}`),
+  getTariffInfo: (drn) => get(`/vending/tariff-info/${drn}`),
   // DSM Configuration
   getDSMConfig: (drn) => get(`/vending/dsm/${drn}`),
   getAllDSMConfig: () => get('/vending/dsm'),

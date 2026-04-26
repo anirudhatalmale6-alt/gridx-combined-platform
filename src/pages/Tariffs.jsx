@@ -36,6 +36,12 @@ import {
   EditOutlined,
   ScheduleOutlined,
   ElectricBoltOutlined,
+  PeopleOutlined,
+  SwapHorizOutlined,
+  WifiOutlined,
+  WifiOffOutlined,
+  HistoryOutlined,
+  AssignmentOutlined,
 } from "@mui/icons-material";
 import { tokens } from "../theme";
 import Header from "../components/Header";
@@ -87,6 +93,17 @@ export default function Tariffs() {
     name: "", sgc: "", description: "", type: "Flat", flatRate: 2.45, effectiveDate: "",
     blocks: [{ name: "All Usage", rangeLabel: "0+ kWh", rate: 2.45, minKwh: 0, maxKwh: 999999, period: null }],
   });
+
+  // Meters-by-group state
+  const [groupMeters, setGroupMeters] = useState([]);
+  const [metersLoading, setMetersLoading] = useState(false);
+  const [metersVisible, setMetersVisible] = useState(false);
+  const [changeTariffDialog, setChangeTariffDialog] = useState({ open: false, drn: null, currentTariff: "" });
+  const [changeTariffTarget, setChangeTariffTarget] = useState("");
+  const [changeTariffReason, setChangeTariffReason] = useState("");
+  const [changeTariffLoading, setChangeTariffLoading] = useState(false);
+  const [bulkAssignLoading, setBulkAssignLoading] = useState(false);
+  const [tariffHistoryDialog, setTariffHistoryDialog] = useState({ open: false, drn: null, data: [] });
 
   // Postpaid state
   const [postpaidTariffs, setPostpaidTariffs] = useState([]);
@@ -281,6 +298,57 @@ export default function Tariffs() {
     } catch (err) {
       setSnackbar({ open: true, message: err.message, severity: "error" });
     }
+  };
+
+  // ─── Meters by group handlers ───
+  const loadGroupMeters = useCallback(async (groupId) => {
+    if (!groupId) return;
+    setMetersLoading(true);
+    try {
+      const res = await vendingAPI.getMetersByGroup(groupId);
+      setGroupMeters(res.data || []);
+    } catch { setGroupMeters([]); }
+    setMetersLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (metersVisible && selectedGroup?.id) loadGroupMeters(selectedGroup.id);
+  }, [selectedGroup?.id, metersVisible, loadGroupMeters]);
+
+  const handleChangeTariff = async () => {
+    if (!changeTariffDialog.drn || !changeTariffTarget) return;
+    setChangeTariffLoading(true);
+    try {
+      const res = await vendingAPI.assignTariff(changeTariffDialog.drn, changeTariffTarget, changeTariffReason || "Manual reassignment");
+      setSnackbar({ open: true, message: `Tariff changed for ${changeTariffDialog.drn} — MQTT: ${res.mqttStatus || "sent"}`, severity: "success" });
+      setChangeTariffDialog({ open: false, drn: null, currentTariff: "" });
+      setChangeTariffTarget("");
+      setChangeTariffReason("");
+      if (selectedGroup?.id) loadGroupMeters(selectedGroup.id);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message, severity: "error" });
+    }
+    setChangeTariffLoading(false);
+  };
+
+  const handleBulkAssign = async (tariffName) => {
+    if (!window.confirm(`Assign ALL meters in the database to "${tariffName}"?\nThis will update every meter's tariff group and push MQTT commands.`)) return;
+    setBulkAssignLoading(true);
+    try {
+      const res = await vendingAPI.bulkAssignTariff(tariffName);
+      setSnackbar({ open: true, message: `Bulk assigned ${res.updated || 0} meters to "${tariffName}" — MQTT pushed: ${res.pushed || 0}`, severity: "success" });
+      if (selectedGroup?.id) loadGroupMeters(selectedGroup.id);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message, severity: "error" });
+    }
+    setBulkAssignLoading(false);
+  };
+
+  const handleViewTariffHistory = async (drn) => {
+    try {
+      const res = await vendingAPI.getTariffHistory(drn);
+      setTariffHistoryDialog({ open: true, drn, data: res.data || [] });
+    } catch { setTariffHistoryDialog({ open: true, drn, data: [] }); }
   };
 
   const cellSx = { color: colors.grey[200], borderBottom: `1px solid ${colors.grey[800]}` };
@@ -571,6 +639,115 @@ export default function Tariffs() {
                 </Box>
               </Box>
             </Box>
+          </Box>
+
+          {/* ─── Assigned Meters List ─── */}
+          <Box gridColumn="span 12" gridRow="span 4" backgroundColor={colors.primary[400]} borderRadius="4px" overflow="auto">
+            <Box p="20px" pb="10px" display="flex" justifyContent="space-between" alignItems="center">
+              <Box display="flex" alignItems="center" gap="12px">
+                <PeopleOutlined sx={{ color: colors.greenAccent[500] }} />
+                <Box>
+                  <Typography variant="h5" color={colors.grey[100]} fontWeight="bold">
+                    Assigned Meters — {selectedGroup?.name}
+                  </Typography>
+                  <Typography variant="caption" color={colors.grey[400]}>
+                    {groupMeters.length} meter{groupMeters.length !== 1 ? "s" : ""} assigned to this tariff group
+                  </Typography>
+                </Box>
+              </Box>
+              <Box display="flex" gap="8px" alignItems="center">
+                {selectedGroup?.name?.toLowerCase().includes("commercial") && selectedGroup?.type === "Flat" && (
+                  <Button size="small" variant="contained" startIcon={bulkAssignLoading ? <CircularProgress size={14} sx={{ color: "#000" }} /> : <AssignmentOutlined />}
+                    disabled={bulkAssignLoading}
+                    onClick={() => handleBulkAssign(selectedGroup.name)}
+                    sx={{ backgroundColor: "#f2b705", color: "#000", fontWeight: 600, textTransform: "none", fontSize: "0.75rem",
+                      "&:hover": { backgroundColor: "#d4a005" } }}>
+                    Assign ALL Meters Here
+                  </Button>
+                )}
+                <Button size="small" variant={metersVisible ? "contained" : "outlined"}
+                  startIcon={<PeopleOutlined />}
+                  onClick={() => setMetersVisible(!metersVisible)}
+                  sx={metersVisible
+                    ? { backgroundColor: colors.greenAccent[500], color: "#000", fontWeight: 600, textTransform: "none", fontSize: "0.75rem" }
+                    : { color: colors.greenAccent[500], borderColor: colors.greenAccent[500], fontWeight: 600, textTransform: "none", fontSize: "0.75rem" }}>
+                  {metersVisible ? "Hide Meters" : "View Meters"}
+                </Button>
+              </Box>
+            </Box>
+            {metersVisible && (
+              <Box px="20px" pb="20px">
+                {metersLoading ? (
+                  <Box display="flex" justifyContent="center" py="30px">
+                    <CircularProgress size={28} sx={{ color: colors.greenAccent[500] }} />
+                  </Box>
+                ) : groupMeters.length === 0 ? (
+                  <Box textAlign="center" py="30px">
+                    <Typography color={colors.grey[500]}>No meters assigned to this tariff group</Typography>
+                  </Box>
+                ) : (
+                  <TableContainer sx={{ maxHeight: 420 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>DRN</TableCell>
+                          <TableCell sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Customer</TableCell>
+                          <TableCell sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Area</TableCell>
+                          <TableCell sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Billing</TableCell>
+                          <TableCell align="right" sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Credit (kWh)</TableCell>
+                          <TableCell align="center" sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Status</TableCell>
+                          <TableCell sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Last Seen</TableCell>
+                          <TableCell align="center" sx={{ ...headerSx, backgroundColor: colors.primary[400] }}>Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {groupMeters.map((m) => (
+                          <TableRow key={m.DRN} hover>
+                            <TableCell sx={{ ...cellSx, fontWeight: 600, fontFamily: "monospace" }}>{m.DRN}</TableCell>
+                            <TableCell sx={cellSx}>{[m.Name, m.Surname].filter(Boolean).join(" ") || "—"}</TableCell>
+                            <TableCell sx={cellSx}>{m.City || "—"}</TableCell>
+                            <TableCell sx={cellSx}>
+                              <Chip size="small" label={m.account_type || "prepaid"}
+                                sx={{ backgroundColor: m.account_type === "postpaid" ? "#f2b70522" : "#4cceac22",
+                                  color: m.account_type === "postpaid" ? "#f2b705" : "#4cceac", fontWeight: 600, fontSize: "0.7rem" }} />
+                            </TableCell>
+                            <TableCell align="right" sx={{ ...cellSx, fontWeight: 600, color: colors.greenAccent[500] }}>
+                              {m.credit_remaining != null ? Number(m.credit_remaining).toFixed(2) : "—"}
+                            </TableCell>
+                            <TableCell align="center" sx={cellSx}>
+                              <Chip size="small"
+                                icon={m.status === "Online" ? <WifiOutlined sx={{ fontSize: 14 }} /> : <WifiOffOutlined sx={{ fontSize: 14 }} />}
+                                label={m.status || "Offline"}
+                                sx={{ backgroundColor: m.status === "Online" ? "#4cceac22" : "#db4f4a22",
+                                  color: m.status === "Online" ? "#4cceac" : "#db4f4a",
+                                  fontWeight: 600, fontSize: "0.7rem",
+                                  "& .MuiChip-icon": { color: "inherit" } }} />
+                            </TableCell>
+                            <TableCell sx={{ ...cellSx, fontSize: "0.75rem" }}>
+                              {m.last_seen ? new Date(m.last_seen).toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "Never"}
+                            </TableCell>
+                            <TableCell align="center" sx={cellSx}>
+                              <Box display="flex" gap="4px" justifyContent="center">
+                                <IconButton size="small" title="Change Tariff"
+                                  onClick={() => { setChangeTariffDialog({ open: true, drn: m.DRN, currentTariff: m.assignedTariff || selectedGroup?.name }); setChangeTariffTarget(""); setChangeTariffReason(""); }}
+                                  sx={{ color: colors.blueAccent[500] }}>
+                                  <SwapHorizOutlined fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" title="Tariff History"
+                                  onClick={() => handleViewTariffHistory(m.DRN)}
+                                  sx={{ color: colors.grey[400] }}>
+                                  <HistoryOutlined fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            )}
           </Box>
         </Box>
       )}
@@ -952,6 +1129,111 @@ export default function Tariffs() {
         <DialogActions sx={{ backgroundColor: colors.primary[400] }}>
           <Button onClick={() => setDeleteId(null)} sx={{ color: colors.grey[300] }}>Cancel</Button>
           <Button onClick={handleDeletePostpaidTariff} variant="contained" sx={{ backgroundColor: colors.redAccent[500], color: "#fff" }}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Change Tariff Dialog ─── */}
+      <Dialog open={changeTariffDialog.open} onClose={() => setChangeTariffDialog({ open: false, drn: null, currentTariff: "" })} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { backgroundColor: colors.primary[400], backgroundImage: "none" } }}>
+        <DialogTitle sx={{ color: colors.grey[100], fontWeight: 700 }}>
+          <Box display="flex" alignItems="center" gap="8px">
+            <SwapHorizOutlined sx={{ color: colors.blueAccent[500] }} />
+            Change Tariff — {changeTariffDialog.drn}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap="16px" mt="10px">
+            <Box backgroundColor={colors.primary[500]} p="12px" borderRadius="4px">
+              <Typography variant="caption" color={colors.grey[400]}>Current Tariff</Typography>
+              <Typography variant="body1" color={colors.grey[100]} fontWeight="600">{changeTariffDialog.currentTariff}</Typography>
+            </Box>
+            <FormControl fullWidth size="small">
+              <InputLabel>New Tariff Group</InputLabel>
+              <Select label="New Tariff Group" value={changeTariffTarget} onChange={(e) => setChangeTariffTarget(e.target.value)}>
+                {tariffGroups.filter(g => g.name !== changeTariffDialog.currentTariff).map((g) => (
+                  <MenuItem key={g.id} value={g.name}>
+                    <Box display="flex" justifyContent="space-between" width="100%" alignItems="center">
+                      <span>{g.name}</span>
+                      <Chip size="small" label={g.type} sx={{ ml: 1, fontSize: "0.65rem", height: 20 }} />
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField label="Reason (optional)" size="small" fullWidth multiline rows={2} value={changeTariffReason}
+              onChange={(e) => setChangeTariffReason(e.target.value)} placeholder="e.g., Customer reclassified to commercial" />
+            {changeTariffTarget && (
+              <Box backgroundColor="#f2b70511" border="1px solid #f2b70533" p="12px" borderRadius="4px">
+                <Typography variant="caption" color="#f2b705" fontWeight="600">
+                  This will update the meter's tariff and push new rates via MQTT
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: "16px" }}>
+          <Button onClick={() => setChangeTariffDialog({ open: false, drn: null, currentTariff: "" })} sx={{ color: colors.grey[300] }}>Cancel</Button>
+          <Button variant="contained" disabled={!changeTariffTarget || changeTariffLoading}
+            onClick={handleChangeTariff}
+            startIcon={changeTariffLoading ? <CircularProgress size={14} sx={{ color: "#000" }} /> : <SendOutlined />}
+            sx={{ backgroundColor: colors.greenAccent[500], color: "#000", fontWeight: 600 }}>
+            Assign & Push MQTT
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Tariff History Dialog ─── */}
+      <Dialog open={tariffHistoryDialog.open} onClose={() => setTariffHistoryDialog({ open: false, drn: null, data: [] })} maxWidth="md" fullWidth
+        PaperProps={{ sx: { backgroundColor: colors.primary[400], backgroundImage: "none" } }}>
+        <DialogTitle sx={{ color: colors.grey[100], fontWeight: 700 }}>
+          <Box display="flex" alignItems="center" gap="8px">
+            <HistoryOutlined sx={{ color: colors.greenAccent[500] }} />
+            Tariff History — {tariffHistoryDialog.drn}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {tariffHistoryDialog.data.length === 0 ? (
+            <Box textAlign="center" py="30px">
+              <Typography color={colors.grey[500]}>No tariff change history found</Typography>
+            </Box>
+          ) : (
+            <TableContainer sx={{ mt: 1 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={headerSx}>Date</TableCell>
+                    <TableCell sx={headerSx}>Previous</TableCell>
+                    <TableCell sx={headerSx}>New</TableCell>
+                    <TableCell sx={headerSx}>Changed By</TableCell>
+                    <TableCell sx={headerSx}>Reason</TableCell>
+                    <TableCell align="center" sx={headerSx}>MQTT</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {tariffHistoryDialog.data.map((h, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell sx={{ ...cellSx, fontSize: "0.8rem" }}>
+                        {new Date(h.created_at).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </TableCell>
+                      <TableCell sx={{ ...cellSx, color: "#db4f4a" }}>{h.previousTariff}</TableCell>
+                      <TableCell sx={{ ...cellSx, color: colors.greenAccent[500], fontWeight: 600 }}>{h.newTariff}</TableCell>
+                      <TableCell sx={cellSx}>{h.changedBy}</TableCell>
+                      <TableCell sx={{ ...cellSx, fontSize: "0.8rem" }}>{h.reason}</TableCell>
+                      <TableCell align="center" sx={cellSx}>
+                        <Chip size="small" label={h.mqttStatus || "—"}
+                          sx={{ backgroundColor: h.mqttStatus === "sent" ? "#4cceac22" : h.mqttStatus === "failed" ? "#db4f4a22" : "#f2b70522",
+                            color: h.mqttStatus === "sent" ? "#4cceac" : h.mqttStatus === "failed" ? "#db4f4a" : "#f2b705",
+                            fontWeight: 600, fontSize: "0.65rem" }} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: "16px" }}>
+          <Button onClick={() => setTariffHistoryDialog({ open: false, drn: null, data: [] })} sx={{ color: colors.grey[300] }}>Close</Button>
         </DialogActions>
       </Dialog>
 
