@@ -116,6 +116,63 @@ exports.getTotalRevenuePerHour = function(callback) {
   });
 }
 
+exports.getRevenueByPeriod = function(period, callback) {
+  let query;
+  switch (period) {
+    case 'daily':
+      query = `
+        SELECT DATE_FORMAT(date_time, '%a %d') as label,
+               COALESCE(SUM(CAST(token_amount AS DECIMAL(10,2))), 0) as total_revenue
+        FROM STSTokesInfo
+        WHERE date_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          AND display_msg = 'Accept' AND token_amount IS NOT NULL AND token_amount != ''
+        GROUP BY DATE(date_time), label
+        ORDER BY DATE(date_time)`;
+      break;
+    case 'weekly':
+      query = `
+        SELECT CONCAT('Week ', WEEK(date_time, 1) - WEEK(DATE_SUB(CURDATE(), INTERVAL 8 WEEK), 1)) as label,
+               MIN(DATE_FORMAT(date_time, '%d %b')) as week_start,
+               COALESCE(SUM(CAST(token_amount AS DECIMAL(10,2))), 0) as total_revenue
+        FROM STSTokesInfo
+        WHERE date_time >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
+          AND display_msg = 'Accept' AND token_amount IS NOT NULL AND token_amount != ''
+        GROUP BY YEARWEEK(date_time, 1)
+        ORDER BY YEARWEEK(date_time, 1)`;
+      break;
+    case 'monthly':
+      query = `
+        SELECT DATE_FORMAT(date_time, '%b %Y') as label,
+               COALESCE(SUM(CAST(token_amount AS DECIMAL(10,2))), 0) as total_revenue
+        FROM STSTokesInfo
+        WHERE date_time >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          AND display_msg = 'Accept' AND token_amount IS NOT NULL AND token_amount != ''
+        GROUP BY YEAR(date_time), MONTH(date_time), label
+        ORDER BY YEAR(date_time), MONTH(date_time)`;
+      break;
+    case 'yearly':
+      query = `
+        SELECT YEAR(date_time) as label,
+               COALESCE(SUM(CAST(token_amount AS DECIMAL(10,2))), 0) as total_revenue
+        FROM STSTokesInfo
+        WHERE display_msg = 'Accept' AND token_amount IS NOT NULL AND token_amount != ''
+        GROUP BY YEAR(date_time)
+        ORDER BY YEAR(date_time)`;
+      break;
+    default:
+      return exports.getTotalRevenuePerHour(callback);
+  }
+
+  db.query(query, (err, results) => {
+    if (err) return callback({ error: 'Database query failed', details: err });
+    const data = results.map(row => ({
+      label: period === 'weekly' ? `${row.week_start || row.label}` : String(row.label),
+      revenue: parseFloat(row.total_revenue) || 0,
+    }));
+    callback(null, data);
+  });
+}
+
 //Suburb Time periods
 exports.getRevenueByTimePeriodsBySuburb = function(suburbs, callback) {
   console.log(suburbs);

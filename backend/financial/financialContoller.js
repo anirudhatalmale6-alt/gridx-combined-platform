@@ -68,6 +68,20 @@ exports.getTotalRevenuePerHour = function(req, res) {
 }
 
 
+exports.getRevenueByPeriod = function(req, res) {
+  const period = req.query.period || 'hourly';
+  if (period === 'hourly') {
+    return exports.getTotalRevenuePerHour(req, res);
+  }
+  financialService.getRevenueByPeriod(period, (err, data) => {
+    if (err) {
+      console.error('Error getting revenue by period:', err);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+    res.json({ data });
+  });
+};
+
 //Suburb time periods
 exports.getTimePeriodRevenueBySuburb = function(req, res) {
   const { suburbs } = req.body;

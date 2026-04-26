@@ -275,4 +275,70 @@ router.get('/tamper/analytical/suspected', auth.authenticateToken, function(req,
   });
 });
 
+router.get('/tamper/fleet-summary', auth.authenticateToken, function(req, res) {
+  var days = parseInt(req.query.days) || 90;
+
+  var sql =
+    'SELECT e.DRN, ' +
+    '  CONCAT(COALESCE(p.Name, \'\'), \' \', COALESCE(p.Surname, \'\')) as customer_name, ' +
+    '  p.City, p.Region, ' +
+    '  COUNT(*) as total_events, ' +
+    '  MAX(e.date_time) as last_detected, ' +
+    '  MAX(e.tamp_time) as last_tamper_time, ' +
+    '  (SELECT units FROM MeterCumulativeEnergyUsage WHERE DRN = e.DRN AND tamper_state = 1 ORDER BY date_time DESC LIMIT 1) as latest_credit, ' +
+    '  lc.mains_state as relay_state, ' +
+    '  CASE ' +
+    '    WHEN COUNT(*) >= 10 THEN \'Critical\' ' +
+    '    WHEN COUNT(*) >= 5 THEN \'High\' ' +
+    '    WHEN COUNT(*) >= 3 THEN \'Medium\' ' +
+    '    ELSE \'Low\' ' +
+    '  END as severity, ' +
+    '  CASE ' +
+    '    WHEN MAX(e.date_time) >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN \'Active\' ' +
+    '    WHEN MAX(e.date_time) >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN \'Pending Review\' ' +
+    '    ELSE \'Cleared\' ' +
+    '  END as status ' +
+    'FROM MeterCumulativeEnergyUsage e ' +
+    'LEFT JOIN MeterProfileReal p ON e.DRN = p.DRN ' +
+    'LEFT JOIN ( ' +
+    '  SELECT lc1.DRN, lc1.mains_state FROM MeterLoadControl lc1 ' +
+    '  INNER JOIN (SELECT DRN, MAX(id) as max_id FROM MeterLoadControl GROUP BY DRN) lc2 ' +
+    '  ON lc1.id = lc2.max_id ' +
+    ') lc ON e.DRN = lc.DRN ' +
+    'WHERE e.tamper_state = 1 ' +
+    '  AND e.date_time >= DATE_SUB(NOW(), INTERVAL ? DAY) ' +
+    'GROUP BY e.DRN ' +
+    'ORDER BY last_detected DESC';
+
+  connection.query(sql, [days], function(err, rows) {
+    if (err) {
+      console.error('Error fetching fleet tamper summary:', err);
+      return res.status(500).json({ error: 'Failed to fetch fleet tamper summary' });
+    }
+
+    var meters = (rows || []).map(function(row) {
+      var tamperType = 'Physical';
+      if (row.total_events >= 3) tamperType = 'Repeated Physical';
+      if (row.total_events >= 10) tamperType = 'Persistent Physical';
+
+      return {
+        DRN: row.DRN,
+        customerName: (row.customer_name || '').trim() || 'Unknown',
+        city: row.City || '',
+        region: row.Region || '',
+        tamperType: tamperType,
+        severity: row.severity,
+        totalEvents: row.total_events,
+        lastDetected: row.last_detected,
+        lastTamperTime: row.last_tamper_time ? new Date(row.last_tamper_time * 1000).toISOString() : null,
+        status: row.status,
+        relayState: row.relay_state != null ? (row.relay_state === 1 ? 'ON' : 'OFF') : 'Unknown',
+        latestCredit: row.latest_credit != null ? Number(Number(row.latest_credit).toFixed(2)) : null
+      };
+    });
+
+    res.json({ success: true, count: meters.length, meters: meters });
+  });
+});
+
 module.exports = router;

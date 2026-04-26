@@ -178,6 +178,7 @@ export const financeAPI = {
   getMonthlyYearly: () => get('/finance/currentAndLastYearMonthRevenueTotal'),
   getWeekly: () => get('/finance/currentAndLastWeek'),
   getHourlyRevenue: () => get('/finance/hourlyRevenue'),
+  getRevenueByPeriod: (period) => get('/finance/revenueByPeriod?period=' + (period || 'weekly')),
   getSuburbTimePeriod: (suburbs) => post('/finance/suburbTimePeriod', { suburbs }),
   getSuburbWeekly: (suburbs) => post('/finance/suburbWeeklyRevenue', { suburbs }),
   getSuburbYearly: (suburbs) => post('/finance/suburbYearlyRevenue', { suburbs }),
@@ -293,6 +294,7 @@ export const tamperAPI = {
   getPhysicalEvents: (days) => get('/tamper/physical' + (days ? '?days=' + days : '')),
   getConfirmed: (days) => get('/tamper/analytical/confirmed' + (days ? '?days=' + days : '')),
   getSuspected: (days) => get('/tamper/analytical/suspected' + (days ? '?days=' + days : '')),
+  getFleetSummary: (days) => get('/tamper/fleet-summary' + (days ? '?days=' + days : '')),
 };
 
 // ===== VSM TESTING =====
@@ -494,7 +496,7 @@ export const netMeteringAPI = {
   getLatest: (drn) => get(`/mqtt/net-energy/${drn}`),
   getSummary: (drn) => get(`/mqtt/net-energy/${drn}/summary`),
   getHistory: (drn, limit = 30) => get(`/mqtt/net-energy/${drn}/history?limit=${limit}`),
-  getDashboard: () => get('/mqtt/net-energy/dashboard'),
+  getDashboard: (period) => get('/mqtt/net-energy/dashboard' + (period ? '?period=' + period : '')),
   getActiveMeters: () => get('/mqtt/net-energy/active-meters'),
 };
 

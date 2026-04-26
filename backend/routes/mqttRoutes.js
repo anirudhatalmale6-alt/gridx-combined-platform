@@ -1142,56 +1142,64 @@ router.get('/mqtt/tou-config/:drn', authenticateToken, async (req, res) => {
 
 router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => {
   try {
-    // Values in MeterNetEnergy are cumulative snapshots — use MAX per meter
     const totals = await queryOne(
-      `SELECT
-        COUNT(*) as total_meters,
-        SUM(max_import) as total_import,
-        SUM(max_export) as total_export,
-        SUM(max_import) - SUM(max_export) as net_energy
-       FROM (
-         SELECT DRN,
-           MAX(import_energy_wh) as max_import,
-           MAX(export_energy_wh) as max_export
-         FROM MeterNetEnergy
-         GROUP BY DRN
-       ) per_meter`
+      `SELECT COUNT(DISTINCT DRN) as total_meters,
+        SUM(max_import_wh) as total_import,
+        SUM(max_export_wh) as total_export,
+        SUM(max_import_wh) - SUM(max_export_wh) as net_energy
+       FROM MeterNetEnergyDaily`
     );
 
-    // Hourly deltas for today: MAX-MIN per meter per hour
     const hourly = await queryAll(
-      `SELECT hr as hour,
-        SUM(delta_import) as \`import\`,
-        SUM(delta_export) as \`export\`
-       FROM (
-         SELECT DRN, HOUR(created_at) as hr,
-           MAX(import_energy_wh) - MIN(import_energy_wh) as delta_import,
-           MAX(export_energy_wh) - MIN(export_energy_wh) as delta_export
-         FROM MeterNetEnergy
-         WHERE created_at >= CURDATE()
-         GROUP BY DRN, HOUR(created_at)
-       ) per_meter_hour
-       GROUP BY hr
-       ORDER BY hr`
+      `SELECT hour,
+        SUM(max_import_wh - min_import_wh) as \`import\`,
+        SUM(max_export_wh - min_export_wh) as \`export\`
+       FROM MeterNetEnergyHourly
+       WHERE date = CURDATE()
+       GROUP BY hour ORDER BY hour`
     );
 
-    // Daily deltas for last 30 days: MAX-MIN per meter per day
-    const daily = await queryAll(
-      `SELECT d as date,
-        DATE_FORMAT(d, '%b %d') as label,
-        SUM(delta_import) as \`import\`,
-        SUM(delta_export) as \`export\`
-       FROM (
-         SELECT DRN, DATE(created_at) as d,
-           MAX(import_energy_wh) - MIN(import_energy_wh) as delta_import,
-           MAX(export_energy_wh) - MIN(export_energy_wh) as delta_export
-         FROM MeterNetEnergy
-         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-         GROUP BY DRN, DATE(created_at)
-       ) per_meter_day
-       GROUP BY d
-       ORDER BY d`
-    );
+    const period = req.query.period || 'daily';
+    let daily;
+    if (period === 'weekly') {
+      daily = await queryAll(
+        `SELECT MIN(date) as date,
+          CONCAT('W', WEEK(date)) as label,
+          SUM(max_import_wh - min_import_wh) as \`import\`,
+          SUM(max_export_wh - min_export_wh) as \`export\`
+         FROM MeterNetEnergyDaily
+         WHERE date >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+         GROUP BY YEARWEEK(date) ORDER BY date`
+      );
+    } else if (period === 'monthly') {
+      daily = await queryAll(
+        `SELECT MIN(date) as date,
+          DATE_FORMAT(MIN(date), '%b %Y') as label,
+          SUM(max_import_wh - min_import_wh) as \`import\`,
+          SUM(max_export_wh - min_export_wh) as \`export\`
+         FROM MeterNetEnergyDaily
+         WHERE date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+         GROUP BY YEAR(date), MONTH(date) ORDER BY date`
+      );
+    } else if (period === 'yearly') {
+      daily = await queryAll(
+        `SELECT MIN(date) as date,
+          YEAR(date) as label,
+          SUM(max_import_wh - min_import_wh) as \`import\`,
+          SUM(max_export_wh - min_export_wh) as \`export\`
+         FROM MeterNetEnergyDaily
+         GROUP BY YEAR(date) ORDER BY date`
+      );
+    } else {
+      daily = await queryAll(
+        `SELECT date, DATE_FORMAT(date, '%b %d') as label,
+          SUM(max_import_wh - min_import_wh) as \`import\`,
+          SUM(max_export_wh - min_export_wh) as \`export\`
+         FROM MeterNetEnergyDaily
+         WHERE date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         GROUP BY date ORDER BY date`
+      );
+    }
 
     const hourlyArr = Array.from({ length: 24 }, (_, i) => {
       const h = hourly.find(r => r.hour === i);
@@ -1200,8 +1208,6 @@ router.get('/mqtt/net-energy/dashboard', authenticateToken, async (req, res) => 
 
     const peakExport = hourlyArr.reduce((max, h) => h.export > max.export ? h : max, { hour: 0, export: 0 });
     const peakImport = hourlyArr.reduce((max, h) => h.import > max.import ? h : max, { hour: 0, import: 0 });
-
-    // Today's totals from hourly data
     const todayImport = hourlyArr.reduce((sum, h) => sum + h.import, 0);
     const todayExport = hourlyArr.reduce((sum, h) => sum + h.export, 0);
 

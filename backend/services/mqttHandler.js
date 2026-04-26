@@ -695,6 +695,32 @@ function handleNetEnergyBin(drn, buf) {
   }, (err) => {
     if (err) console.error('[MQTT] NetEnergy insert error:', err.message);
   });
+
+  db.query(
+    `INSERT INTO MeterNetEnergyHourly (DRN, date, hour, min_import_wh, max_import_wh, min_export_wh, max_export_wh, reading_count)
+     VALUES (?, CURDATE(), HOUR(NOW()), ?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       min_import_wh = LEAST(min_import_wh, VALUES(min_import_wh)),
+       max_import_wh = GREATEST(max_import_wh, VALUES(max_import_wh)),
+       min_export_wh = LEAST(min_export_wh, VALUES(min_export_wh)),
+       max_export_wh = GREATEST(max_export_wh, VALUES(max_export_wh)),
+       reading_count = reading_count + 1`,
+    [drn, import_energy, import_energy, export_energy, export_energy],
+    (err) => { if (err) console.error('[MQTT] NetEnergy hourly upsert error:', err.message); }
+  );
+
+  db.query(
+    `INSERT INTO MeterNetEnergyDaily (DRN, date, min_import_wh, max_import_wh, min_export_wh, max_export_wh, reading_count)
+     VALUES (?, CURDATE(), ?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       min_import_wh = LEAST(min_import_wh, VALUES(min_import_wh)),
+       max_import_wh = GREATEST(max_import_wh, VALUES(max_import_wh)),
+       min_export_wh = LEAST(min_export_wh, VALUES(min_export_wh)),
+       max_export_wh = GREATEST(max_export_wh, VALUES(max_export_wh)),
+       reading_count = reading_count + 1`,
+    [drn, import_energy, import_energy, export_energy, export_energy],
+    (err) => { if (err) console.error('[MQTT] NetEnergy daily upsert error:', err.message); }
+  );
 }
 
 function handleCellularBin(drn, buf) {

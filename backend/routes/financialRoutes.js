@@ -18,6 +18,8 @@ router.get('/currentAndLastYearMonthRevenueTotal',financialContoller.getMonthlyT
 router.get('/currentAndLastWeek',financialContoller.getWeeklyTokenAmountForCurrentAndLastWeek);
 //Hourly Revenue for the current day
 router.get('/hourlyRevenue',financialContoller.getTotalRevenuePerHour);
+//Revenue by period (hourly/daily/weekly/monthly/yearly)
+router.get('/revenueByPeriod',financialContoller.getRevenueByPeriod);
 //Suburb time periods 
 router.post('/suburbTimePeriod',financialContoller.getTimePeriodRevenueBySuburb);
 //suburbWeeklyRevenue

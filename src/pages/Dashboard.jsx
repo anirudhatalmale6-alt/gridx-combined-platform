@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Box, Typography, useTheme, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Skeleton } from "@mui/material";
+import { Box, Typography, useTheme, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Skeleton, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import { tokens } from "../theme";
 import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
@@ -197,6 +197,8 @@ export default function Dashboard() {
   const [hourlyEnergyData, setHourlyEnergyData] = useState([]);
   const [totalRemainingUnits, setTotalRemainingUnits] = useState(0);
   const [hourlyRevenue, setHourlyRevenue] = useState([]);
+  const [revenuePeriod, setRevenuePeriod] = useState("weekly");
+  const [revenuePeriodData, setRevenuePeriodData] = useState([]);
   const [meterHealthData, setMeterHealthData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -425,6 +427,22 @@ export default function Dashboard() {
       return merged;
     });
   }, [meterHealthData]);
+
+  useEffect(() => {
+    if (revenuePeriod === "hourly") {
+      financeAPI.getHourlyRevenue().then((val) => {
+        if (val?.revenues && Array.isArray(val.revenues)) {
+          const padded = Array.from({ length: 24 }, (_, i) => Number(val.revenues[i]) || 0);
+          setHourlyRevenue(padded);
+          setRevenuePeriodData([]);
+        }
+      }).catch(() => {});
+    } else {
+      financeAPI.getRevenueByPeriod(revenuePeriod).then((val) => {
+        if (val?.data && Array.isArray(val.data)) setRevenuePeriodData(val.data);
+      }).catch(() => {});
+    }
+  }, [revenuePeriod]);
 
   useEffect(() => {
     // Initial load: fast MQTT stats first, then slow charts
@@ -923,73 +941,79 @@ export default function Dashboard() {
           })()}
         </Box>
 
-        {/* ROW 3: Hourly Revenue Analytics (span 9) + Token Transaction Timeline (span 3) */}
-        <Box
-          gridColumn="span 9"
-          gridRow="span 5"
-          backgroundColor={colors.primary[400]}
-          p="15px"
-        >
-          <Typography variant="h5" fontWeight="600" color={colors.grey[100]} mb="10px">
-            Hourly Revenue Analytics
-          </Typography>
-          {/* Stat boxes row */}
-          <Box sx={{ display: "flex", justifyContent: "space-around", bgcolor: colors.primary[500], borderRadius: "8px", p: 1.5, mb: 1.5 }}>
-            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <AttachMoneyIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
-              <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
-                N${(hourlyRevenue.reduce((s, v) => s + v, 0)).toFixed(2)}
-              </Typography>
-              <Typography variant="caption" color={colors.grey[300]}>Total Revenue</Typography>
-            </Box>
-            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <TrendingUpIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
-              <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
-                N${(hourlyRevenue.length > 0 ? Math.max(...hourlyRevenue) : 0).toFixed(2)}
-              </Typography>
-              <Typography variant="caption" color={colors.grey[300]}>Peak Hour Revenue</Typography>
-            </Box>
-            <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <BarChartIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
-              <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>
-                N${(hourlyRevenue.length > 0 ? hourlyRevenue.reduce((s, v) => s + v, 0) / 24 : 0).toFixed(2)}
-              </Typography>
-              <Typography variant="caption" color={colors.grey[300]}>Average/Hour</Typography>
-            </Box>
-          </Box>
-          {/* Bar chart */}
-          <Box height="calc(100% - 120px)">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={Array.from({ length: 24 }, (_, i) => ({
-                  hour: `${i < 10 ? "0" + i : i}:00`,
-                  revenue: hourlyRevenue[i] || 0,
-                }))}
-                margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
-              >
-                <defs>
-                  <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={colors.greenAccent[500]} stopOpacity={0.85} />
-                    <stop offset="95%" stopColor={colors.greenAccent[500]} stopOpacity={0.55} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.4} vertical={false} />
-                <XAxis dataKey="hour" stroke={colors.grey[300]} tick={{ fontSize: 9, angle: -45, textAnchor: "end" }} interval={0} height={50} />
-                <YAxis stroke={colors.grey[300]} tick={{ fontSize: 10 }} tickFormatter={(v) => `N$${v}`} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: colors.primary[400],
-                    border: `1px solid ${colors.grey[700]}`,
-                    borderRadius: 8,
-                    color: colors.grey[100],
+        {/* ROW 3: Revenue Analytics (span 9) + Token Transaction Timeline (span 3) */}
+        {(() => {
+          const isHourly = revenuePeriod === "hourly";
+          const chartData = isHourly
+            ? Array.from({ length: 24 }, (_, i) => ({ label: `${i < 10 ? "0" + i : i}:00`, revenue: hourlyRevenue[i] || 0 }))
+            : revenuePeriodData.map(d => ({ label: d.label, revenue: d.revenue }));
+          const totalRev = chartData.reduce((s, d) => s + d.revenue, 0);
+          const peakRev = chartData.length > 0 ? Math.max(...chartData.map(d => d.revenue)) : 0;
+          const avgRev = chartData.length > 0 ? totalRev / chartData.length : 0;
+          const periodLabels = { hourly: "Hourly", daily: "Daily", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
+          return (
+            <Box gridColumn="span 9" gridRow="span 5" backgroundColor={colors.primary[400]} p="15px">
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb="10px">
+                <Typography variant="h5" fontWeight="600" color={colors.grey[100]}>
+                  {periodLabels[revenuePeriod]} Revenue Analytics
+                </Typography>
+                <ToggleButtonGroup
+                  value={revenuePeriod}
+                  exclusive
+                  onChange={(e, v) => v && setRevenuePeriod(v)}
+                  size="small"
+                  sx={{
+                    "& .MuiToggleButton-root": { color: colors.grey[300], borderColor: colors.grey[700], px: 1.2, py: 0.3, fontSize: "0.7rem", textTransform: "none" },
+                    "& .Mui-selected": { bgcolor: `${colors.greenAccent[500]}25 !important`, color: `${colors.greenAccent[500]} !important`, borderColor: `${colors.greenAccent[500]}50 !important` },
                   }}
-                  formatter={(value) => [`N$${Number(value).toFixed(2)}`, "Revenue"]}
-                />
-                <Bar dataKey="revenue" fill="url(#gradRevenue)" radius={[4, 4, 0, 0]} maxBarSize={30} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
-        </Box>
+                >
+                  <ToggleButton value="hourly">Hourly</ToggleButton>
+                  <ToggleButton value="daily">Daily</ToggleButton>
+                  <ToggleButton value="weekly">Weekly</ToggleButton>
+                  <ToggleButton value="monthly">Monthly</ToggleButton>
+                  <ToggleButton value="yearly">Yearly</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-around", bgcolor: colors.primary[500], borderRadius: "8px", p: 1.5, mb: 1.5 }}>
+                <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <AttachMoneyIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
+                  <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>N${totalRev.toFixed(2)}</Typography>
+                  <Typography variant="caption" color={colors.grey[300]}>Total Revenue</Typography>
+                </Box>
+                <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <TrendingUpIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
+                  <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>N${peakRev.toFixed(2)}</Typography>
+                  <Typography variant="caption" color={colors.grey[300]}>Peak {periodLabels[revenuePeriod]}</Typography>
+                </Box>
+                <Box sx={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <BarChartIcon sx={{ color: colors.greenAccent[500], fontSize: "1.8rem", mb: 0.5 }} />
+                  <Typography variant="h5" fontWeight="bold" color={colors.greenAccent[500]}>N${avgRev.toFixed(2)}</Typography>
+                  <Typography variant="caption" color={colors.grey[300]}>Average/{periodLabels[revenuePeriod]}</Typography>
+                </Box>
+              </Box>
+              <Box height="calc(100% - 120px)">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={colors.greenAccent[500]} stopOpacity={0.85} />
+                        <stop offset="95%" stopColor={colors.greenAccent[500]} stopOpacity={0.55} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.grey[700]} opacity={0.4} vertical={false} />
+                    <XAxis dataKey="label" stroke={colors.grey[300]} tick={{ fontSize: 9, angle: isHourly ? -45 : 0, textAnchor: isHourly ? "end" : "middle" }} interval={0} height={50} />
+                    <YAxis stroke={colors.grey[300]} tick={{ fontSize: 10 }} tickFormatter={(v) => `N$${v}`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: colors.primary[400], border: `1px solid ${colors.grey[700]}`, borderRadius: 8, color: colors.grey[100] }}
+                      formatter={(value) => [`N$${Number(value).toFixed(2)}`, "Revenue"]}
+                    />
+                    <Bar dataKey="revenue" fill="url(#gradRevenue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Box>
+            </Box>
+          );
+        })()}
 
         <Box
           gridColumn="span 3"
