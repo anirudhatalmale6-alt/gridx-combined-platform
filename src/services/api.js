@@ -503,6 +503,9 @@ export const netMeteringAPI = {
   getHistory: (drn, limit = 30) => get(`/mqtt/net-energy/${drn}/history?limit=${limit}`),
   getDashboard: (period) => get('/mqtt/net-energy/dashboard' + (period ? '?period=' + period : '')),
   getActiveMeters: () => get('/mqtt/net-energy/active-meters'),
+  getConfig: (drn) => get(`/mqtt/net-metering-config/${drn}`),
+  setConfig: (drn, data) => post(`/mqtt/net-metering-config/${drn}`, data),
+  getAllConfigs: () => get('/mqtt/net-metering-configs'),
 };
 
 // ===== NON-GRIDX CUSTOMERS =====

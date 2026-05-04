@@ -29,6 +29,17 @@ function queryOne(sql, params) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// AUTO-CREATE TABLES
+// ═══════════════════════════════════════════════════════════════════════
+
+db.query(`CREATE TABLE IF NOT EXISTS MeterNetMeteringConfig (
+  DRN VARCHAR(50) PRIMARY KEY,
+  nm_mode TINYINT DEFAULT 0,
+  feed_in_rate FLOAT DEFAULT 0,
+  updated_at DATETIME
+)`, (err) => { if (err) console.warn('MeterNetMeteringConfig table init:', err.message); });
+
+// ═══════════════════════════════════════════════════════════════════════
 // GENERIC COMMAND
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1394,6 +1405,65 @@ router.get('/mqtt/net-energy/:drn/daily', authenticateToken, async (req, res) =>
         history: rows
       }
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Net Metering Configuration
+// ═══════════════════════════════════════════════════════════════════════
+
+router.get('/mqtt/net-metering-config/:drn', authenticateToken, async (req, res) => {
+  try {
+    const row = await queryOne(
+      'SELECT * FROM MeterNetMeteringConfig WHERE DRN = ?',
+      [req.params.drn]
+    );
+    res.json({ success: true, data: row || { DRN: req.params.drn, nm_mode: 0, feed_in_rate: 0 } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/mqtt/net-metering-config/:drn', authenticateToken, async (req, res) => {
+  try {
+    const drn = req.params.drn;
+    const { nm_mode, feed_in_rate } = req.body;
+    const mode = parseInt(nm_mode);
+    const fiRate = parseFloat(feed_in_rate) || 0;
+
+    if (mode < 0 || mode > 3) {
+      return res.status(400).json({ error: 'Invalid mode. Must be 0-3.' });
+    }
+
+    await new Promise((resolve, reject) => {
+      pool.query(
+        `INSERT INTO MeterNetMeteringConfig (DRN, nm_mode, feed_in_rate, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE nm_mode = VALUES(nm_mode), feed_in_rate = VALUES(feed_in_rate), updated_at = NOW()`,
+        [drn, mode, fiRate],
+        (err) => err ? reject(err) : resolve()
+      );
+    });
+
+    const modeNames = ['gross', 'net_billing', 'feed_in', 'tou'];
+    const mqttCmd = { type: 'net_metering_mode', mode: modeNames[mode], feed_in_rate: fiRate };
+    try {
+      mqttHandler.publishCommand(drn, mqttCmd, 1);
+    } catch (mqttErr) {
+      console.error(`[NetMetering] MQTT publish error for ${drn}:`, mqttErr.message);
+    }
+
+    res.json({ success: true, message: 'Net metering mode updated', mode, feed_in_rate: fiRate, mqtt_sent: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/mqtt/net-metering-configs', authenticateToken, async (req, res) => {
+  try {
+    const rows = await queryAll(
+      `SELECT nmc.*, CONCAT(mpr.Name, ' ', mpr.Surname) as customer_name, mpr.City as location
+       FROM MeterNetMeteringConfig nmc
+       LEFT JOIN MeterProfileReal mpr ON nmc.DRN = mpr.DRN
+       ORDER BY nmc.updated_at DESC`
+    );
+    res.json({ success: true, data: rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

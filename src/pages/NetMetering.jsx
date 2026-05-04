@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Box, Typography, useTheme, Grid, CircularProgress, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  ToggleButton, ToggleButtonGroup,
+  ToggleButton, ToggleButtonGroup, Tab, Tabs, Select, MenuItem,
+  TextField, Button, Snackbar, Alert, FormControl, InputLabel,
+  IconButton,
 } from "@mui/material";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -18,6 +20,9 @@ import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import SettingsIcon from "@mui/icons-material/Settings";
+import SaveIcon from "@mui/icons-material/Save";
+import EditIcon from "@mui/icons-material/Edit";
 
 const REFRESH_INTERVAL_MS = 30000;
 const TARIFF_RATE = 2.50;
@@ -40,6 +45,57 @@ export default function NetMetering() {
   const [activeMeters, setActiveMeters] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [trendPeriod, setTrendPeriod] = useState("daily");
+  const [activeTab, setActiveTab] = useState(0);
+  const [configs, setConfigs] = useState([]);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [editingDrn, setEditingDrn] = useState(null);
+  const [editMode, setEditMode] = useState(0);
+  const [editFeedInRate, setEditFeedInRate] = useState("");
+  const [snack, setSnack] = useState({ open: false, msg: "", severity: "success" });
+
+  const NM_MODES = [
+    { value: 0, label: "Gross Metering", desc: "Credit deducted 1:1 with consumption regardless of export. Net metering is display-only." },
+    { value: 1, label: "Net Billing", desc: "Credit only deducted when importing more than exporting. No credit accumulation during export." },
+    { value: 2, label: "Feed-in Credit", desc: "Export energy adds credits back at a configurable feed-in rate. Credit counter can increase during generation." },
+    { value: 3, label: "TOU Net Metering", desc: "Same as Feed-in Credit but uses current Time-of-Use tariff rate. Export during peak hours earns more." },
+  ];
+
+  const fetchConfigs = useCallback(async () => {
+    setConfigLoading(true);
+    try {
+      const [metersRes, configsRes] = await Promise.allSettled([
+        netMeteringAPI.getActiveMeters(),
+        netMeteringAPI.getAllConfigs(),
+      ]);
+      const meters = metersRes.status === "fulfilled" ? metersRes.value?.data || [] : activeMeters;
+      const cfgs = configsRes.status === "fulfilled" ? configsRes.value?.data || [] : [];
+      const cfgMap = {};
+      cfgs.forEach(c => { cfgMap[c.DRN] = c; });
+      const merged = meters.map(m => ({
+        ...m,
+        nm_mode: cfgMap[m.DRN]?.nm_mode ?? 0,
+        feed_in_rate: cfgMap[m.DRN]?.feed_in_rate ?? 0,
+        config_updated: cfgMap[m.DRN]?.updated_at || null,
+      }));
+      setConfigs(merged);
+    } catch (err) { console.error("Config fetch error:", err); }
+    finally { setConfigLoading(false); }
+  }, [activeMeters]);
+
+  const saveConfig = async (drn) => {
+    try {
+      await netMeteringAPI.setConfig(drn, { nm_mode: editMode, feed_in_rate: parseFloat(editFeedInRate) || 0 });
+      setSnack({ open: true, msg: `Mode updated for ${drn} and sent to meter via MQTT`, severity: "success" });
+      setEditingDrn(null);
+      fetchConfigs();
+    } catch (err) {
+      setSnack({ open: true, msg: `Error: ${err.message}`, severity: "error" });
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 1) fetchConfigs();
+  }, [activeTab, fetchConfigs]);
 
   const fetchDashboard = useCallback(async (showLoading = false, period) => {
     if (showLoading) setLoading(true);
@@ -121,7 +177,155 @@ export default function NetMetering() {
     <Box sx={{ p: "20px" }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
         <Header title="NET METERING" subtitle="System-wide Net Metering Dashboard" />
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: "70px" }}>
+      </Box>
+
+      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3, "& .MuiTab-root": { textTransform: "none", fontWeight: 600, fontSize: "13px" } }}>
+        <Tab label="Dashboard" icon={<SpeedIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
+        <Tab label="Configuration" icon={<SettingsIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
+      </Tabs>
+
+      {activeTab === 1 && (
+        <Box>
+          <Box sx={{ ...cardStyle, mb: 3 }}>
+            <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 1 }}>
+              Net Metering Mode Configuration
+            </Typography>
+            <Typography sx={{ fontSize: "12px", color: colors.grey[300], mb: 3 }}>
+              Configure how each meter handles credit deduction in relation to solar export. Changes are sent to the meter via MQTT.
+            </Typography>
+
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              {NM_MODES.map((m) => (
+                <Grid item xs={12} sm={6} md={3} key={m.value}>
+                  <Box sx={{
+                    p: 2, borderRadius: "12px",
+                    border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}`,
+                    bgcolor: isDark ? colors.primary[500] : "#fafafa",
+                  }}>
+                    <Chip label={`Mode ${m.value}`} size="small" sx={{
+                      bgcolor: ["#64748b20", "#2196f320", "#4caf5020", "#ff980020"][m.value],
+                      color: ["#94a3b8", "#42a5f5", "#66bb6a", "#ffa726"][m.value],
+                      fontWeight: 700, fontSize: "10px", mb: 1,
+                    }} />
+                    <Typography sx={{ fontSize: "13px", fontWeight: 700, color: colors.grey[100], mb: 0.5 }}>{m.label}</Typography>
+                    <Typography sx={{ fontSize: "11px", color: colors.grey[400], lineHeight: 1.4 }}>{m.desc}</Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
+          <Box sx={{ ...cardStyle }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+              <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100] }}>
+                Meter Configuration ({configs.length})
+              </Typography>
+              <RefreshIcon
+                sx={{ fontSize: 18, color: colors.grey[400], cursor: "pointer", "&:hover": { color: colors.greenAccent[500] } }}
+                onClick={fetchConfigs}
+              />
+            </Box>
+            {configLoading ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                <CircularProgress size={30} sx={{ color: colors.greenAccent[500] }} />
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      {["DRN", "Customer", "Current Mode", "Feed-in Rate", "Last Updated", "Actions"].map(h => (
+                        <TableCell key={h} sx={thStyle}>{h}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {configs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} sx={{ textAlign: "center", color: colors.grey[400], py: 4 }}>
+                          No net metering meters found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      configs.map((c) => {
+                        const isEditing = editingDrn === c.DRN;
+                        const modeInfo = NM_MODES[c.nm_mode] || NM_MODES[0];
+                        const modeColor = ["#94a3b8", "#42a5f5", "#66bb6a", "#ffa726"][c.nm_mode] || "#94a3b8";
+
+                        return (
+                          <TableRow key={c.DRN} sx={{ "&:hover": { bgcolor: isDark ? colors.primary[300] : "#f5f5f5" } }}>
+                            <TableCell sx={{ ...tdStyle, color: colors.grey[100], fontSize: "12px", fontWeight: 600 }}>{c.DRN}</TableCell>
+                            <TableCell sx={{ ...tdStyle, color: colors.grey[200], fontSize: "12px" }}>{c.customer_name || c.DRN}</TableCell>
+                            <TableCell sx={tdStyle}>
+                              {isEditing ? (
+                                <FormControl size="small" sx={{ minWidth: 180 }}>
+                                  <Select value={editMode} onChange={(e) => setEditMode(e.target.value)}
+                                    sx={{ fontSize: "12px", color: colors.grey[100], "& .MuiOutlinedInput-notchedOutline": { borderColor: colors.grey[600] } }}>
+                                    {NM_MODES.map(m => (
+                                      <MenuItem key={m.value} value={m.value} sx={{ fontSize: "12px" }}>{m.label}</MenuItem>
+                                    ))}
+                                  </Select>
+                                </FormControl>
+                              ) : (
+                                <Chip label={modeInfo.label} size="small" sx={{ bgcolor: `${modeColor}20`, color: modeColor, fontWeight: 600, fontSize: "10px" }} />
+                              )}
+                            </TableCell>
+                            <TableCell sx={tdStyle}>
+                              {isEditing ? (
+                                <TextField size="small" type="number" value={editFeedInRate}
+                                  onChange={(e) => setEditFeedInRate(e.target.value)}
+                                  placeholder="0.00" inputProps={{ step: "0.01", min: "0" }}
+                                  disabled={editMode !== 2}
+                                  sx={{ width: 120, "& input": { fontSize: "12px", color: colors.grey[100] }, "& .MuiOutlinedInput-notchedOutline": { borderColor: colors.grey[600] } }}
+                                />
+                              ) : (
+                                <Typography sx={{ fontSize: "12px", color: c.nm_mode === 2 ? "#4caf50" : colors.grey[500] }}>
+                                  {c.nm_mode === 2 ? `N$ ${(c.feed_in_rate || 0).toFixed(4)}/kWh` : "N/A"}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ ...tdStyle, color: colors.grey[300], fontSize: "11px" }}>
+                              {c.config_updated ? new Date(c.config_updated).toLocaleString() : "Not configured"}
+                            </TableCell>
+                            <TableCell sx={tdStyle}>
+                              {isEditing ? (
+                                <Box sx={{ display: "flex", gap: 1 }}>
+                                  <Button size="small" variant="contained" startIcon={<SaveIcon sx={{ fontSize: 14 }} />}
+                                    onClick={() => saveConfig(c.DRN)}
+                                    sx={{ fontSize: "11px", textTransform: "none", bgcolor: colors.greenAccent[500], "&:hover": { bgcolor: colors.greenAccent[600] } }}>
+                                    Save
+                                  </Button>
+                                  <Button size="small" variant="outlined" onClick={() => setEditingDrn(null)}
+                                    sx={{ fontSize: "11px", textTransform: "none", color: colors.grey[300], borderColor: colors.grey[600] }}>
+                                    Cancel
+                                  </Button>
+                                </Box>
+                              ) : (
+                                <IconButton size="small" onClick={() => { setEditingDrn(c.DRN); setEditMode(c.nm_mode); setEditFeedInRate(String(c.feed_in_rate || 0)); }}
+                                  sx={{ color: colors.grey[400], "&:hover": { color: colors.greenAccent[500] } }}>
+                                  <EditIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+
+          <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ ...snack, open: false })} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
+            <Alert severity={snack.severity} onClose={() => setSnack({ ...snack, open: false })} sx={{ fontSize: "12px" }}>{snack.msg}</Alert>
+          </Snackbar>
+        </Box>
+      )}
+
+      {activeTab === 0 && (<Box>
+      <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 1, mb: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {lastUpdated && (
             <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>
               Updated {lastUpdated.toLocaleTimeString()}
@@ -369,6 +573,8 @@ export default function NetMetering() {
           </Table>
         </TableContainer>
       </Box>
+    </Box>)}
+
     </Box>
   );
 }
