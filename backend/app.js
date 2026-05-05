@@ -16,6 +16,7 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   process.env.FRONTEND_DOMAIN,
   'https://pulsar-gridx.github.io',
+  'https://client.gridx-meters.com',
 ].filter(Boolean);
 
 app.use(cors({
