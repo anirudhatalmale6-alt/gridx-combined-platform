@@ -46,6 +46,7 @@ const TOPICS = [
 const FIRMWARE_DIR = path.join(__dirname, '..', 'hardware', 'files', 'Data');
 let firmwareCache = null;  // { path, data, size, mtime }
 let nextionCache = null;   // { path, data, size, mtime }
+const activeOtaSessions = {};  // { drn: { data: Buffer, size: number, hash: string, version: string } }
 
 function loadFirmware(firmwarePath) {
   try {
@@ -169,24 +170,32 @@ function handleOtaRequest(drn, buf) {
     const offset = msg.offset || 0;
     const requestedSize = msg.size || 1024;
 
-    // Load firmware binary
-    const fwInfo = getFirmwareInfo();
-    if (!fwInfo) {
-      console.error(`[OTA] No firmware info available for chunk request from ${drn}`);
-      return;
+    // Use per-device cached firmware to prevent mid-OTA version mismatch
+    let fwData, fwSize;
+    if (activeOtaSessions[drn]) {
+      fwData = activeOtaSessions[drn].data;
+      fwSize = activeOtaSessions[drn].size;
+    } else {
+      // Fallback: no session cache (backwards compatible for devices that skip start)
+      const fwInfo = getFirmwareInfo();
+      if (!fwInfo) {
+        console.error(`[OTA] No firmware info available for chunk request from ${drn}`);
+        return;
+      }
+      const fwPath = path.join(FIRMWARE_DIR, 'firmware.bin');
+      const fw = loadFirmware(fwPath);
+      if (!fw) {
+        console.error(`[OTA] Cannot serve chunk: firmware not loaded`);
+        return;
+      }
+      fwData = fw.data;
+      fwSize = fw.size;
+      console.warn(`[OTA] ${drn}: serving chunk without session cache (no active OTA session)`);
     }
 
-    // Determine firmware file path from URL or use default
-    const fwPath = path.join(FIRMWARE_DIR, 'firmware.bin');
-    const fw = loadFirmware(fwPath);
-    if (!fw) {
-      console.error(`[OTA] Cannot serve chunk: firmware not loaded`);
-      return;
-    }
-
-    const remaining = fw.size - offset;
+    const remaining = fwSize - offset;
     if (remaining <= 0) {
-      console.log(`[OTA] ${drn}: requested offset ${offset} beyond firmware size ${fw.size}`);
+      console.log(`[OTA] ${drn}: requested offset ${offset} beyond firmware size ${fwSize}`);
       return;
     }
     const chunkSize = Math.min(requestedSize, remaining);
@@ -195,7 +204,7 @@ function handleOtaRequest(drn, buf) {
     const header = Buffer.alloc(8);
     header.writeUInt32BE(offset, 0);
     header.writeUInt32BE(chunkSize, 4);
-    const chunkData = fw.data.slice(offset, offset + chunkSize);
+    const chunkData = fwData.slice(offset, offset + chunkSize);
     const response = Buffer.concat([header, chunkData]);
 
     const dataTopic = `gx/${drn}/ota/data`;
@@ -204,8 +213,8 @@ function handleOtaRequest(drn, buf) {
         console.error(`[OTA] Publish failed for ${drn} offset ${offset}:`, err.message);
         return;
       }
-      const progress = Math.round(((offset + chunkSize) / fw.size) * 100);
-      if (progress % 5 === 0 || offset === 0 || offset + chunkSize >= fw.size) {
+      const progress = Math.round(((offset + chunkSize) / fwSize) * 100);
+      if (progress % 5 === 0 || offset === 0 || offset + chunkSize >= fwSize) {
         console.log(`[OTA] ${drn}: chunk offset=${offset} size=${chunkSize} progress=${progress}%`);
       }
     });
@@ -225,6 +234,10 @@ function handleOtaRequest(drn, buf) {
       return;
     }
 
+    // Cache firmware for this device's OTA session to prevent mid-download version mismatch
+    activeOtaSessions[drn] = { data: fw.data, size: fw.size, hash: fwInfo.hash, version: fwInfo.version };
+    console.log(`[OTA] Cached firmware for ${drn} session: v${fwInfo.version}, ${fw.size} bytes`);
+
     // Always send OTA start — device-side version comparison decides whether to apply
     console.log(`[OTA] Sending OTA start to ${drn}: v${fwInfo.version}, ${fw.size} bytes`);
     publishCommand(drn, {
@@ -237,9 +250,11 @@ function handleOtaRequest(drn, buf) {
     }, 1);
 
   } else if (action === 'complete') {
-    console.log(`[OTA] ${drn}: OTA completed successfully!`);
+    delete activeOtaSessions[drn];
+    console.log(`[OTA] ${drn}: OTA completed successfully! (session cache cleared)`);
   } else if (action === 'error') {
-    console.error(`[OTA] ${drn}: OTA error: ${msg.detail || 'unknown'}`);
+    delete activeOtaSessions[drn];
+    console.error(`[OTA] ${drn}: OTA error: ${msg.detail || 'unknown'} (session cache cleared)`);
   }
 }
 
@@ -254,6 +269,10 @@ function startMqttOta(drn, hash) {
   if (!fw) {
     throw new Error('Failed to load firmware binary');
   }
+
+  // Cache firmware for this device's OTA session to prevent mid-download version mismatch
+  activeOtaSessions[drn] = { data: fw.data, size: fw.size, hash: fwInfo.hash, version: fwInfo.version };
+  console.log(`[OTA] Cached firmware for ${drn} session: v${fwInfo.version}, ${fw.size} bytes`);
 
   const cmd = {
     type: 'ota_mqtt',
