@@ -297,17 +297,25 @@ router.get('/getHourlyDataByDrn', authenticateToken, async (req, res) => {
 
 /**
  * GET /getHourlyDataByDrn/:drn
- * Get hourly power consumption for a specific meter (today)
+ * Get hourly energy consumption for a specific meter (today)
+ * Uses actual measured data from ESP32 (MeterHourlyEnergyActual),
+ * falls back to power-based estimation if no actual data available.
  */
 router.get('/getHourlyDataByDrn/:drn', authenticateToken, async (req, res) => {
   const drn = req.params.drn;
-  const query = `
+
+  const actualQuery = `
+    SELECT hour, active_wh, import_wh, export_wh
+    FROM MeterHourlyEnergyActual
+    WHERE DRN = ? AND date = CURDATE()
+    ORDER BY hour
+  `;
+
+  const estimateQuery = `
     SELECT
       HOUR(date_time) AS hour,
-      MIN(active_power) AS min_power,
-      MAX(active_power) AS max_power,
       AVG(active_power) AS avg_power,
-      (MAX(active_power) - MIN(active_power)) AS power_consumption
+      MAX(active_power) AS max_power
     FROM MeteringPower
     WHERE DRN = ? AND DATE(date_time) = CURDATE()
     GROUP BY HOUR(date_time)
@@ -315,28 +323,51 @@ router.get('/getHourlyDataByDrn/:drn', authenticateToken, async (req, res) => {
   `;
 
   try {
-    const result = await new Promise((resolve, reject) => {
-      connection.query(query, [drn], (err, data) => {
+    const actualResult = await new Promise((resolve, reject) => {
+      connection.query(actualQuery, [drn], (err, data) => {
         if (err) reject(err);
-        else resolve(data);
+        else resolve(data || []);
       });
     });
 
-    // Build 24-hour array (fill gaps with 0)
-    const hourlyData = [];
-    for (let h = 0; h < 24; h++) {
-      const row = result.find(r => r.hour === h);
-      const avg = row ? parseFloat(row.avg_power) || 0 : 0;
-      const max = row ? parseFloat(row.max_power) || 0 : 0;
-      hourlyData.push({
-        hour: `${String(h).padStart(2, '0')}:00`,
-        kWh: parseFloat((avg / 1000).toFixed(2)),
-        avgPower: parseFloat(avg.toFixed(1)),
-        maxPower: parseFloat(max.toFixed(1)),
+    const useActual = actualResult.length > 0;
+    let estimateResult = [];
+
+    if (!useActual) {
+      estimateResult = await new Promise((resolve, reject) => {
+        connection.query(estimateQuery, [drn], (err, data) => {
+          if (err) reject(err);
+          else resolve(data || []);
+        });
       });
     }
 
-    res.json({ success: true, data: hourlyData });
+    const hourlyData = [];
+    for (let h = 0; h < 24; h++) {
+      if (useActual) {
+        const row = actualResult.find(r => r.hour === h);
+        hourlyData.push({
+          hour: `${String(h).padStart(2, '0')}:00`,
+          kWh: row ? parseFloat((row.active_wh / 1000).toFixed(3)) : 0,
+          avgPower: 0,
+          maxPower: 0,
+          source: 'measured',
+        });
+      } else {
+        const row = estimateResult.find(r => r.hour === h);
+        const avg = row ? parseFloat(row.avg_power) || 0 : 0;
+        const max = row ? parseFloat(row.max_power) || 0 : 0;
+        hourlyData.push({
+          hour: `${String(h).padStart(2, '0')}:00`,
+          kWh: parseFloat((avg / 1000).toFixed(2)),
+          avgPower: parseFloat(avg.toFixed(1)),
+          maxPower: parseFloat(max.toFixed(1)),
+          source: 'estimated',
+        });
+      }
+    }
+
+    res.json({ success: true, data: hourlyData, source: useActual ? 'measured' : 'estimated' });
   } catch (err) {
     console.error('Error fetching hourly data for DRN:', err);
     res.status(500).json({ error: 'Failed to fetch hourly data' });

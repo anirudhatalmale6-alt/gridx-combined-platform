@@ -1409,6 +1409,81 @@ router.get('/mqtt/net-energy/:drn/daily', authenticateToken, async (req, res) =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// Actual Measured Energy (from ESP32 hourly/daily snapshots)
+// ═══════════════════════════════════════════════════════════════════════
+
+router.get('/mqtt/actual-energy/:drn/hourly', authenticateToken, async (req, res) => {
+  try {
+    const drn = req.params.drn;
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const rows = await queryAll(
+      `SELECT hour, import_wh, export_wh, active_wh, record_time
+       FROM MeterHourlyEnergyActual
+       WHERE DRN = ? AND date = ?
+       ORDER BY hour`,
+      [drn, date]
+    );
+
+    const hourly = [];
+    let totalImport = 0, totalExport = 0, totalActive = 0;
+    for (let h = 0; h < 24; h++) {
+      const row = rows.find(r => r.hour === h);
+      const imp = row ? row.import_wh : 0;
+      const exp = row ? row.export_wh : 0;
+      const act = row ? row.active_wh : 0;
+      totalImport += imp;
+      totalExport += exp;
+      totalActive += act;
+      hourly.push({ hour: h, import_wh: imp, export_wh: exp, active_wh: act });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        date,
+        total_import_wh: totalImport,
+        total_export_wh: totalExport,
+        total_active_wh: totalActive,
+        hourly
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/mqtt/actual-energy/:drn/daily', authenticateToken, async (req, res) => {
+  try {
+    const drn = req.params.drn;
+    const days = parseInt(req.query.days) || 30;
+    const rows = await queryAll(
+      `SELECT date, DATE_FORMAT(date, '%b %d') as label,
+              import_wh, export_wh, active_wh
+       FROM MeterDailyEnergyActual
+       WHERE DRN = ? AND date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       ORDER BY date`,
+      [drn, days]
+    );
+
+    let totalImport = 0, totalExport = 0, totalActive = 0;
+    rows.forEach(r => {
+      totalImport += r.import_wh;
+      totalExport += r.export_wh;
+      totalActive += r.active_wh;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        days,
+        total_import_wh: totalImport,
+        total_export_wh: totalExport,
+        total_active_wh: totalActive,
+        history: rows
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // Net Metering Configuration
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1434,7 +1509,7 @@ router.post('/mqtt/net-metering-config/:drn', authenticateToken, async (req, res
     }
 
     await new Promise((resolve, reject) => {
-      pool.query(
+      db.query(
         `INSERT INTO MeterNetMeteringConfig (DRN, nm_mode, feed_in_rate, updated_at)
          VALUES (?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE nm_mode = VALUES(nm_mode), feed_in_rate = VALUES(feed_in_rate), updated_at = NOW()`,

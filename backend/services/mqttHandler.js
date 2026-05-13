@@ -36,6 +36,8 @@ const TOPICS = [
   'gx/+/auth_numbers',
   'gx/+/energy_usage',
   'gx/+/net_energy',
+  'gx/+/hourly_energy',
+  'gx/+/daily_energy',
   'gx/+/emergency',
   'gx/+/ota/req',
   'gx/+/nextion/req',
@@ -505,6 +507,56 @@ function ensureTables() {
     INDEX idx_created (created_at)
   )`, (err) => { if (err) console.error('[MQTT] MeterNetEnergy table error:', err.message); });
 
+  db.query(`CREATE TABLE IF NOT EXISTS MeterNetEnergyHourly (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    DRN VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    hour TINYINT NOT NULL,
+    min_import_wh FLOAT DEFAULT 0,
+    max_import_wh FLOAT DEFAULT 0,
+    min_export_wh FLOAT DEFAULT 0,
+    max_export_wh FLOAT DEFAULT 0,
+    reading_count INT DEFAULT 0,
+    UNIQUE KEY idx_drn_date_hour (DRN, date, hour)
+  )`, (err) => { if (err) console.error('[MQTT] MeterNetEnergyHourly table error:', err.message); });
+
+  db.query(`CREATE TABLE IF NOT EXISTS MeterNetEnergyDaily (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    DRN VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    min_import_wh FLOAT DEFAULT 0,
+    max_import_wh FLOAT DEFAULT 0,
+    min_export_wh FLOAT DEFAULT 0,
+    max_export_wh FLOAT DEFAULT 0,
+    reading_count INT DEFAULT 0,
+    UNIQUE KEY idx_drn_date (DRN, date)
+  )`, (err) => { if (err) console.error('[MQTT] MeterNetEnergyDaily table error:', err.message); });
+
+  db.query(`CREATE TABLE IF NOT EXISTS MeterHourlyEnergyActual (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    DRN VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    hour TINYINT NOT NULL,
+    import_wh INT UNSIGNED DEFAULT 0,
+    export_wh INT UNSIGNED DEFAULT 0,
+    active_wh INT UNSIGNED DEFAULT 0,
+    record_time INT UNSIGNED DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_drn_date_hour (DRN, date, hour)
+  )`, (err) => { if (err) console.error('[MQTT] MeterHourlyEnergyActual table error:', err.message); });
+
+  db.query(`CREATE TABLE IF NOT EXISTS MeterDailyEnergyActual (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    DRN VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    import_wh INT UNSIGNED DEFAULT 0,
+    export_wh INT UNSIGNED DEFAULT 0,
+    active_wh INT UNSIGNED DEFAULT 0,
+    record_time INT UNSIGNED DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_drn_date (DRN, date)
+  )`, (err) => { if (err) console.error('[MQTT] MeterDailyEnergyActual table error:', err.message); });
+
   db.query(`CREATE TABLE IF NOT EXISTS SuburbDailyEnergy (
     id INT AUTO_INCREMENT PRIMARY KEY,
     suburb VARCHAR(100) NOT NULL,
@@ -534,8 +586,13 @@ async function init() {
 
   mqttClient.on('connect', () => {
     console.log('[MQTT] Connected to broker:', brokerUrl);
-    mqttClient.subscribe(TOPICS, { qos: 0 }, (err) => {
-      if (err) console.error('[MQTT] Subscribe error:', err.message);
+    const qos1Topics = ['gx/+/hourly_energy', 'gx/+/daily_energy'];
+    const qos0Topics = TOPICS.filter(t => !qos1Topics.includes(t));
+    mqttClient.subscribe(qos0Topics, { qos: 0 }, (err) => {
+      if (err) console.error('[MQTT] Subscribe error (qos0):', err.message);
+    });
+    mqttClient.subscribe(qos1Topics, { qos: 1 }, (err) => {
+      if (err) console.error('[MQTT] Subscribe error (qos1):', err.message);
       else console.log('[MQTT] Subscribed to:', TOPICS.join(', '));
     });
   });
@@ -604,18 +661,20 @@ function handleMessage(topic, buf) {
 
   const firstByte = buf[0];
 
-  // Binary payloads start with type byte 0x01-0x07
-  if (firstByte >= 0x01 && firstByte <= 0x07) {
+  // Binary payloads start with type byte 0x01-0x09
+  if (firstByte >= 0x01 && firstByte <= 0x09) {
     console.log(`[MQTT] ${type} from ${drn} (binary, ${buf.length}B)`);
     switch (type) {
-      case 'power':      handlePowerBin(drn, buf); break;
-      case 'energy':     handleEnergyBin(drn, buf); break;
-      case 'cellular':   handleCellularBin(drn, buf); break;
-      case 'load':       handleLoadBin(drn, buf); break;
-      case 'token':      handleTokenBin(drn, buf); break;
-      case 'relay_log':  handleRelayLogBin(drn, buf); break;
-      case 'net_energy': handleNetEnergyBin(drn, buf); break;
-      default:           console.warn(`[MQTT] Unknown type: ${type}`);
+      case 'power':         handlePowerBin(drn, buf); break;
+      case 'energy':        handleEnergyBin(drn, buf); break;
+      case 'cellular':      handleCellularBin(drn, buf); break;
+      case 'load':          handleLoadBin(drn, buf); break;
+      case 'token':         handleTokenBin(drn, buf); break;
+      case 'relay_log':     handleRelayLogBin(drn, buf); break;
+      case 'net_energy':    handleNetEnergyBin(drn, buf); break;
+      case 'hourly_energy': handleHourlyEnergyBin(drn, buf); break;
+      case 'daily_energy':  handleDailyEnergyBin(drn, buf); break;
+      default:              console.warn(`[MQTT] Unknown type: ${type}`);
     }
     return;
   }
@@ -739,6 +798,51 @@ function handleNetEnergyBin(drn, buf) {
        reading_count = reading_count + 1`,
     [drn, import_energy, import_energy, export_energy, export_energy],
     (err) => { if (err) console.error('[MQTT] NetEnergy daily upsert error:', err.message); }
+  );
+}
+
+function handleHourlyEnergyBin(drn, buf) {
+  if (buf.length < 18) return console.error('[MQTT] HourlyEnergy packet too short:', buf.length);
+  const hour        = buf.readUInt8(1);
+  const record_time = buf.readUInt32LE(2);
+  const import_wh   = buf.readUInt32LE(6);
+  const export_wh   = buf.readUInt32LE(10);
+  const active_wh   = buf.readUInt32LE(14);
+
+  console.log(`[MQTT] HourlyEnergy from ${drn}: hr=${hour} import=${import_wh}Wh export=${export_wh}Wh active=${active_wh}Wh`);
+
+  db.query(
+    `INSERT INTO MeterHourlyEnergyActual (DRN, date, hour, import_wh, export_wh, active_wh, record_time)
+     VALUES (?, CURDATE(), ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       import_wh = VALUES(import_wh),
+       export_wh = VALUES(export_wh),
+       active_wh = VALUES(active_wh),
+       record_time = VALUES(record_time)`,
+    [drn, hour, import_wh, export_wh, active_wh, record_time],
+    (err) => { if (err) console.error('[MQTT] HourlyEnergyActual upsert error:', err.message); }
+  );
+}
+
+function handleDailyEnergyBin(drn, buf) {
+  if (buf.length < 17) return console.error('[MQTT] DailyEnergy packet too short:', buf.length);
+  const record_time = buf.readUInt32LE(1);
+  const import_wh   = buf.readUInt32LE(5);
+  const export_wh   = buf.readUInt32LE(9);
+  const active_wh   = buf.readUInt32LE(13);
+
+  console.log(`[MQTT] DailyEnergy from ${drn}: import=${import_wh}Wh export=${export_wh}Wh active=${active_wh}Wh`);
+
+  db.query(
+    `INSERT INTO MeterDailyEnergyActual (DRN, date, import_wh, export_wh, active_wh, record_time)
+     VALUES (?, CURDATE(), ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       import_wh = VALUES(import_wh),
+       export_wh = VALUES(export_wh),
+       active_wh = VALUES(active_wh),
+       record_time = VALUES(record_time)`,
+    [drn, import_wh, export_wh, active_wh, record_time],
+    (err) => { if (err) console.error('[MQTT] DailyEnergyActual upsert error:', err.message); }
   );
 }
 
