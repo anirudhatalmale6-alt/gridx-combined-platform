@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -107,7 +107,7 @@ import Header from "../components/Header";
 import DataBadge from "../components/DataBadge";
 import { tokens } from "../theme";
 import { useAuth } from "../context/AuthContext";
-import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, energyAPI, meterConfigAPI, mqttActivityAPI, billingAPI, postpaidAPI, netMeteringAPI, vendingAPI } from "../services/api";
+import { meterAPI, loadControlAPI, commissionReportAPI, homeClassificationAPI, meterHealthAPI, relayEventsAPI, energyAPI, meterConfigAPI, mqttActivityAPI, billingAPI, postpaidAPI, netMeteringAPI, actualEnergyAPI, vendingAPI } from "../services/api";
 import {
   meters as mockMeters,
   transactions,
@@ -154,153 +154,305 @@ function generateHourlyData() {
   }));
 }
 
-/* ---- Net Metering Tab Component ---- */
+/* ---- Net Metering Tab Component (Dashboard-style) ---- */
+const NM_IMPORT_RATE = 2.45;
+const NM_EXPORT_RATE = 1.60;
+const NM_POLL = 10000;
+
+const nmFlowKeyframes = `
+@keyframes nmFlowRight { 0% { transform: translateX(-10px); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(calc(100% + 10px)); opacity: 0; } }
+@keyframes nmFlowLeft { 0% { transform: translateX(calc(100% + 10px)); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(-10px); opacity: 0; } }
+@keyframes nmPulse { 0%, 100% { opacity: 0.7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes nmRing { 0% { transform: scale(1); opacity: 0.4; } 100% { transform: scale(1.8); opacity: 0; } }
+`;
+
+function NmFlowArrow({ direction, color, speed, isDark }) {
+  const isRight = direction === "right";
+  const anim = isRight ? "nmFlowRight" : "nmFlowLeft";
+  return (
+    <Box sx={{ position: "relative", flex: 1, height: 40, display: "flex", alignItems: "center", mx: 1 }}>
+      <Box sx={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", bgcolor: `${color}30` }} />
+      <Box sx={{ position: "absolute", top: "50%", transform: "translateY(-50%)", [isRight ? "right" : "left"]: -2, width: 0, height: 0, borderTop: "7px solid transparent", borderBottom: "7px solid transparent", [isRight ? "borderLeft" : "borderRight"]: `10px solid ${color}`, filter: `drop-shadow(0 0 4px ${color})`, zIndex: 2 }} />
+      {[0, 1, 2].map(i => (
+        <Box key={i} sx={{ position: "absolute", top: "50%", left: 0, transform: "translateY(-50%)", display: "flex", alignItems: "center", animation: `${anim} ${speed}s linear infinite`, animationDelay: `${i * speed / 3}s` }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color, boxShadow: `0 0 10px ${color}` }} />
+          <Box sx={{ width: 16, height: 2, bgcolor: color, ml: "-1px", opacity: 0.7 }} />
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function NmFlowNode({ icon, label, sublabel, color, isDark, active, pulse }) {
+  return (
+    <Box sx={{ textAlign: "center", minWidth: 80, position: "relative" }}>
+      {pulse && active && <Box sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 68, height: 68, borderRadius: "50%", border: `2px solid ${color}`, animation: "nmRing 2s ease-out infinite" }} />}
+      <Box sx={{ width: 64, height: 64, borderRadius: "50%", mx: "auto", mb: 0.8, bgcolor: `${color}18`, border: `2px solid ${color}50`, display: "flex", alignItems: "center", justifyContent: "center", animation: active ? "nmPulse 2.5s ease-in-out infinite" : "none" }}>
+        {icon}
+      </Box>
+      <Typography sx={{ fontSize: 11, fontWeight: 700, color: isDark ? "#e2e8f0" : "#1e293b", letterSpacing: 0.5 }}>{label}</Typography>
+      {sublabel && <Typography sx={{ fontSize: 10, color: isDark ? "#94a3b8" : "#64748b", mt: 0.2 }}>{sublabel}</Typography>}
+    </Box>
+  );
+}
+
+function NmDonutCard({ title, subtitle, totals, isDark, colors: themeColors }) {
+  const hasData = totals.importKwh > 0 || totals.exportKwh > 0;
+  const totalKwh = totals.importKwh + totals.exportKwh;
+  const importPct = totalKwh > 0 ? (totals.importKwh / totalKwh) * 100 : 50;
+  const exportPct = totalKwh > 0 ? (totals.exportKwh / totalKwh) * 100 : 50;
+  const isCredit = totals.netCost < 0;
+  const headerColor = isDark ? "#e2e8f0" : "#1e293b";
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+
+  const donutData = hasData
+    ? [{ name: "Imported", value: totals.importKwh }, { name: "Exported", value: totals.exportKwh }]
+    : [{ name: "Imported", value: 0.001 }, { name: "Exported", value: 0.001 }];
+
+  return (
+    <Box sx={{ borderRadius: 3, overflow: "hidden", bgcolor: isDark ? themeColors.primary[400] : "#fff", border: `1px solid ${isDark ? themeColors.primary[300] : "#e0e0e0"}`, height: "100%" }}>
+      <Box sx={{ px: 2.5, py: 1.5, bgcolor: isDark ? "rgba(59,130,246,0.08)" : "rgba(59,130,246,0.04)", borderBottom: `1px solid ${isDark ? themeColors.primary[300] : "#e0e0e0"}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor }}>{title} — Energy Summary</Typography>
+        <Box sx={{ px: 1.2, py: 0.3, borderRadius: 1.5, bgcolor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }}>
+          <Typography sx={{ fontSize: 10, fontWeight: 600, color: subColor }}>{subtitle}</Typography>
+        </Box>
+      </Box>
+      <Box sx={{ p: 2.5 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", gap: 2, mb: 1 }}>
+          <Typography sx={{ fontSize: 10, color: "#f97316" }}>Import: N$ {NM_IMPORT_RATE.toFixed(2)}/kWh</Typography>
+          <Typography sx={{ fontSize: 10, color: "#22c55e" }}>Export: N$ {NM_EXPORT_RATE.toFixed(2)}/kWh</Typography>
+        </Box>
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 1, position: "relative" }}>
+          <ResponsiveContainer width={200} height={200}>
+            <PieChart><Pie data={donutData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" stroke={isDark ? "#1e293b" : "#fff"} strokeWidth={2}>
+              <Cell fill="#f97316" /><Cell fill="#22c55e" />
+            </Pie></PieChart>
+          </ResponsiveContainer>
+          <Box sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center", pointerEvents: "none" }}>
+            <Typography sx={{ fontSize: 10, color: isCredit ? "#22c55e" : "#f97316", lineHeight: 1.2 }}>{isCredit ? "Credit" : "Net Cost"}</Typography>
+            <Typography sx={{ fontSize: 18, fontWeight: 700, color: headerColor, lineHeight: 1.2 }}>N$ {Math.abs(totals.netCost).toFixed(2)}</Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", justifyContent: "center", gap: 2, mb: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#f97316" }} /><Typography sx={{ fontSize: 10, color: subColor }}>Import {importPct.toFixed(0)}%</Typography></Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}><Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#22c55e" }} /><Typography sx={{ fontSize: 10, color: subColor }}>Export {exportPct.toFixed(0)}%</Typography></Box>
+        </Box>
+        {[
+          { label: "Import", val: `${totals.importKwh.toFixed(3)} kWh`, color: "#f97316" },
+          { label: "Import Cost", val: `N$ ${totals.importCost.toFixed(2)}`, color: "#f97316" },
+          { label: "Export", val: `${totals.exportKwh.toFixed(3)} kWh`, color: "#22c55e" },
+          { label: "Export Credit", val: `N$ ${totals.exportCost.toFixed(2)}`, color: "#22c55e" },
+          { label: "Net Cost", val: `${isCredit ? "-" : ""}N$ ${Math.abs(totals.netCost).toFixed(2)}`, color: isCredit ? "#22c55e" : "#f97316", bold: true },
+        ].map((item, i) => (
+          <Box key={i} sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", py: 0.8, borderBottom: i < 4 ? `1px solid ${isDark ? "rgba(255,255,255,0.04)" : "#f1f5f9"}` : "none" }}>
+            <Typography sx={{ fontSize: 12, color: subColor }}>{item.label}</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: item.bold ? 700 : 600, color: item.color }}>{item.val}</Typography>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 function NetMeteringTab({ drn }) {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
   const isDark = theme.palette.mode === "dark";
-  const [nmData, setNmData] = useState(null);
-  const [nmHistory, setNmHistory] = useState([]);
+  const [nmLatest, setNmLatest] = useState(null);
+  const [nmHourly, setNmHourly] = useState(null);
+  const [nmDaily, setNmDaily] = useState(null);
+  const [nmPower, setNmPower] = useState(null);
   const [nmLoading, setNmLoading] = useState(true);
+  const pollRef = useRef(null);
 
   useEffect(() => {
-    const fetchNm = async () => {
+    const fetchAll = async () => {
       setNmLoading(true);
       try {
-        const [summaryRes, historyRes] = await Promise.allSettled([
-          netMeteringAPI.getSummary(drn),
-          netMeteringAPI.getHistory(drn, 30),
+        const [latestR, hourlyR, dailyR, powerR] = await Promise.allSettled([
+          netMeteringAPI.getLatest(drn),
+          netMeteringAPI.getHourly(drn),
+          netMeteringAPI.getDaily(drn, 400),
+          meterAPI.getPower(drn),
         ]);
-        if (summaryRes.status === "fulfilled" && summaryRes.value?.data) setNmData(summaryRes.value.data);
-        if (historyRes.status === "fulfilled" && historyRes.value?.data) setNmHistory(historyRes.value.data);
-      } catch (e) {
-        console.error("Net metering fetch error:", e);
-      } finally {
-        setNmLoading(false);
-      }
+        if (latestR.status === "fulfilled") setNmLatest(latestR.value?.data || latestR.value);
+        if (hourlyR.status === "fulfilled") setNmHourly(hourlyR.value?.data || hourlyR.value);
+        if (dailyR.status === "fulfilled") setNmDaily(dailyR.value?.data || dailyR.value);
+        if (powerR.status === "fulfilled") setNmPower(powerR.value);
+      } catch (e) { console.error("NM fetch error:", e); }
+      finally { setNmLoading(false); }
     };
-    fetchNm();
+    fetchAll();
+    pollRef.current = setInterval(() => {
+      meterAPI.getPower(drn).then(d => setNmPower(d)).catch(() => {});
+    }, NM_POLL);
+    return () => clearInterval(pollRef.current);
   }, [drn]);
 
-  const totalImport = nmData?.total_import || 0;
-  const totalExport = nmData?.total_export || 0;
-  const netVal = totalExport - totalImport;
-  const tariffRate = 2.50;
+  if (nmLoading) return <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}><CircularProgress sx={{ color: "#4caf50" }} /></Box>;
 
-  const chartData = (nmHistory || []).map((h, i) => ({
-    label: h?.label || h?.date || `#${i+1}`,
-    import: (h?.import_energy || h?.import || 0) / 1000,
-    export: (h?.export_energy || h?.export || 0) / 1000,
-    net: ((h?.export_energy || h?.export || 0) - (h?.import_energy || h?.import || 0)) / 1000,
-  }));
+  const lp = parseFloat(nmPower?.active_power || 0);
+  const isExp = lp < 0;
+  const isNeutral = lp === 0;
+  const pw = Math.abs(lp);
+  const voltage = nmPower?.voltage;
+  const importWh = parseFloat(nmLatest?.import_energy_wh || 0);
+  const exportWh = parseFloat(nmLatest?.export_energy_wh || 0);
+  const speed = pw > 500 ? 1.5 : pw > 100 ? 2.0 : 2.6;
+  const flowColor = isNeutral ? (isDark ? "#475569" : "#94a3b8") : isExp ? "#22c55e" : "#f97316";
+  const statusText = isNeutral ? "No Active Power Flow" : isExp ? "Exporting to Grid" : "Importing from Grid";
 
-  if (nmLoading) return (
-    <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-      <CircularProgress sx={{ color: "#4caf50" }} />
-    </Box>
-  );
+  const cardSx = { p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` };
+  const headerColor = isDark ? "#e2e8f0" : "#1e293b";
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+
+  const hourlyChartData = (() => {
+    if (!nmHourly?.hourly) return [];
+    return nmHourly.hourly.filter(h => h.import > 0 || h.export > 0).map(h => ({
+      x: `${String(h.hour).padStart(2, "0")}:00`,
+      import: parseFloat((h.import / 1000).toFixed(3)),
+      export: parseFloat((h.export / 1000).toFixed(3)),
+      net: parseFloat(((h.import - h.export) / 1000).toFixed(3)),
+    }));
+  })();
+
+  const dayTotals = (() => {
+    if (!nmHourly?.hourly) return { importKwh: 0, importCost: 0, exportKwh: 0, exportCost: 0, netCost: 0 };
+    const imp = nmHourly.hourly.reduce((s, h) => s + (h.import || 0), 0) / 1000;
+    const exp = nmHourly.hourly.reduce((s, h) => s + (h.export || 0), 0) / 1000;
+    return { importKwh: imp, importCost: imp * NM_IMPORT_RATE, exportKwh: exp, exportCost: exp * NM_EXPORT_RATE, netCost: imp * NM_IMPORT_RATE - exp * NM_EXPORT_RATE };
+  })();
+
+  const monthTotals = (() => {
+    const now = new Date();
+    const rows = nmDaily?.history || [];
+    let imp = 0, exp = 0;
+    rows.forEach(r => { const d = new Date(r.date); if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) { imp += (r.import || 0) / 1000; exp += (r.export || 0) / 1000; } });
+    imp += dayTotals.importKwh; exp += dayTotals.exportKwh;
+    return { importKwh: imp, importCost: imp * NM_IMPORT_RATE, exportKwh: exp, exportCost: exp * NM_EXPORT_RATE, netCost: imp * NM_IMPORT_RATE - exp * NM_EXPORT_RATE };
+  })();
+
+  const dailyChartData = (() => {
+    const rows = nmDaily?.history || [];
+    return rows.slice(-30).map(r => ({
+      label: r.label || new Date(r.date).toLocaleDateString("en-ZA", { day: "2-digit", month: "short" }),
+      import: parseFloat(((r.import || 0) / 1000).toFixed(3)),
+      export: parseFloat(((r.export || 0) / 1000).toFixed(3)),
+    }));
+  })();
+
+  const tooltipStyle = { backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${isDark ? colors.grey[600] : "#e0e0e0"}`, borderRadius: "8px", fontSize: "12px" };
 
   return (
     <Box>
-      <Box sx={{
-        p: 2.5, borderRadius: "16px", mb: 3,
-        background: netVal >= 0
-          ? "linear-gradient(135deg, #1b5e20, #2e7d32)"
-          : "linear-gradient(135deg, #b71c1c, #c62828)",
-      }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-          <SolarPowerOutlined sx={{ color: "#fff", fontSize: 22 }} />
-          <Typography sx={{ fontSize: "16px", fontWeight: 700, color: "#fff" }}>
-            Net Metering — {drn}
-          </Typography>
+      <style>{nmFlowKeyframes}</style>
+
+      {/* LIVE POWER FLOW */}
+      <Box sx={{ ...cardSx, mb: 3, p: 0, overflow: "hidden" }}>
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: isDark ? "rgba(59,130,246,0.08)" : "rgba(59,130,246,0.04)", borderBottom: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}`, display: "flex", alignItems: "center", gap: 1 }}>
+          <SolarPowerOutlined sx={{ fontSize: 18, color: "#60a5fa" }} />
+          <Typography sx={{ fontSize: 15, fontWeight: 700, color: headerColor }}>Live Power Flow</Typography>
+          <Typography sx={{ ml: "auto", fontSize: 11, color: subColor }}>DRN: {drn}</Typography>
         </Box>
-        <Typography sx={{ fontSize: "12px", color: "rgba(255,255,255,0.8)" }}>
-          {netVal >= 0 ? "This meter has a net energy surplus — exporting more than importing." : "This meter has a net energy deficit — importing more than exporting."}
-        </Typography>
+        <Box sx={{ p: 2.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", mb: 2, py: 1 }}>
+            <Box sx={{ px: 2, py: 0.5, borderRadius: 3, bgcolor: `${flowColor}15`, border: `1px solid ${flowColor}30`, display: "flex", alignItems: "center", gap: 1 }}>
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: flowColor, animation: isNeutral ? "none" : "nmPulse 1.5s ease-in-out infinite" }} />
+              <Typography sx={{ fontSize: 12, fontWeight: 600, color: flowColor }}>{statusText}</Typography>
+              {!isNeutral && <Typography sx={{ fontSize: 12, fontWeight: 700, color: flowColor }}>{pw.toFixed(0)} W</Typography>}
+            </Box>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", px: 2, py: 2 }}>
+            <NmFlowNode icon={<BoltOutlined sx={{ fontSize: 28, color: "#3b82f6" }} />} label="GRID" sublabel={voltage ? `${parseFloat(voltage).toFixed(0)}V` : null} color="#3b82f6" isDark={isDark} active={!isNeutral && !isExp} pulse={!isNeutral && !isExp} />
+            {!isNeutral ? <NmFlowArrow direction={isExp ? "left" : "right"} color={flowColor} speed={speed} isDark={isDark} /> : <Box sx={{ flex: 1, height: 40, mx: 1, position: "relative", display: "flex", alignItems: "center" }}><Box sx={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", bgcolor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)" }} /></Box>}
+            <NmFlowNode icon={<SpeedOutlined sx={{ fontSize: 28, color: "#8b5cf6" }} />} label="METER" sublabel={`${pw.toFixed(0)} W`} color="#8b5cf6" isDark={isDark} active={!isNeutral} pulse={false} />
+            {!isNeutral ? <NmFlowArrow direction={isExp ? "left" : "right"} color={flowColor} speed={speed} isDark={isDark} /> : <Box sx={{ flex: 1, height: 40, mx: 1, position: "relative", display: "flex", alignItems: "center" }}><Box sx={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", bgcolor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)" }} /></Box>}
+            <NmFlowNode icon={<HomeOutlined sx={{ fontSize: 28, color: isExp ? "#22c55e" : "#f97316" }} />} label="HOME" sublabel={isExp ? "Solar" : "Load"} color={isExp ? "#22c55e" : "#f97316"} isDark={isDark} active={!isNeutral && isExp} pulse={!isNeutral && isExp} />
+          </Box>
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 3, mt: 1 }}>
+            <Box sx={{ textAlign: "center" }}><Typography sx={{ fontSize: 10, color: subColor, mb: 0.2 }}>Lifetime Import</Typography><Typography sx={{ fontSize: 14, fontWeight: 700, color: "#f97316" }}>{(importWh / 1000).toFixed(2)} <span style={{ fontSize: 10, fontWeight: 400 }}>kWh</span></Typography></Box>
+            <Box sx={{ width: 1, bgcolor: isDark ? "rgba(255,255,255,0.06)" : "#e2e8f0" }} />
+            <Box sx={{ textAlign: "center" }}><Typography sx={{ fontSize: 10, color: subColor, mb: 0.2 }}>Lifetime Export</Typography><Typography sx={{ fontSize: 14, fontWeight: 700, color: "#22c55e" }}>{(exportWh / 1000).toFixed(2)} <span style={{ fontSize: 10, fontWeight: 400 }}>kWh</span></Typography></Box>
+          </Box>
+        </Box>
       </Box>
 
+      {/* TODAY & THIS MONTH DONUT CARDS */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#4caf50", textTransform: "uppercase" }}>Total Export</Typography>
-            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalExport / 1000).toFixed(2)}</Typography>
-            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
-          </Box>
+        <Grid item xs={12} md={6}>
+          <NmDonutCard title="Today" subtitle={new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} totals={dayTotals} isDark={isDark} colors={colors} />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#f44336", textTransform: "uppercase" }}>Total Import</Typography>
-            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>{(totalImport / 1000).toFixed(2)}</Typography>
-            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh lifetime</Typography>
-          </Box>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: colors.blueAccent[400], textTransform: "uppercase" }}>Net Balance</Typography>
-            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: netVal >= 0 ? "#4caf50" : "#f44336", mt: 0.5 }}>{netVal >= 0 ? "+" : ""}{(netVal / 1000).toFixed(2)}</Typography>
-            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>kWh net</Typography>
-          </Box>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Box sx={{ p: 2, borderRadius: "12px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "10px", fontWeight: 600, color: "#ff9800", textTransform: "uppercase" }}>Est. Credit Value</Typography>
-            <Typography sx={{ fontSize: "24px", fontWeight: 800, color: colors.grey[100], mt: 0.5 }}>N$ {((totalExport / 1000) * tariffRate).toFixed(2)}</Typography>
-            <Typography sx={{ fontSize: "11px", color: colors.grey[400] }}>@ N$ {tariffRate}/kWh</Typography>
-          </Box>
+        <Grid item xs={12} md={6}>
+          <NmDonutCard title={`${new Date().toLocaleString("default", { month: "long" })} ${new Date().getFullYear()}`} subtitle={`1 — ${new Date().getDate()} ${new Date().toLocaleString("default", { month: "short" })} ${new Date().getFullYear()}`} totals={monthTotals} isDark={isDark} colors={colors} />
         </Grid>
       </Grid>
 
-      <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-        <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>
-          Energy History
-        </Typography>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData.length ? chartData : [{label:"No data", import:0, export:0}]}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
-            <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
-            <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
-            <Area type="monotone" dataKey="export" stroke="#4caf50" fill="#4caf5030" name="Export (kWh)" />
-            <Area type="monotone" dataKey="import" stroke="#f44336" fill="#f4433630" name="Import (kWh)" />
-            <Legend wrapperStyle={{ fontSize: "11px" }} />
-          </AreaChart>
-        </ResponsiveContainer>
+      {/* ENERGY CONSUMPTION (TODAY) LINE CHART */}
+      <Box sx={{ ...cardSx, mb: 3 }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor, mb: 0.5 }}>Energy Consumption (Today)</Typography>
+        <Typography sx={{ fontSize: 11, color: subColor, mb: 2 }}>Net energy per hour (Import - Export). Positive = importing, Negative = exporting.</Typography>
+        {hourlyChartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={hourlyChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
+              <XAxis dataKey="x" tick={{ fontSize: 9, fill: isDark ? "#64748b" : "#94a3b8" }} />
+              <YAxis tick={{ fontSize: 10, fill: isDark ? "#64748b" : "#94a3b8" }} />
+              <RechartsTooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${Math.abs(v).toFixed(3)} kWh`, v >= 0 ? "Import" : "Export"]} />
+              <Area type="monotone" dataKey="net" stroke="#3b82f6" fill="#3b82f640" name="Net (kWh)" dot={{ r: 3, fill: "#3b82f6" }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : <Box sx={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center" }}><Typography sx={{ color: subColor }}>No hourly data available</Typography></Box>}
       </Box>
 
-      <Box sx={{ p: 2.5, borderRadius: "16px", mb: 3, bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-        <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 1 }}>
-          Net Energy Flow
-        </Typography>
-        <Typography sx={{ fontSize: "11px", color: colors.grey[400], mb: 2 }}>
-          Positive = surplus (export &gt; import), Negative = deficit
-        </Typography>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData.length ? chartData : [{label:"No data", net:0}]}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.grey[400] }} />
-            <YAxis tick={{ fontSize: 10, fill: colors.grey[400] }} />
-            <RechartsTooltip contentStyle={{ backgroundColor: isDark ? colors.primary[500] : "#fff", border: `1px solid ${colors.grey[600]}`, borderRadius: "8px", fontSize: "12px" }} />
-            <Bar dataKey="net" name="Net (kWh)" radius={[4, 4, 0, 0]}>
-              {chartData.map((entry, idx) => (
-                <Cell key={idx} fill={entry.net >= 0 ? "#4caf50" : "#f44336"} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      {/* HOURLY IMPORT / EXPORT BAR CHART */}
+      <Box sx={{ ...cardSx, mb: 3 }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor, mb: 2 }}>Hourly Import / Export</Typography>
+        {hourlyChartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={hourlyChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
+              <XAxis dataKey="x" tick={{ fontSize: 9, fill: isDark ? "#64748b" : "#94a3b8" }} />
+              <YAxis tick={{ fontSize: 10, fill: isDark ? "#64748b" : "#94a3b8" }} />
+              <RechartsTooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="import" name="Imported (kWh)" fill="#f97316" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="export" name="Exported (kWh)" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              <Legend wrapperStyle={{ fontSize: "11px" }} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : <Box sx={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center" }}><Typography sx={{ color: subColor }}>No hourly data available</Typography></Box>}
       </Box>
 
+      {/* DAILY IMPORT / EXPORT (LAST 30 DAYS) */}
+      <Box sx={{ ...cardSx, mb: 3 }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor, mb: 2 }}>Daily Import / Export (Last 30 Days)</Typography>
+        {dailyChartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={dailyChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? colors.grey[700] : "#f0f0f0"} />
+              <XAxis dataKey="label" tick={{ fontSize: 9, fill: isDark ? "#64748b" : "#94a3b8" }} angle={-45} textAnchor="end" height={60} />
+              <YAxis tick={{ fontSize: 10, fill: isDark ? "#64748b" : "#94a3b8" }} />
+              <RechartsTooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="import" name="Imported (kWh)" fill="#f97316" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="export" name="Exported (kWh)" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              <Legend wrapperStyle={{ fontSize: "11px" }} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : <Box sx={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center" }}><Typography sx={{ color: subColor }}>No daily data available</Typography></Box>}
+      </Box>
+
+      {/* SELF-SUFFICIENCY & BILLING SUMMARY */}
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
-          <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Self-Sufficiency</Typography>
+          <Box sx={cardSx}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor, mb: 2 }}>Self-Sufficiency</Typography>
             {[
-              { label: "Self-Consumption", pct: totalExport + totalImport > 0 ? ((totalImport / (totalExport + totalImport)) * 100) : 0, color: colors.greenAccent[500] },
-              { label: "Grid Independence", pct: totalExport + totalImport > 0 ? ((totalExport / (totalExport + totalImport)) * 100) : 0, color: colors.blueAccent[500] },
+              { label: "Self-Consumption", pct: importWh + exportWh > 0 ? (importWh / (importWh + exportWh)) * 100 : 0, color: "#4caf50" },
+              { label: "Grid Independence", pct: importWh + exportWh > 0 ? (exportWh / (importWh + exportWh)) * 100 : 0, color: "#3b82f6" },
             ].map((m) => (
               <Box key={m.label} sx={{ mb: 2 }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", mb: "4px" }}>
-                  <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{m.label}</Typography>
-                  <Typography sx={{ fontSize: "12px", fontWeight: 700, color: m.color }}>{m.pct.toFixed(0)}%</Typography>
+                  <Typography sx={{ fontSize: 12, color: subColor }}>{m.label}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.pct.toFixed(0)}%</Typography>
                 </Box>
                 <Box sx={{ height: 6, borderRadius: 3, bgcolor: `${m.color}20` }}>
                   <Box sx={{ height: "100%", borderRadius: 3, bgcolor: m.color, width: `${Math.min(m.pct, 100)}%`, transition: "width 1s ease" }} />
@@ -310,16 +462,16 @@ function NetMeteringTab({ drn }) {
           </Box>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Box sx={{ p: 2.5, borderRadius: "16px", bgcolor: isDark ? colors.primary[400] : "#fff", border: `1px solid ${isDark ? colors.primary[300] : "#e0e0e0"}` }}>
-            <Typography sx={{ fontSize: "14px", fontWeight: 700, color: colors.grey[100], mb: 2 }}>Billing Summary</Typography>
+          <Box sx={cardSx}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, color: headerColor, mb: 2 }}>Billing Summary</Typography>
             {[
-              { label: "Export Credits", value: `N$ ${((totalExport / 1000) * tariffRate).toFixed(2)}`, color: "#4caf50" },
-              { label: "Import Cost", value: `N$ ${((totalImport / 1000) * tariffRate).toFixed(2)}`, color: "#f44336" },
-              { label: "Net Credit/Debit", value: `N$ ${((netVal / 1000) * tariffRate).toFixed(2)}`, color: netVal >= 0 ? "#4caf50" : "#f44336" },
+              { label: "Export Credits", value: `N$ ${((exportWh / 1000) * NM_EXPORT_RATE).toFixed(2)}`, color: "#22c55e" },
+              { label: "Import Cost", value: `N$ ${((importWh / 1000) * NM_IMPORT_RATE).toFixed(2)}`, color: "#f97316" },
+              { label: "Net Credit/Debit", value: `N$ ${(((exportWh - importWh) / 1000) * NM_IMPORT_RATE).toFixed(2)}`, color: exportWh >= importWh ? "#22c55e" : "#f97316" },
             ].map((r) => (
-              <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: `1px solid ${colors.grey[700]}` }}>
-                <Typography sx={{ fontSize: "12px", color: colors.grey[300] }}>{r.label}</Typography>
-                <Typography sx={{ fontSize: "13px", fontWeight: 700, color: r.color }}>{r.value}</Typography>
+              <Box key={r.label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9"}` }}>
+                <Typography sx={{ fontSize: 12, color: subColor }}>{r.label}</Typography>
+                <Typography sx={{ fontSize: 13, fontWeight: 700, color: r.color }}>{r.value}</Typography>
               </Box>
             ))}
           </Box>

@@ -501,11 +501,19 @@ export const netMeteringAPI = {
   getLatest: (drn) => get(`/mqtt/net-energy/${drn}`),
   getSummary: (drn) => get(`/mqtt/net-energy/${drn}/summary`),
   getHistory: (drn, limit = 30) => get(`/mqtt/net-energy/${drn}/history?limit=${limit}`),
+  getHourly: (drn, date) => get(`/mqtt/net-energy/${drn}/hourly${date ? '?date=' + date : ''}`),
+  getDaily: (drn, days = 30) => get(`/mqtt/net-energy/${drn}/daily?days=${days}`),
   getDashboard: (period) => get('/mqtt/net-energy/dashboard' + (period ? '?period=' + period : '')),
   getActiveMeters: () => get('/mqtt/net-energy/active-meters'),
   getConfig: (drn) => get(`/mqtt/net-metering-config/${drn}`),
   setConfig: (drn, data) => post(`/mqtt/net-metering-config/${drn}`, data),
   getAllConfigs: () => get('/mqtt/net-metering-configs'),
+};
+
+// ===== ACTUAL ENERGY =====
+export const actualEnergyAPI = {
+  getHourly: (drn, date) => get(`/mqtt/actual-energy/${drn}/hourly${date ? '?date=' + date : ''}`),
+  getDaily: (drn, days = 30) => get(`/mqtt/actual-energy/${drn}/daily?days=${days}`),
 };
 
 // ===== NON-GRIDX CUSTOMERS =====
